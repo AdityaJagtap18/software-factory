@@ -56,11 +56,8 @@ up their own rows after each test:
 .venv/Scripts/python -m pytest -q
 ```
 
-## Running fully in Docker
+## Running the full stack in Docker
 
-```bash
-docker compose up --build
-```
-
-This builds the backend image, waits for Postgres's healthcheck, runs
-`alembic upgrade head`, and starts the API on port 8000.
+See the [root README](../README.md) — `docker compose up -d --build` from
+the repo root starts Postgres, this backend, and the Angular frontend
+together.

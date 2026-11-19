@@ -19,14 +19,30 @@ services:
     build: ./backend
     environment:
       SF_DATABASE_URL: postgresql+psycopg2://sf:sf@postgres:5432/software_factory
-      SF_CORS_ORIGINS: '["http://localhost:4200"]'
+      SF_CORS_ORIGINS: '["http://localhost:4200", "http://localhost:4300"]'
     ports:
-      - "8000:8000"
+      # Host 8020: 8000 is taken by another local project, and 8010 is used
+      # by the non-Docker dev instance of this backend during local work.
+      - "8020:8000"
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     command: >
       sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+  frontend:
+    build: ./frontend
+    ports:
+      # Host 4300, so it doesn't collide with `ng serve` on 4200 during local dev.
+      - "4300:80"
+    depends_on:
+      backend:
+        condition: service_healthy
 
 volumes:
   sf_postgres_data:

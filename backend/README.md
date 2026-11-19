@@ -1,9 +1,10 @@
-# Software Factory — Backend (Phases 1–3: Foundation, Connectivity & Execution)
+# Software Factory — Backend (Phases 1–4: Foundation Through Live Execution)
 
 FastAPI + PostgreSQL backend implementing real authentication, organizations,
 membership, RBAC, projects, workspaces, coding-agent runtime connectivity,
-and task execution — the foundation the rest of the Software Factory
-execution spec (orchestration, knowledge graph, etc.) builds on.
+and real-time streaming task execution — the foundation the rest of the
+Software Factory execution spec (Temporal/LangGraph orchestration, knowledge
+graph, etc.) builds on.
 
 ## What's implemented
 
@@ -89,14 +90,45 @@ provider API key makes the same code paths report a real "Connected."**
 - The project workspace's **Tasks** tab (previously mock "Preview data") now
   creates, lists, and starts real tasks against real connections.
 
+### Phase 4 — Real-time streaming execution
+- `POST /projects/{id}/tasks/{task_id}/start` now returns immediately with
+  `status: "running"` and runs the adapter call in a background thread
+  (`app/services/task_execution.py`, `start_task_in_background`) instead of
+  blocking the request.
+- **`start_execution_streaming`** added to the Common Agent Runtime
+  Interface. Local-runtime adapters use `subprocess.Popen` and emit each
+  real stdout line as it's produced; factory-managed adapters use each
+  provider's actual SSE streaming endpoint (`"stream": true` for
+  Anthropic/OpenAI, `alt=sse` for Gemini) and emit each genuine token delta.
+  Every chunk is appended to the task's `output` in the database as it
+  arrives — nothing is buffered and released all at once to fake
+  "streaming."
+- **`POST .../tasks/{task_id}/cancel`**: sets a `cancel_requested` flag;
+  the running adapter call checks it between real chunks (next CLI output
+  line / next SSE delta) and stops there — a local CLI's child process is
+  terminated, an HTTP stream is closed — recording whatever partial output
+  was genuinely produced plus `"Cancelled by user."`, never a fabricated
+  "cancelled instantly" state.
+- **`GET .../tasks/{task_id}/stream`**: Server-Sent Events, polling the
+  real task row every 0.5s and forwarding its actual `status`/`output`/
+  `error_message` until the task reaches a terminal state. The frontend
+  reads this directly (`fetch` + a manual SSE line parser, since the
+  `EventSource` API can't carry the `Authorization` bearer header this API
+  requires) instead of polling.
+- Verified end-to-end in-browser: `POST .../start` returns `"running"`
+  immediately (confirmed via the raw network response), the Tasks tab
+  updates live from the SSE stream with no manual refresh, and a slow
+  mocked execution responds to a real `cancel` call mid-run. 3 new backend
+  tests (33/33 total), including one asserting the real `cancel_requested`
+  flag actually stops a streaming mock with the correct partial output, and
+  one reading real SSE bytes off the stream endpoint.
+
 ## What's intentionally not here yet
 
-The Factory Supervisor's multi-step orchestration, streaming a running
-agent's output live (execution is currently synchronous, bounded by a
-request timeout), Temporal/LangGraph workflow orchestration, the Neo4j
-knowledge graph, Docker execution isolation, and real-time collaboration
-are later phases of the execution spec and are not implemented in this
-pass.
+The Factory Supervisor's multi-step orchestration, Temporal/LangGraph
+workflow orchestration, the Neo4j knowledge graph, Docker execution
+isolation, and real-time multi-user collaboration are later phases of the
+execution spec and are not implemented in this pass.
 
 ## Running locally
 

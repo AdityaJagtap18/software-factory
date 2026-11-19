@@ -1,17 +1,23 @@
+import json
+import time
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session as DBSession
+from starlette.responses import StreamingResponse
 
 from app.api.deps import ProjectContext, get_current_user, require_project_access
-from app.core.database import get_db
+from app.core.database import SessionLocal, get_db
 from app.models.agent_runtime import CodingAgentConnection
 from app.models.project import ProjectRole
 from app.models.task import Task, TaskStatus
 from app.models.user import User
 from app.schemas.task import TaskCreate, TaskResponse, TaskUpdate
 from app.services import audit
-from app.services.task_execution import run_task
+from app.services.task_execution import start_task_in_background
+
+_STREAM_POLL_SECONDS = 0.5
+_STREAM_MAX_SECONDS = 600
 
 router = APIRouter(tags=["tasks"])
 
@@ -121,9 +127,17 @@ def start_task(
         raise HTTPException(status.HTTP_409_CONFLICT, "Task is already running")
 
     task.status = TaskStatus.RUNNING
+    task.cancel_requested = False
+    task.output = ""
+    task.error_message = ""
+    task.completed_at = None
     db.commit()
+    db.refresh(task)
 
-    run_task(db, task)
+    # Runs in a background thread on its own DB session so this request
+    # returns immediately with status "running" — the caller watches real
+    # progress via GET .../stream (SSE) or by polling GET .../{task_id}.
+    start_task_in_background(task.id)
 
     audit.record(
         db,
@@ -132,11 +146,78 @@ def start_task(
         target_id=str(task.id),
         actor_user_id=user.id,
         organization_id=ctx.project.organization_id,
-        extra={"status": task.status.value},
+    )
+    db.commit()
+    return task
+
+
+@router.post("/projects/{project_id}/tasks/{task_id}/cancel", response_model=TaskResponse)
+def cancel_task(
+    project_id: uuid.UUID,
+    task_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    ctx: ProjectContext = Depends(require_project_access),
+    db: DBSession = Depends(get_db),
+) -> TaskResponse:
+    ctx.require_role(MANAGE_ROLES)
+    task = _get_task_or_404(db, project_id, task_id)
+    if task.status != TaskStatus.RUNNING:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Task is not running")
+
+    # Signals the background thread's `should_cancel` check — it stops at
+    # the next real chunk boundary (next CLI output line / SSE delta), it
+    # does not fabricate an immediate stop.
+    task.cancel_requested = True
+    db.commit()
+    audit.record(
+        db,
+        action="task.cancel_requested",
+        target_type="task",
+        target_id=str(task.id),
+        actor_user_id=user.id,
+        organization_id=ctx.project.organization_id,
     )
     db.commit()
     db.refresh(task)
     return task
+
+
+@router.get("/projects/{project_id}/tasks/{task_id}/stream")
+def stream_task(
+    project_id: uuid.UUID,
+    task_id: uuid.UUID,
+    ctx: ProjectContext = Depends(require_project_access),
+    db: DBSession = Depends(get_db),
+) -> StreamingResponse:
+    """Server-Sent Events: real status/output updates polled from the task
+    row as the background execution actually writes to it — never a
+    simulated progress bar."""
+    _get_task_or_404(db, project_id, task_id)
+
+    def event_source():
+        deadline = time.monotonic() + _STREAM_MAX_SECONDS
+        while time.monotonic() < deadline:
+            poll_db = SessionLocal()
+            try:
+                task = poll_db.get(Task, task_id)
+                if task is None:
+                    yield f"event: error\ndata: {json.dumps({'error': 'not found'})}\n\n"
+                    return
+                payload = {
+                    "status": task.status.value,
+                    "output": task.output,
+                    "error_message": task.error_message,
+                    "started_at": task.started_at.isoformat() if task.started_at else None,
+                    "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+                }
+                yield f"data: {json.dumps(payload)}\n\n"
+                if task.status != TaskStatus.RUNNING:
+                    return
+            finally:
+                poll_db.close()
+            time.sleep(_STREAM_POLL_SECONDS)
+
+    return StreamingResponse(event_source(), media_type="text/event-stream")
 
 
 @router.delete("/projects/{project_id}/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)

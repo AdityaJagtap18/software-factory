@@ -139,7 +139,14 @@ export class ProjectWorkspaceComponent {
     if (!project) return;
     this.startingTaskId.set(task.id);
     this.taskService.start(project.id, task.id).subscribe({
-      complete: () => this.startingTaskId.set(null)
+      complete: () => this.startingTaskId.set(null),
+      error: () => this.startingTaskId.set(null)
     });
+  }
+
+  cancelTask(task: ApiTask) {
+    const project = this.project();
+    if (!project) return;
+    this.taskService.cancel(project.id, task.id).subscribe();
   }
 }

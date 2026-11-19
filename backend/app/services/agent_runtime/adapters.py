@@ -85,6 +85,51 @@ def _run_cli_prompt(binary: str, prompt_flag: str, prompt: str) -> ExecutionResu
     return ExecutionResult(succeeded=True, output=(proc.stdout or "")[:_MAX_OUTPUT_CHARS])
 
 
+def _run_cli_prompt_streaming(
+    binary: str, prompt_flag: str, prompt: str, on_chunk, should_cancel
+) -> ExecutionResult:
+    """Like `_run_cli_prompt`, but reads the real child process's stdout line
+    by line as it's produced and can terminate it early on real cancellation.
+    """
+    path = shutil.which(binary)
+    if path is None:
+        return ExecutionResult(
+            succeeded=False,
+            error=f"'{binary}' CLI not found on PATH. Install it locally and reconnect.",
+        )
+    try:
+        proc = subprocess.Popen(
+            [binary, prompt_flag, prompt],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+    except OSError as exc:
+        return ExecutionResult(succeeded=False, error=f"Failed to execute '{binary}': {exc}")
+
+    collected: list[str] = []
+    cancelled = False
+    assert proc.stdout is not None
+    for line in proc.stdout:
+        collected.append(line)
+        on_chunk(line)
+        if should_cancel():
+            cancelled = True
+            proc.terminate()
+            break
+    proc.wait(timeout=_PROBE_TIMEOUT_SECONDS if cancelled else None)
+
+    output = "".join(collected)[:_MAX_OUTPUT_CHARS]
+    if cancelled:
+        return ExecutionResult(succeeded=False, output=output, error="Cancelled by user.")
+    if proc.returncode != 0:
+        return ExecutionResult(
+            succeeded=False, error=output or f"'{binary}' exited with code {proc.returncode}"
+        )
+    return ExecutionResult(succeeded=True, output=output)
+
+
 def _run_anthropic_prompt(api_key: str, prompt: str) -> ExecutionResult:
     try:
         resp = httpx.post(
@@ -112,6 +157,61 @@ def _run_anthropic_prompt(api_key: str, prompt: str) -> ExecutionResult:
     return ExecutionResult(succeeded=True, output=text[:_MAX_OUTPUT_CHARS])
 
 
+def _run_anthropic_prompt_streaming(
+    api_key: str, prompt: str, on_chunk, should_cancel
+) -> ExecutionResult:
+    """Real Anthropic SSE streaming (`"stream": true`) — each `text_delta`
+    event is a genuine token chunk from the provider, emitted as it arrives.
+    """
+    collected: list[str] = []
+    try:
+        with httpx.stream(
+            "POST",
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json={
+                "model": "claude-3-5-haiku-20241022",
+                "max_tokens": 1024,
+                "messages": [{"role": "user", "content": prompt}],
+                "stream": True,
+            },
+            timeout=_EXECUTION_TIMEOUT_SECONDS,
+        ) as resp:
+            if resp.status_code != 200:
+                resp.read()
+                return ExecutionResult(
+                    succeeded=False,
+                    error=f"Anthropic API returned HTTP {resp.status_code}: {resp.text[:500]}",
+                )
+            import json as _json
+
+            for line in resp.iter_lines():
+                if should_cancel():
+                    return ExecutionResult(
+                        succeeded=False, output="".join(collected), error="Cancelled by user."
+                    )
+                if not line.startswith("data: "):
+                    continue
+                try:
+                    event = _json.loads(line[len("data: ") :])
+                except ValueError:
+                    continue
+                if event.get("type") == "content_block_delta":
+                    text = event.get("delta", {}).get("text", "")
+                    if text:
+                        collected.append(text)
+                        on_chunk(text)
+    except httpx.HTTPError as exc:
+        return ExecutionResult(
+            succeeded=False, output="".join(collected), error=f"Could not reach Anthropic API: {exc}"
+        )
+    return ExecutionResult(succeeded=True, output="".join(collected)[:_MAX_OUTPUT_CHARS])
+
+
 def _run_openai_prompt(api_key: str, prompt: str) -> ExecutionResult:
     try:
         resp = httpx.post(
@@ -134,6 +234,58 @@ def _run_openai_prompt(api_key: str, prompt: str) -> ExecutionResult:
     return ExecutionResult(succeeded=True, output=text[:_MAX_OUTPUT_CHARS])
 
 
+def _run_openai_prompt_streaming(
+    api_key: str, prompt: str, on_chunk, should_cancel
+) -> ExecutionResult:
+    """Real OpenAI SSE streaming (`"stream": true`) — each delta is a
+    genuine token chunk from the provider, emitted as it arrives.
+    """
+    collected: list[str] = []
+    try:
+        with httpx.stream(
+            "POST",
+            "https://api.openai.com/v1/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "content-type": "application/json"},
+            json={
+                "model": "gpt-4o-mini",
+                "messages": [{"role": "user", "content": prompt}],
+                "stream": True,
+            },
+            timeout=_EXECUTION_TIMEOUT_SECONDS,
+        ) as resp:
+            if resp.status_code != 200:
+                resp.read()
+                return ExecutionResult(
+                    succeeded=False,
+                    error=f"OpenAI API returned HTTP {resp.status_code}: {resp.text[:500]}",
+                )
+            import json as _json
+
+            for line in resp.iter_lines():
+                if should_cancel():
+                    return ExecutionResult(
+                        succeeded=False, output="".join(collected), error="Cancelled by user."
+                    )
+                if not line.startswith("data: "):
+                    continue
+                payload = line[len("data: ") :]
+                if payload == "[DONE]":
+                    break
+                try:
+                    event = _json.loads(payload)
+                    text = event["choices"][0]["delta"].get("content") or ""
+                except (ValueError, KeyError, IndexError):
+                    continue
+                if text:
+                    collected.append(text)
+                    on_chunk(text)
+    except httpx.HTTPError as exc:
+        return ExecutionResult(
+            succeeded=False, output="".join(collected), error=f"Could not reach OpenAI API: {exc}"
+        )
+    return ExecutionResult(succeeded=True, output="".join(collected)[:_MAX_OUTPUT_CHARS])
+
+
 def _run_gemini_prompt(api_key: str, prompt: str) -> ExecutionResult:
     try:
         resp = httpx.post(
@@ -154,6 +306,51 @@ def _run_gemini_prompt(api_key: str, prompt: str) -> ExecutionResult:
     except (KeyError, IndexError):
         text = ""
     return ExecutionResult(succeeded=True, output=text[:_MAX_OUTPUT_CHARS])
+
+
+def _run_gemini_prompt_streaming(
+    api_key: str, prompt: str, on_chunk, should_cancel
+) -> ExecutionResult:
+    """Real Gemini SSE streaming (`alt=sse` on `:streamGenerateContent`) —
+    each candidate text part is a genuine chunk from the provider.
+    """
+    collected: list[str] = []
+    try:
+        with httpx.stream(
+            "POST",
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:streamGenerateContent",
+            params={"key": api_key, "alt": "sse"},
+            json={"contents": [{"parts": [{"text": prompt}]}]},
+            timeout=_EXECUTION_TIMEOUT_SECONDS,
+        ) as resp:
+            if resp.status_code != 200:
+                resp.read()
+                return ExecutionResult(
+                    succeeded=False,
+                    error=f"Gemini API returned HTTP {resp.status_code}: {resp.text[:500]}",
+                )
+            import json as _json
+
+            for line in resp.iter_lines():
+                if should_cancel():
+                    return ExecutionResult(
+                        succeeded=False, output="".join(collected), error="Cancelled by user."
+                    )
+                if not line.startswith("data: "):
+                    continue
+                try:
+                    event = _json.loads(line[len("data: ") :])
+                    text = event["candidates"][0]["content"]["parts"][0]["text"]
+                except (ValueError, KeyError, IndexError):
+                    continue
+                if text:
+                    collected.append(text)
+                    on_chunk(text)
+    except httpx.HTTPError as exc:
+        return ExecutionResult(
+            succeeded=False, output="".join(collected), error=f"Could not reach Gemini API: {exc}"
+        )
+    return ExecutionResult(succeeded=True, output="".join(collected)[:_MAX_OUTPUT_CHARS])
 
 
 def _probe_anthropic_api(api_key: str) -> HealthCheckResult:
@@ -216,7 +413,7 @@ class ClaudeCodeAdapter(CodingAgentRuntimeAdapter):
         return [
             Capability("Start session", CapabilityState.DECLARED),
             Capability("Resume session", CapabilityState.DECLARED),
-            Capability("Stream messages", CapabilityState.DECLARED),
+            Capability("Stream messages", CapabilityState.TESTED),
             Capability("CLI detection", CapabilityState.VERIFIED),
         ]
 
@@ -229,6 +426,11 @@ class ClaudeCodeAdapter(CodingAgentRuntimeAdapter):
         if credential_value:
             return _run_anthropic_prompt(credential_value, prompt)
         return _run_cli_prompt("claude", "-p", prompt)
+
+    def start_execution_streaming(self, prompt, credential_value, on_chunk, should_cancel) -> ExecutionResult:
+        if credential_value:
+            return _run_anthropic_prompt_streaming(credential_value, prompt, on_chunk, should_cancel)
+        return _run_cli_prompt_streaming("claude", "-p", prompt, on_chunk, should_cancel)
 
 
 class CodexAdapter(CodingAgentRuntimeAdapter):
@@ -243,7 +445,7 @@ class CodexAdapter(CodingAgentRuntimeAdapter):
         return [
             Capability("Start thread", CapabilityState.DECLARED),
             Capability("Resume thread", CapabilityState.DECLARED),
-            Capability("Stream events", CapabilityState.DECLARED),
+            Capability("Stream events", CapabilityState.TESTED),
             Capability("CLI detection", CapabilityState.VERIFIED),
         ]
 
@@ -257,6 +459,11 @@ class CodexAdapter(CodingAgentRuntimeAdapter):
             return _run_openai_prompt(credential_value, prompt)
         return _run_cli_prompt("codex", "exec", prompt)
 
+    def start_execution_streaming(self, prompt, credential_value, on_chunk, should_cancel) -> ExecutionResult:
+        if credential_value:
+            return _run_openai_prompt_streaming(credential_value, prompt, on_chunk, should_cancel)
+        return _run_cli_prompt_streaming("codex", "exec", prompt, on_chunk, should_cancel)
+
 
 class GeminiCliAdapter(CodingAgentRuntimeAdapter):
     slug = "gemini_cli"
@@ -269,7 +476,7 @@ class GeminiCliAdapter(CodingAgentRuntimeAdapter):
     def capabilities(self) -> list[Capability]:
         return [
             Capability("Start session", CapabilityState.DECLARED),
-            Capability("Stream events", CapabilityState.DECLARED),
+            Capability("Stream events", CapabilityState.TESTED),
             Capability("CLI detection", CapabilityState.VERIFIED),
         ]
 
@@ -282,6 +489,11 @@ class GeminiCliAdapter(CodingAgentRuntimeAdapter):
         if credential_value:
             return _run_gemini_prompt(credential_value, prompt)
         return _run_cli_prompt("gemini", "-p", prompt)
+
+    def start_execution_streaming(self, prompt, credential_value, on_chunk, should_cancel) -> ExecutionResult:
+        if credential_value:
+            return _run_gemini_prompt_streaming(credential_value, prompt, on_chunk, should_cancel)
+        return _run_cli_prompt_streaming("gemini", "-p", prompt, on_chunk, should_cancel)
 
 
 class CustomAdapter(CodingAgentRuntimeAdapter):

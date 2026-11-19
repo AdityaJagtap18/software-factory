@@ -109,14 +109,22 @@
                 <td><span class="sf-pill">{{ t.priority }}</span></td>
                 <td><span class="sf-badge" [class]="'sf-badge--' + statusTone(t.status)">{{ taskStatusLabel(t.status) }}</span></td>
                 <td>
-                  @if (t.error_message) { <span class="set-rt-desc">{{ t.error_message }}</span> }
-                  @else if (t.output) { <span class="set-rt-desc">{{ t.output.slice(0, 120) }}{{ t.output.length > 120 ? '…' : '' }}</span> }
-                  @else { — }
+                  @if (t.status === 'running' && t.output) {
+                    <span class="set-rt-desc">Live: …{{ t.output.slice(-120) }}</span>
+                  } @else if (t.error_message) {
+                    <span class="set-rt-desc">{{ t.error_message }}</span>
+                  } @else if (t.output) {
+                    <span class="set-rt-desc">{{ t.output.slice(0, 120) }}{{ t.output.length > 120 ? '…' : '' }}</span>
+                  } @else { — }
                 </td>
                 <td>
-                  <button class="sf-btn" type="button" style="padding:5px 10px;" [disabled]="t.status === 'running' || startingTaskId() === t.id" (click)="startTask(t)">
-                    {{ startingTaskId() === t.id || t.status === 'running' ? 'Running…' : (t.status === 'not_started' ? 'Start' : 'Restart') }}
-                  </button>
+                  @if (t.status === 'running') {
+                    <button class="sf-btn" type="button" style="padding:5px 10px;" (click)="cancelTask(t)">Cancel</button>
+                  } @else {
+                    <button class="sf-btn" type="button" style="padding:5px 10px;" [disabled]="startingTaskId() === t.id" (click)="startTask(t)">
+                      {{ startingTaskId() === t.id ? 'Starting…' : (t.status === 'not_started' ? 'Start' : 'Restart') }}
+                    </button>
+                  }
                 </td>
               </tr>
             }

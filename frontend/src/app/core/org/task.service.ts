@@ -2,11 +2,13 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
 import { Observable, tap } from 'rxjs';
 import { environment } from '../../../environments/environment';
+import { AuthService } from '../auth/auth.service';
 import { ApiTask, CreateTaskPayload } from './task.models';
 
 @Injectable({ providedIn: 'root' })
 export class TaskService {
   private readonly http = inject(HttpClient);
+  private readonly auth = inject(AuthService);
 
   readonly tasks = signal<ApiTask[]>([]);
   readonly loaded = signal(false);
@@ -26,13 +28,59 @@ export class TaskService {
       .pipe(tap((task) => this.tasks.update((list) => [task, ...list])));
   }
 
+  private patchTask(taskId: string, patch: Partial<ApiTask>): void {
+    this.tasks.update((list) => list.map((t) => (t.id === taskId ? { ...t, ...patch } : t)));
+  }
+
+  /**
+   * Starts a task, then live-streams its real status/output over SSE and
+   * applies each genuine update to the local task list as it arrives — no
+   * client-side progress simulation.
+   */
   start(projectId: string, taskId: string): Observable<ApiTask> {
     return this.http
       .post<ApiTask>(`${environment.apiBaseUrl}/projects/${projectId}/tasks/${taskId}/start`, {})
       .pipe(
         tap((task) => {
-          this.tasks.update((list) => list.map((t) => (t.id === task.id ? task : t)));
+          this.patchTask(taskId, task);
+          void this.streamUntilDone(projectId, taskId);
         })
       );
+  }
+
+  cancel(projectId: string, taskId: string): Observable<ApiTask> {
+    return this.http
+      .post<ApiTask>(`${environment.apiBaseUrl}/projects/${projectId}/tasks/${taskId}/cancel`, {})
+      .pipe(tap((task) => this.patchTask(taskId, task)));
+  }
+
+  private async streamUntilDone(projectId: string, taskId: string): Promise<void> {
+    const token = this.auth.accessToken;
+    const resp = await fetch(
+      `${environment.apiBaseUrl}/projects/${projectId}/tasks/${taskId}/stream`,
+      { headers: token ? { Authorization: `Bearer ${token}` } : {} }
+    );
+    if (!resp.ok || !resp.body) {
+      return;
+    }
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        try {
+          const payload = JSON.parse(line.slice('data: '.length));
+          this.patchTask(taskId, payload);
+        } catch {
+          // Malformed/partial chunk — skip rather than guess at its content.
+        }
+      }
+    }
   }
 }

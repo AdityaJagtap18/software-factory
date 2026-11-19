@@ -1,5 +1,21 @@
+import json
+import time
+
 from app.services.agent_runtime.adapters import ClaudeCodeAdapter
 from app.services.agent_runtime.base import ExecutionResult, HealthCheckResult
+
+
+def _wait_for_terminal_status(client, project_id, task_id, headers, timeout=10):
+    """Task execution now runs in a background thread (Phase 4), so `start`
+    returns immediately with status "running" — poll the real task row
+    until the background run actually finishes."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        body = client.get(f"/api/v1/projects/{project_id}/tasks/{task_id}", headers=headers).json()
+        if body["status"] != "running":
+            return body
+        time.sleep(0.1)
+    raise AssertionError("task did not reach a terminal status in time")
 
 
 def _register_and_login(client, email, name):
@@ -69,7 +85,9 @@ def test_starting_task_with_no_connection_fails_honestly(client):
 
     r = client.post(f"/api/v1/projects/{project['id']}/tasks/{task['id']}/start", headers=alice)
     assert r.status_code == 200
-    body = r.json()
+    assert r.json()["status"] == "running"
+
+    body = _wait_for_terminal_status(client, project["id"], task["id"], alice)
     assert body["status"] == "failed"
     assert "no coding-agent connection" in body["error_message"].lower()
 
@@ -93,7 +111,9 @@ def test_starting_task_on_this_machine_fails_honestly_without_mocking(client):
 
     r = client.post(f"/api/v1/projects/{project['id']}/tasks/{task['id']}/start", headers=alice)
     assert r.status_code == 200
-    body = r.json()
+    assert r.json()["status"] == "running"
+
+    body = _wait_for_terminal_status(client, project["id"], task["id"], alice)
     assert body["status"] == "failed"
     assert body["output"] == ""
     assert "not connected" in body["error_message"].lower()
@@ -129,11 +149,11 @@ def test_successful_execution_marks_task_completed_with_real_output(client, monk
         "health_check",
         lambda self, credential_value: HealthCheckResult(connected=True, detail="ok"),
     )
-    monkeypatch.setattr(
-        ClaudeCodeAdapter,
-        "start_execution",
-        lambda self, prompt, credential_value: ExecutionResult(succeeded=True, output=f"echo: {prompt}"),
-    )
+    def fake_streaming(self, prompt, credential_value, on_chunk, should_cancel):
+        on_chunk(f"echo: {prompt}")
+        return ExecutionResult(succeeded=True, output=f"echo: {prompt}")
+
+    monkeypatch.setattr(ClaudeCodeAdapter, "start_execution_streaming", fake_streaming)
 
     alice = _register_and_login(client, "alice@example.com", "Alice")
     org, project = _project(client, alice)
@@ -154,7 +174,9 @@ def test_successful_execution_marks_task_completed_with_real_output(client, monk
 
     r = client.post(f"/api/v1/projects/{project['id']}/tasks/{task['id']}/start", headers=alice)
     assert r.status_code == 200
-    body = r.json()
+    assert r.json()["status"] == "running"
+
+    body = _wait_for_terminal_status(client, project["id"], task["id"], alice)
     assert body["status"] == "completed"
     assert body["output"] == "echo: Write a haiku about testing"
     assert body["error_message"] == ""
@@ -185,3 +207,98 @@ def test_cannot_start_task_already_running(client, monkeypatch):
 
     r = client.post(f"/api/v1/projects/{project['id']}/tasks/{task['id']}/start", headers=alice)
     assert r.status_code == 409
+
+
+def test_cancel_requires_running_task(client):
+    alice = _register_and_login(client, "alice@example.com", "Alice")
+    _org, project = _project(client, alice)
+    task = client.post(
+        f"/api/v1/projects/{project['id']}/tasks", json={"title": "x"}, headers=alice
+    ).json()
+
+    r = client.post(f"/api/v1/projects/{project['id']}/tasks/{task['id']}/cancel", headers=alice)
+    assert r.status_code == 409
+
+
+def test_cancelling_a_running_task_stops_it_with_partial_output(client, monkeypatch):
+    """Simulate a slow adapter that checks `should_cancel` between chunks, as
+    the real CLI/SSE streaming implementations do. Cancelling mid-run must
+    produce the real partial output collected so far, not a fabricated one."""
+    import threading
+
+    started = threading.Event()
+
+    def fake_streaming(self, prompt, credential_value, on_chunk, should_cancel):
+        on_chunk("chunk-1 ")
+        started.set()
+        for i in range(2, 50):
+            if should_cancel():
+                return ExecutionResult(succeeded=False, output="chunk-1 ", error="Cancelled by user.")
+            time.sleep(0.05)
+        return ExecutionResult(succeeded=True, output="finished without cancellation")
+
+    monkeypatch.setattr(
+        ClaudeCodeAdapter,
+        "health_check",
+        lambda self, credential_value: HealthCheckResult(connected=True, detail="ok"),
+    )
+    monkeypatch.setattr(ClaudeCodeAdapter, "start_execution_streaming", fake_streaming)
+
+    alice = _register_and_login(client, "alice@example.com", "Alice")
+    org, project = _project(client, alice)
+    connection = client.post(
+        f"/api/v1/organizations/{org['id']}/coding-agent-connections",
+        json={"runtime_slug": "claude_code", "connection_mode": "local_runtime"},
+        headers=alice,
+    ).json()
+    task = client.post(
+        f"/api/v1/projects/{project['id']}/tasks",
+        json={"title": "Long task", "coding_agent_connection_id": connection["id"]},
+        headers=alice,
+    ).json()
+
+    client.post(f"/api/v1/projects/{project['id']}/tasks/{task['id']}/start", headers=alice)
+    started.wait(timeout=5)
+
+    r = client.post(f"/api/v1/projects/{project['id']}/tasks/{task['id']}/cancel", headers=alice)
+    assert r.status_code == 200
+
+    body = _wait_for_terminal_status(client, project["id"], task["id"], alice)
+    assert body["status"] == "failed"
+    assert body["error_message"] == "Cancelled by user."
+    assert body["output"] == "chunk-1 "
+
+
+def test_stream_endpoint_emits_sse_events_until_terminal(client, monkeypatch):
+    monkeypatch.setattr(
+        ClaudeCodeAdapter,
+        "health_check",
+        lambda self, credential_value: HealthCheckResult(connected=False, detail="still down"),
+    )
+
+    alice = _register_and_login(client, "alice@example.com", "Alice")
+    org, project = _project(client, alice)
+    connection = client.post(
+        f"/api/v1/organizations/{org['id']}/coding-agent-connections",
+        json={"runtime_slug": "claude_code", "connection_mode": "local_runtime"},
+        headers=alice,
+    ).json()
+    task = client.post(
+        f"/api/v1/projects/{project['id']}/tasks",
+        json={"title": "x", "coding_agent_connection_id": connection["id"]},
+        headers=alice,
+    ).json()
+    client.post(f"/api/v1/projects/{project['id']}/tasks/{task['id']}/start", headers=alice)
+
+    url = f"/api/v1/projects/{project['id']}/tasks/{task['id']}/stream"
+    events = []
+    with client.stream("GET", url, headers=alice) as r:
+        assert r.status_code == 200
+        for line in r.iter_lines():
+            if line.startswith("data: "):
+                events.append(json.loads(line[len("data: ") :]))
+            if events and events[-1]["status"] != "running":
+                break
+
+    assert events[-1]["status"] == "failed"
+    assert "not connected" in events[-1]["error_message"].lower()

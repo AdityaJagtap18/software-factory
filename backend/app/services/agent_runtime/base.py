@@ -11,6 +11,7 @@ import enum
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from typing import Callable
 
 
 class CapabilityState(str, enum.Enum):
@@ -79,3 +80,24 @@ class CodingAgentRuntimeAdapter(ABC):
         provider error), this returns `succeeded=False` with an honest
         `error` describing what actually happened.
         """
+
+    def start_execution_streaming(
+        self,
+        prompt: str,
+        credential_value: str | None,
+        on_chunk: Callable[[str], None],
+        should_cancel: Callable[[], bool],
+    ) -> ExecutionResult:
+        """Like `start_execution`, but calls `on_chunk` as real output arrives
+        (subprocess stdout lines, or provider SSE deltas) and checks
+        `should_cancel` between chunks to stop early on a real cancellation.
+
+        The default implementation (used by adapters with nothing
+        incremental to stream, e.g. a plain HTTP custom adapter) just runs
+        the whole thing and emits one chunk — it never fabricates partial
+        progress that didn't happen.
+        """
+        result = self.start_execution(prompt, credential_value)
+        if result.output:
+            on_chunk(result.output)
+        return result

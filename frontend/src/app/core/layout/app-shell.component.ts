@@ -1,8 +1,10 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { IconComponent } from '../../shared/icon/icon.component';
 import { MockDataService } from '../mock-data.service';
 import { NAV_ITEMS } from '../nav-items';
+import { AuthService } from '../auth/auth.service';
+import { OrganizationService } from '../org/organization.service';
 
 @Component({
   selector: 'sf-app-shell',
@@ -12,17 +14,79 @@ import { NAV_ITEMS } from '../nav-items';
   templateUrl: './app-shell.component.html',
   styleUrl: './app-shell.component.scss'
 })
-export class AppShellComponent {
+export class AppShellComponent implements OnInit {
   private readonly data = inject(MockDataService);
+  private readonly auth = inject(AuthService);
+  private readonly orgService = inject(OrganizationService);
+  private readonly router = inject(Router);
 
   readonly navItems = NAV_ITEMS;
-  readonly user = this.data.currentUser;
-  readonly organizations = this.data.organizations;
-  readonly activeOrg = this.data.activeOrganization;
   readonly approvalsPending = this.data.approvals;
 
+  readonly currentUser = this.auth.currentUser;
+  readonly organizations = this.orgService.organizations;
+  readonly activeOrgId = this.orgService.activeOrgId;
+  readonly activeOrg = computed(
+    () => this.organizations().find((o) => o.id === this.activeOrgId()) ?? null
+  );
+  readonly initials = computed(() => {
+    const name = this.currentUser()?.full_name ?? '';
+    return name
+      .split(' ')
+      .map((part) => part[0])
+      .filter(Boolean)
+      .slice(0, 2)
+      .join('')
+      .toUpperCase();
+  });
+
+  readonly showUserMenu = signal(false);
+  readonly showCreateOrg = signal(false);
+  readonly newOrgName = signal('');
+
+  ngOnInit(): void {
+    if (!this.currentUser()) {
+      this.auth.fetchCurrentUser().subscribe({ error: () => this.handleSessionExpired() });
+    }
+    if (this.organizations().length === 0) {
+      this.orgService.listMine().subscribe({ error: () => this.handleSessionExpired() });
+    }
+  }
+
+  private handleSessionExpired(): void {
+    this.auth.logout();
+    this.router.navigateByUrl('/login');
+  }
+
   setOrg(id: string) {
-    const org = this.organizations().find((o) => o.id === id);
-    if (org) this.activeOrg.set(org);
+    this.orgService.setActiveOrg(id);
+    this.router.navigateByUrl('/dashboard');
+  }
+
+  toggleUserMenu() {
+    this.showUserMenu.update((v) => !v);
+  }
+
+  logout() {
+    this.auth.logout();
+    this.router.navigateByUrl('/login');
+  }
+
+  openCreateOrg() {
+    this.showCreateOrg.set(true);
+    this.newOrgName.set('');
+  }
+
+  closeCreateOrg() {
+    this.showCreateOrg.set(false);
+  }
+
+  submitCreateOrg() {
+    const name = this.newOrgName().trim();
+    if (!name) return;
+    this.orgService.create(name).subscribe(() => {
+      this.showCreateOrg.set(false);
+      this.router.navigateByUrl('/dashboard');
+    });
   }
 }

@@ -201,6 +201,21 @@
     justify-content: center;
     margin-bottom: 10px;
     padding: 11px;
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+
+  &__error {
+    background: var(--sf-red-100);
+    color: var(--sf-red-600);
+    border-radius: var(--sf-radius-sm);
+    padding: 10px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    margin-top: 16px;
   }
 
   &__footer {

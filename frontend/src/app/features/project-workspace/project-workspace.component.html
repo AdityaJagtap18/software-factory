@@ -1,219 +1,137 @@
 <div class="sf-breadcrumbs">
-  <a routerLink="/projects">Projects</a> <span>›</span> <span class="current">{{ project().slug }}</span>
+  <a routerLink="/projects">Projects</a> <span>›</span> <span class="current">{{ project()?.slug ?? '…' }}</span>
 </div>
 
-<div class="sf-page-header">
-  <div class="sf-page-header__title-group">
-    <span class="sf-page-header__icon tone-violet"><sf-icon [name]="project().icon" /></span>
-    <div>
-      <h1>{{ project().name }}</h1>
-      <p>
-        {{ project().description }}
-        <span class="sf-badge sf-badge--green pw-status">{{ project().status }}</span>
-      </p>
+@if (loading()) {
+  <div class="sf-card"><div class="sf-empty">Loading project…</div></div>
+} @else if (notFound()) {
+  <div class="sf-card"><div class="sf-empty">Project not found, or you don't have access to it.</div></div>
+} @else if (project(); as proj) {
+  <div class="sf-page-header">
+    <div class="sf-page-header__title-group">
+      <span class="sf-page-header__icon tone-violet"><sf-icon name="navigation/projects" /></span>
+      <div>
+        <h1>{{ proj.name }}</h1>
+        <p>
+          {{ proj.description || 'No description yet' }}
+          <span class="sf-badge sf-badge--green pw-status">{{ proj.status }}</span>
+        </p>
+      </div>
+    </div>
+    <div class="sf-page-header__actions">
+      <a class="sf-btn" [routerLink]="['/projects', proj.id, 'repository-intelligence']">
+        <sf-icon name="navigation/repositories" /> Open Repository
+      </a>
+      <button class="sf-btn" type="button"><sf-icon name="navigation/workflows" /> Run Workflow</button>
+      <a class="sf-btn sf-btn--primary" routerLink="/tasks"><sf-icon name="navigation/tasks" /> New Task</a>
     </div>
   </div>
-  <div class="sf-page-header__actions">
-    <a class="sf-btn" [routerLink]="['/projects', project().id, 'repository-intelligence']">
-      <sf-icon name="navigation/repositories" /> Open Repository
-    </a>
-    <button class="sf-btn" type="button"><sf-icon name="navigation/workflows" /> Run Workflow</button>
-    <a class="sf-btn sf-btn--primary" routerLink="/tasks"><sf-icon name="navigation/tasks" /> New Task</a>
-  </div>
-</div>
 
-<div class="sf-tabs">
-  @for (tab of tabs; track tab.id) {
-    <button type="button" class="sf-tab" [class.active]="activeTab() === tab.id" (click)="activeTab.set(tab.id)">
-      <sf-icon [name]="tab.icon" /> {{ tab.label }}
-    </button>
+  <div class="sf-tabs">
+    @for (tab of tabs; track tab.id) {
+      <button type="button" class="sf-tab" [class.active]="activeTab() === tab.id" (click)="activeTab.set(tab.id)">
+        <sf-icon [name]="tab.icon" /> {{ tab.label }}
+      </button>
+    }
+  </div>
+
+  @if (activeTab() === 'overview') {
+    <div class="pw-grid">
+      <section class="sf-card">
+        <div class="sf-panel-title">
+          <h3>Project Information</h3>
+          <button class="sf-btn" type="button" style="padding:6px 12px;">Edit</button>
+        </div>
+        <div class="pw-info">
+          <div class="pw-info__row"><sf-icon name="navigation/repositories" /><span class="label">Repository</span><span class="value link">{{ proj.repository_url || 'Not linked yet' }}</span></div>
+          <div class="pw-info__row"><sf-icon name="navigation/workflows" /><span class="label">Status</span><span class="sf-pill">{{ proj.status }}</span></div>
+          <div class="pw-info__row"><sf-icon name="navigation/agents" /><span class="label">Your Role</span><span class="sf-pill">{{ proj.my_role }}</span></div>
+          <div class="pw-info__row"><sf-icon name="navigation/settings" /><span class="label">Project ID</span><span class="value">{{ proj.slug }}</span></div>
+        </div>
+      </section>
+
+      <aside class="sf-card">
+        <div class="sf-panel-title"><h3>Quick Actions</h3></div>
+        <div class="pw-quick-actions">
+          <a routerLink="/tasks"><sf-icon name="navigation/tasks" /> Create New Task <span>›</span></a>
+          <a routerLink="/agents"><sf-icon name="navigation/agents" /> Run Agent <span>›</span></a>
+          <a routerLink="/knowledge"><sf-icon name="navigation/knowledge" /> Ingest Knowledge <span>›</span></a>
+          <a [routerLink]="['/projects', proj.id, 'repository-intelligence']"><sf-icon name="navigation/repositories" /> Sync Repository <span>›</span></a>
+        </div>
+      </aside>
+    </div>
+
+    <section class="sf-card pw-executions">
+      <div class="sf-panel-title"><h3>Task Execution</h3></div>
+      <div class="sf-empty">
+        Task creation, agent assignment and execution history connect to this project once the Factory Supervisor and
+        execution backend (Phase 3 of the build) are implemented. The tabs below preview that experience with sample data.
+      </div>
+    </section>
   }
-</div>
 
-@if (activeTab() === 'overview') {
-  <div class="sf-stat-grid">
-    <div class="sf-stat-card sf-stat-card--blue">
-      <div class="sf-stat-card__icon"><sf-icon name="navigation/tasks" /></div>
-      <div>
-        <div class="sf-stat-card__label">Total Tasks</div>
-        <div class="sf-stat-card__value">{{ project().totalTasks }} <span class="sf-stat-card__delta up">↑ {{ project().totalTasksDelta }}</span></div>
-      </div>
-    </div>
-    <div class="sf-stat-card sf-stat-card--violet">
-      <div class="sf-stat-card__icon"><sf-icon name="navigation/workflows" /></div>
-      <div>
-        <div class="sf-stat-card__label">Workflows</div>
-        <div class="sf-stat-card__value">{{ project().workflowCount }} <span class="sf-stat-card__delta up">↑ {{ project().workflowDelta }}</span></div>
-      </div>
-    </div>
-    <div class="sf-stat-card sf-stat-card--green">
-      <div class="sf-stat-card__icon"><sf-icon name="status/success" /></div>
-      <div>
-        <div class="sf-stat-card__label">Success Rate</div>
-        <div class="sf-stat-card__value">{{ project().successRate }} <span class="sf-stat-card__delta up">↑ {{ project().successRateDelta }}</span></div>
-      </div>
-    </div>
-    <div class="sf-stat-card sf-stat-card--amber">
-      <div class="sf-stat-card__icon"><sf-icon name="navigation/monitoring" /></div>
-      <div>
-        <div class="sf-stat-card__label">Avg. Execution Time</div>
-        <div class="sf-stat-card__value">{{ project().avgExecutionTime }} <span class="sf-stat-card__delta down">↓ {{ project().avgExecutionDelta }}</span></div>
-      </div>
-    </div>
-  </div>
-
-  <div class="pw-grid">
+  @if (activeTab() === 'tasks') {
     <section class="sf-card">
-      <div class="sf-panel-title">
-        <h3>Project Information</h3>
-        <button class="sf-btn" type="button" style="padding:6px 12px;">Edit</button>
-      </div>
-      <div class="pw-info">
-        <div class="pw-info__row"><sf-icon name="navigation/repositories" /><span class="label">Repository</span><span class="value link">{{ project().repository }}</span></div>
-        <div class="pw-info__row"><sf-icon name="navigation/workflows" /><span class="label">Branch</span><span class="sf-pill">{{ project().branch }}</span></div>
-        <div class="pw-info__row">
-          <sf-icon name="navigation/artifacts" /><span class="label">Technology</span>
-          <span class="value">
-            @for (tech of project().technologies; track tech) { <span class="sf-pill">{{ tech }}</span> }
-          </span>
-        </div>
-        <div class="pw-info__row"><sf-icon name="navigation/monitoring" /><span class="label">Last Sync</span><span class="value">{{ project().lastSync }} <span class="sf-badge sf-badge--green">Synced</span></span></div>
+      <div class="sf-panel-title"><h3>Tasks <span class="sf-pill">Preview data</span></h3></div>
+      <table class="sf-table">
+        <thead><tr><th>Task</th><th>Type</th><th>Priority</th><th>Status</th></tr></thead>
+        <tbody>
+          @for (t of tasks(); track t.id) {
+            <tr class="clickable" [routerLink]="['/tasks', t.id]">
+              <td><strong>{{ t.id }}</strong> — {{ t.title }}</td>
+              <td>{{ t.type }}</td>
+              <td><span class="sf-pill">{{ t.priority }}</span></td>
+              <td><span class="sf-badge" [class]="'sf-badge--' + statusTone(t.status)">{{ t.status }}</span></td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </section>
+  }
+
+  @if (activeTab() === 'workflows') {
+    <section class="sf-card">
+      <div class="sf-panel-title"><h3>Workflows <span class="sf-pill">Preview data</span></h3></div>
+      <table class="sf-table">
+        <thead><tr><th>Workflow</th><th>Current Step</th><th>Progress</th><th>ETA</th></tr></thead>
+        <tbody>
+          @for (wf of workflows(); track wf.id) {
+            <tr class="clickable" routerLink="/workflows">
+              <td>{{ wf.name }}</td><td>{{ wf.currentStep }}</td>
+              <td>{{ wf.progress }}%</td><td>{{ wf.eta }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </section>
+  }
+
+  @if (activeTab() === 'agents') {
+    <section class="sf-card">
+      <div class="sf-panel-title"><h3>Assigned Agents <span class="sf-pill">Preview data</span></h3></div>
+      <table class="sf-table">
+        <thead><tr><th>Agent</th><th>Type</th><th>Status</th><th>Active Runs</th></tr></thead>
+        <tbody>
+          @for (a of agents(); track a.id) {
+            <tr class="clickable" routerLink="/agents">
+              <td>{{ a.name }}</td><td><span class="sf-pill">{{ a.type }}</span></td>
+              <td><span class="sf-badge" [class]="'sf-badge--' + statusTone(a.status)">{{ a.status }}</span></td>
+              <td>{{ a.activeRuns }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </section>
+  }
+
+  @if (activeTab() === 'knowledge' || activeTab() === 'artifacts' || activeTab() === 'activity' || activeTab() === 'settings') {
+    <section class="sf-card">
+      <div class="sf-empty">
+        {{ activeTab() === 'knowledge' ? 'Project knowledge browsing lives in the global Knowledge Graph Explorer, scoped to this project.' : '' }}
+        {{ activeTab() === 'artifacts' ? 'Artifacts generated by this project will appear here once the backend artifact store is connected.' : '' }}
+        {{ activeTab() === 'activity' ? 'Full project activity timeline — see the audit log once the backend exposes it here.' : '' }}
+        {{ activeTab() === 'settings' ? 'Project-level settings (technology, provider policy, approval rules) are configured from the global Settings page.' : '' }}
       </div>
     </section>
-
-    <aside class="sf-card">
-      <div class="sf-panel-title"><h3>Quick Actions</h3></div>
-      <div class="pw-quick-actions">
-        <a routerLink="/tasks"><sf-icon name="navigation/tasks" /> Create New Task <span>›</span></a>
-        <a routerLink="/agents"><sf-icon name="navigation/agents" /> Run Agent <span>›</span></a>
-        <a routerLink="/knowledge"><sf-icon name="navigation/knowledge" /> Ingest Knowledge <span>›</span></a>
-        <a [routerLink]="['/projects', project().id, 'repository-intelligence']"><sf-icon name="navigation/repositories" /> Sync Repository <span>›</span></a>
-      </div>
-    </aside>
-
-    <section class="sf-card">
-      <div class="sf-panel-title">
-        <h3>Active Workflows</h3>
-        <a class="view-all" routerLink="/workflows">View All →</a>
-      </div>
-      <div class="pw-workflows">
-        @for (wf of workflows(); track wf.id) {
-          <a class="pw-workflows__item" routerLink="/workflows">
-            <span class="pw-workflows__icon"><sf-icon [name]="wf.icon" /></span>
-            <div class="pw-workflows__body">
-              <div class="pw-workflows__title">{{ wf.name }}</div>
-              <div class="pw-workflows__subtitle">{{ wf.currentStep }}</div>
-            </div>
-            <div class="pw-workflows__progress">
-              <div class="sf-progress"><div class="sf-progress__bar" [style.width.%]="wf.progress"></div></div>
-              <span>{{ wf.progress }}%</span>
-            </div>
-          </a>
-        }
-      </div>
-    </section>
-
-    <aside class="sf-card">
-      <div class="sf-panel-title">
-        <h3>Knowledge Graph</h3>
-        <a class="view-all" routerLink="/knowledge">View Graph →</a>
-      </div>
-      <div class="pw-kg">
-        <div class="pw-kg__stats">
-          <div><strong>12,430</strong><span>Entities</span></div>
-          <div><strong>37,892</strong><span>Relationships</span></div>
-        </div>
-        <div class="pw-kg__sync"><sf-icon name="navigation/workflows" /> Last Indexed: 18 Nov 2026, 03:50 PM <span class="sf-badge sf-badge--green">✓</span></div>
-      </div>
-    </aside>
-  </div>
-
-  <section class="sf-card pw-executions">
-    <div class="sf-panel-title">
-      <h3>Recent Executions</h3>
-      <a class="view-all" routerLink="/monitoring">View All →</a>
-    </div>
-    <table class="sf-table">
-      <thead>
-        <tr><th>Execution</th><th>Task</th><th>Workflow</th><th>Status</th><th>Duration</th><th>Completed At</th></tr>
-      </thead>
-      <tbody>
-        @for (t of tasks().slice(0, 3); track t.id) {
-          <tr>
-            <td class="link">EXE-{{ t.id.split('-')[1] }}</td>
-            <td>{{ t.title }}</td>
-            <td>{{ t.type }}</td>
-            <td><span class="sf-badge sf-badge--green">Success</span></td>
-            <td>12 min 34 s</td>
-            <td>{{ t.createdAt }}</td>
-          </tr>
-        }
-      </tbody>
-    </table>
-  </section>
-}
-
-@if (activeTab() === 'tasks') {
-  <section class="sf-card">
-    <div class="sf-panel-title"><h3>Tasks</h3></div>
-    <table class="sf-table">
-      <thead><tr><th>Task</th><th>Type</th><th>Priority</th><th>Status</th></tr></thead>
-      <tbody>
-        @for (t of tasks(); track t.id) {
-          <tr class="clickable" [routerLink]="['/tasks', t.id]">
-            <td><strong>{{ t.id }}</strong> — {{ t.title }}</td>
-            <td>{{ t.type }}</td>
-            <td><span class="sf-pill">{{ t.priority }}</span></td>
-            <td><span class="sf-badge" [class]="'sf-badge--' + statusTone(t.status)">{{ t.status }}</span></td>
-          </tr>
-        }
-      </tbody>
-    </table>
-  </section>
-}
-
-@if (activeTab() === 'workflows') {
-  <section class="sf-card">
-    <div class="sf-panel-title"><h3>Workflows</h3></div>
-    <table class="sf-table">
-      <thead><tr><th>Workflow</th><th>Current Step</th><th>Progress</th><th>ETA</th></tr></thead>
-      <tbody>
-        @for (wf of workflows(); track wf.id) {
-          <tr class="clickable" routerLink="/workflows">
-            <td>{{ wf.name }}</td><td>{{ wf.currentStep }}</td>
-            <td>{{ wf.progress }}%</td><td>{{ wf.eta }}</td>
-          </tr>
-        }
-      </tbody>
-    </table>
-  </section>
-}
-
-@if (activeTab() === 'agents') {
-  <section class="sf-card">
-    <div class="sf-panel-title"><h3>Assigned Agents</h3></div>
-    <table class="sf-table">
-      <thead><tr><th>Agent</th><th>Type</th><th>Status</th><th>Active Runs</th></tr></thead>
-      <tbody>
-        @for (a of agents(); track a.id) {
-          <tr class="clickable" routerLink="/agents">
-            <td>{{ a.name }}</td><td><span class="sf-pill">{{ a.type }}</span></td>
-            <td><span class="sf-badge" [class]="'sf-badge--' + statusTone(a.status)">{{ a.status }}</span></td>
-            <td>{{ a.activeRuns }}</td>
-          </tr>
-        }
-      </tbody>
-    </table>
-  </section>
-}
-
-@if (activeTab() === 'knowledge' || activeTab() === 'artifacts' || activeTab() === 'activity' || activeTab() === 'settings') {
-  <section class="sf-card">
-    <div class="sf-empty">
-      {{ activeTab() === 'knowledge' ? 'Project knowledge browsing lives in the global Knowledge Graph Explorer, scoped to this project.' : '' }}
-      {{ activeTab() === 'artifacts' ? 'Artifacts generated by this project will appear here once the backend artifact store is connected.' : '' }}
-      {{ activeTab() === 'activity' ? 'Full project activity timeline — see Recent Activity on the Overview tab for the latest items.' : '' }}
-      {{ activeTab() === 'settings' ? 'Project-level settings (technology, provider policy, approval rules) are configured from the global Settings page.' : '' }}
-    </div>
-  </section>
+  }
 }

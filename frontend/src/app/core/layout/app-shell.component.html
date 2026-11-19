@@ -24,14 +24,23 @@
 
     <div class="sidebar__org">
       <span class="sidebar__org-label">Organization</span>
-      <div class="sidebar__org-select">
-        <sf-icon name="navigation/projects" />
-        <select [value]="activeOrg().id" (change)="setOrg($any($event.target).value)">
-          @for (org of organizations(); track org.id) {
-            <option [value]="org.id">{{ org.name }}</option>
-          }
-        </select>
-      </div>
+      @if (organizations().length > 0) {
+        <div class="sidebar__org-select">
+          <sf-icon name="navigation/projects" />
+          <select [value]="activeOrgId()" (change)="setOrg($any($event.target).value)">
+            @for (org of organizations(); track org.id) {
+              <option [value]="org.id">{{ org.name }}</option>
+            }
+          </select>
+        </div>
+        <button type="button" class="sidebar__org-new" (click)="openCreateOrg()">
+          <sf-icon name="navigation/projects" /> New organization
+        </button>
+      } @else {
+        <button type="button" class="sidebar__org-new sidebar__org-new--primary" (click)="openCreateOrg()">
+          <sf-icon name="navigation/projects" /> Create an organization
+        </button>
+      }
     </div>
   </aside>
 
@@ -47,10 +56,20 @@
           <span class="topbar__dot"></span>
         </button>
         <button class="topbar__icon-btn" type="button" aria-label="Help">?</button>
-        <div class="topbar__user">
-          <span class="topbar__avatar">{{ user().initials }}</span>
-          <span class="topbar__name">{{ user().name }}</span>
-          <sf-icon name="navigation/workflows" class="topbar__chevron" />
+        <div class="topbar__user-wrap">
+          <button type="button" class="topbar__user" (click)="toggleUserMenu()">
+            <span class="topbar__avatar">{{ initials() || '…' }}</span>
+            <span class="topbar__name">{{ currentUser()?.full_name ?? 'Loading…' }}</span>
+            <sf-icon name="navigation/workflows" class="topbar__chevron" />
+          </button>
+          @if (showUserMenu()) {
+            <div class="topbar__menu">
+              <div class="topbar__menu-email">{{ currentUser()?.email }}</div>
+              <button type="button" class="topbar__menu-item" (click)="logout()">
+                <sf-icon name="status/error" /> Log out
+              </button>
+            </div>
+          }
         </div>
       </div>
     </header>
@@ -60,3 +79,25 @@
     </main>
   </div>
 </div>
+
+@if (showCreateOrg()) {
+  <div class="org-modal__backdrop" (click)="closeCreateOrg()">
+    <div class="org-modal" (click)="$event.stopPropagation()">
+      <h3>Create an organization</h3>
+      <p>Organizations group your projects, members and coding-agent connections.</p>
+      <label for="newOrgName">Organization name</label>
+      <input
+        id="newOrgName"
+        type="text"
+        placeholder="e.g. COEP Labs"
+        [value]="newOrgName()"
+        (input)="newOrgName.set($any($event.target).value)"
+        (keydown.enter)="submitCreateOrg()"
+      />
+      <div class="org-modal__actions">
+        <button type="button" class="sf-btn" (click)="closeCreateOrg()">Cancel</button>
+        <button type="button" class="sf-btn sf-btn--primary" (click)="submitCreateOrg()">Create</button>
+      </div>
+    </div>
+  </div>
+}

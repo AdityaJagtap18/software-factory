@@ -7,7 +7,7 @@
     </div>
   </div>
   <div class="sf-page-header__actions">
-    <button class="sf-btn sf-btn--primary" type="button"><sf-icon name="navigation/projects" /> New Project</button>
+    <button class="sf-btn sf-btn--primary" type="button" (click)="openCreate()"><sf-icon name="navigation/projects" /> New Project</button>
   </div>
 </div>
 
@@ -34,23 +34,44 @@
   @for (project of projects(); track project.id) {
     <a class="sf-card projects-grid__card" [routerLink]="['/projects', project.id]">
       <div class="projects-grid__head">
-        <span class="projects-grid__icon" [class]="'tone-' + project.iconTone"><sf-icon [name]="project.icon" /></span>
+        <span class="projects-grid__icon tone-violet"><sf-icon name="navigation/projects" /></span>
         <span class="sf-badge" [class]="'sf-badge--' + statusTone(project.status)">{{ project.status }}</span>
       </div>
       <h3>{{ project.name }}</h3>
-      <p>{{ project.description }}</p>
-      <div class="projects-grid__repo"><sf-icon name="navigation/repositories" /> {{ project.repository }}</div>
-      <div class="projects-grid__tech">
-        @for (tech of project.technologies.slice(0, 3); track tech) {
-          <span class="sf-pill">{{ tech }}</span>
-        }
-      </div>
+      <p>{{ project.description || 'No description yet' }}</p>
+      <div class="projects-grid__repo"><sf-icon name="navigation/repositories" /> {{ project.repository_url || 'Not linked' }}</div>
       <div class="projects-grid__footer">
-        <span>{{ project.activeWorkflows }} active workflows</span>
-        <span>{{ project.lastActivity }}</span>
+        <span class="sf-pill">{{ project.my_role }}</span>
       </div>
     </a>
   } @empty {
-    <div class="sf-empty">No projects match your search.</div>
+    @if (loaded()) {
+      <div class="sf-empty">No projects match your search. Create one to get started.</div>
+    }
   }
 </div>
+
+@if (showCreate()) {
+  <div class="org-modal__backdrop" (click)="closeCreate()">
+    <div class="org-modal" (click)="$event.stopPropagation()">
+      <h3>New project</h3>
+      <p>Projects group tasks, workflows, agents and knowledge for one codebase.</p>
+
+      <label for="projName">Project name</label>
+      <input id="projName" type="text" placeholder="e.g. Invoice Automation Platform" [value]="newProjectName()" (input)="newProjectName.set($any($event.target).value)" />
+
+      <label for="projDesc">Description</label>
+      <input id="projDesc" type="text" placeholder="Optional" [value]="newProjectDescription()" (input)="newProjectDescription.set($any($event.target).value)" />
+
+      <label for="projRepo">Repository URL</label>
+      <input id="projRepo" type="text" placeholder="Optional, e.g. github.com/org/repo" [value]="newProjectRepo()" (input)="newProjectRepo.set($any($event.target).value)" />
+
+      <div class="org-modal__actions">
+        <button type="button" class="sf-btn" (click)="closeCreate()">Cancel</button>
+        <button type="button" class="sf-btn sf-btn--primary" [disabled]="creating()" (click)="submitCreate()">
+          {{ creating() ? 'Creating…' : 'Create project' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}

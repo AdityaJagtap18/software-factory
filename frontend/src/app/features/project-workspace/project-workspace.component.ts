@@ -1,8 +1,10 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
 import { RouterLink, ActivatedRoute } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { IconComponent } from '../../shared/icon/icon.component';
 import { MockDataService } from '../../core/mock-data.service';
+import { ProjectService } from '../../core/org/project.service';
+import { ApiProject } from '../../core/auth/auth.models';
 
 type TabId = 'overview' | 'tasks' | 'workflows' | 'agents' | 'knowledge' | 'artifacts' | 'activity' | 'settings';
 
@@ -17,15 +19,19 @@ type TabId = 'overview' | 'tasks' | 'workflows' | 'agents' | 'knowledge' | 'arti
 export class ProjectWorkspaceComponent {
   private readonly data = inject(MockDataService);
   private readonly route = inject(ActivatedRoute);
+  private readonly projectService = inject(ProjectService);
 
   private readonly projectId = toSignal(this.route.paramMap, { initialValue: this.route.snapshot.paramMap });
 
-  readonly project = computed(() => {
-    const id = this.projectId()?.get('projectId');
-    return this.data.projects().find((p) => p.id === id) ?? this.data.projects()[0];
-  });
+  readonly project = signal<ApiProject | null>(null);
+  readonly loading = signal(true);
+  readonly notFound = signal(false);
 
-  readonly tasks = computed(() => this.data.tasks().filter((t) => t.project === this.project().slug));
+  /**
+   * Tasks/workflows/agents aren't backend-owned yet (Phase 3 of the execution
+   * spec), so these tabs keep showing illustrative mock data until that lands.
+   */
+  readonly tasks = this.data.tasks;
   readonly workflows = this.data.runningWorkflows;
   readonly agents = this.data.agents;
   readonly recentActivity = this.data.recentActivity;
@@ -42,6 +48,25 @@ export class ProjectWorkspaceComponent {
   ];
 
   activeTab = signal<TabId>('overview');
+
+  constructor() {
+    effect(() => {
+      const id = this.projectId()?.get('projectId');
+      if (!id) return;
+      this.loading.set(true);
+      this.notFound.set(false);
+      this.projectService.get(id).subscribe({
+        next: (project) => {
+          this.project.set(project);
+          this.loading.set(false);
+        },
+        error: () => {
+          this.notFound.set(true);
+          this.loading.set(false);
+        }
+      });
+    });
+  }
 
   statusTone(status: string): 'green' | 'blue' | 'amber' | 'gray' {
     if (status === 'Completed' || status === 'Active' || status === 'Success') return 'green';

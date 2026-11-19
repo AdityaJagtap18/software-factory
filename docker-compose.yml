@@ -1,0 +1,32 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: sf
+      POSTGRES_PASSWORD: sf
+      POSTGRES_DB: software_factory
+    ports:
+      - "5433:5432"
+    volumes:
+      - sf_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sf -d software_factory"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    environment:
+      SF_DATABASE_URL: postgresql+psycopg2://sf:sf@postgres:5432/software_factory
+      SF_CORS_ORIGINS: '["http://localhost:4200"]'
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+volumes:
+  sf_postgres_data:

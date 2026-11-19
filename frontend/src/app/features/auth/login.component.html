@@ -25,10 +25,22 @@
 
   <section class="login__form-panel">
     <div class="login__form-wrap">
-      <h2>Welcome back</h2>
-      <p class="login__subtitle">Sign in to your Software Factory workspace</p>
+      <h2>{{ title() }}</h2>
+      <p class="login__subtitle">{{ subtitle() }}</p>
+
+      @if (errorMessage()) {
+        <p class="login__error">{{ errorMessage() }}</p>
+      }
 
       <form (ngSubmit)="submit()">
+        @if (isRegister()) {
+          <label class="login__label" for="fullName">Full name</label>
+          <div class="login__input">
+            <sf-icon name="navigation/agents" />
+            <input id="fullName" name="fullName" type="text" placeholder="Enter your full name" [(ngModel)]="fullName" required />
+          </div>
+        }
+
         <label class="login__label" for="email">Email</label>
         <div class="login__input">
           <sf-icon name="navigation/artifacts" />
@@ -44,6 +56,7 @@
             [type]="showPassword() ? 'text' : 'password'"
             placeholder="Enter your password"
             [(ngModel)]="password"
+            minlength="8"
             required
           />
           <button type="button" class="login__toggle" (click)="togglePassword()">
@@ -51,19 +64,25 @@
           </button>
         </div>
 
-        <a class="login__forgot" href="javascript:void(0)">Forgot password?</a>
+        @if (!isRegister()) {
+          <a class="login__forgot" href="javascript:void(0)">Forgot password?</a>
+        }
 
         <button class="sf-btn sf-btn--primary login__submit" type="submit" [disabled]="submitting()">
-          {{ submitting() ? 'Signing in…' : 'Sign in' }}
+          {{ submitLabel() }}
         </button>
 
         <div class="login__divider"><span>or continue with</span></div>
 
-        <button type="button" class="sf-btn login__oauth">Continue with GitHub</button>
-        <button type="button" class="sf-btn login__oauth">Continue with Microsoft</button>
+        <button type="button" class="sf-btn login__oauth" disabled title="Not yet available">Continue with GitHub</button>
+        <button type="button" class="sf-btn login__oauth" disabled title="Not yet available">Continue with Microsoft</button>
 
         <p class="login__footer">
-          New to Software Factory? <a routerLink="/dashboard">Create an organization</a>
+          @if (isRegister()) {
+            Already have a workspace? <a href="javascript:void(0)" (click)="toggleMode()">Sign in</a>
+          } @else {
+            New to Software Factory? <a href="javascript:void(0)" (click)="toggleMode()">Create an organization</a>
+          }
         </p>
       </form>
     </div>

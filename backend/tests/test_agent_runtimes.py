@@ -16,7 +16,7 @@ def test_runtime_catalog_lists_known_adapters(client):
     r = client.get("/api/v1/coding-agent-runtimes")
     assert r.status_code == 200
     slugs = {entry["slug"] for entry in r.json()}
-    assert slugs == {"claude_code", "codex", "gemini_cli", "custom"}
+    assert slugs == {"claude_code", "codex", "gemini_cli", "docker_sandbox", "custom"}
 
 
 def test_connections_default_to_not_configured(client):
@@ -26,7 +26,7 @@ def test_connections_default_to_not_configured(client):
     r = client.get(f"/api/v1/organizations/{org['id']}/coding-agent-connections", headers=alice)
     assert r.status_code == 200
     body = r.json()
-    assert len(body) == 4
+    assert len(body) == 5
     for entry in body:
         assert entry["status"] == "not_configured"
         assert entry["is_configured"] is False

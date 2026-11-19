@@ -496,6 +496,156 @@ class GeminiCliAdapter(CodingAgentRuntimeAdapter):
         return _run_cli_prompt_streaming("gemini", "-p", prompt, on_chunk, should_cancel)
 
 
+_SANDBOX_IMAGE = "python:3.11-slim"
+_SANDBOX_MEMORY_LIMIT = "256m"
+_SANDBOX_CPU_LIMIT = "0.5"
+
+
+def _docker_daemon_status() -> HealthCheckResult:
+    path = shutil.which("docker")
+    if path is None:
+        return HealthCheckResult(connected=False, detail="'docker' CLI not found on PATH.")
+    try:
+        proc = subprocess.run(
+            ["docker", "version", "--format", "{{.Server.Version}}"],
+            capture_output=True,
+            text=True,
+            timeout=_PROBE_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return HealthCheckResult(connected=False, detail=f"Failed to execute 'docker': {exc}")
+    if proc.returncode != 0:
+        lines = (proc.stderr or proc.stdout or "").strip().splitlines()
+        return HealthCheckResult(
+            connected=False,
+            detail=f"Docker daemon not reachable: {lines[0] if lines else 'unknown error'}",
+        )
+    version = (proc.stdout or "").strip()
+    return HealthCheckResult(
+        connected=True, version=version, detail=f"Docker daemon reachable (server {version})."
+    )
+
+
+def _sandbox_command(prompt: str) -> list[str]:
+    # --network none: no network access at all from inside the container.
+    # --memory/--cpus: real resource limits enforced by the Docker daemon,
+    # not just documentation. --rm: the container is destroyed on exit, so
+    # nothing persists between runs.
+    return [
+        "docker",
+        "run",
+        "--rm",
+        "--network",
+        "none",
+        "--memory",
+        _SANDBOX_MEMORY_LIMIT,
+        "--cpus",
+        _SANDBOX_CPU_LIMIT,
+        _SANDBOX_IMAGE,
+        "sh",
+        "-c",
+        prompt,
+    ]
+
+
+def _run_docker_sandbox(prompt: str) -> ExecutionResult:
+    health = _docker_daemon_status()
+    if not health.connected:
+        return ExecutionResult(succeeded=False, error=health.detail)
+    try:
+        proc = subprocess.run(
+            _sandbox_command(prompt),
+            capture_output=True,
+            text=True,
+            timeout=_EXECUTION_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return ExecutionResult(succeeded=False, error=f"Failed to run sandbox container: {exc}")
+    if proc.returncode != 0:
+        return ExecutionResult(
+            succeeded=False,
+            error=(proc.stderr or proc.stdout or f"Sandbox container exited with code {proc.returncode}")[
+                :_MAX_OUTPUT_CHARS
+            ],
+        )
+    return ExecutionResult(succeeded=True, output=(proc.stdout or "")[:_MAX_OUTPUT_CHARS])
+
+
+def _run_docker_sandbox_streaming(prompt: str, on_chunk, should_cancel) -> ExecutionResult:
+    """Like `_run_docker_sandbox`, but reads the real container's stdout
+    line by line and can terminate the `docker run` client early on real
+    cancellation -- which Docker forwards to the container itself.
+    """
+    health = _docker_daemon_status()
+    if not health.connected:
+        return ExecutionResult(succeeded=False, error=health.detail)
+    try:
+        proc = subprocess.Popen(
+            _sandbox_command(prompt),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+    except OSError as exc:
+        return ExecutionResult(succeeded=False, error=f"Failed to run sandbox container: {exc}")
+
+    collected: list[str] = []
+    cancelled = False
+    assert proc.stdout is not None
+    for line in proc.stdout:
+        collected.append(line)
+        on_chunk(line)
+        if should_cancel():
+            cancelled = True
+            proc.terminate()
+            break
+    proc.wait(timeout=_EXECUTION_TIMEOUT_SECONDS if cancelled else None)
+
+    output = "".join(collected)[:_MAX_OUTPUT_CHARS]
+    if cancelled:
+        return ExecutionResult(succeeded=False, output=output, error="Cancelled by user.")
+    if proc.returncode != 0:
+        return ExecutionResult(
+            succeeded=False,
+            output=output,
+            error=output or f"Sandbox container exited with code {proc.returncode}",
+        )
+    return ExecutionResult(succeeded=True, output=output)
+
+
+class DockerSandboxAdapter(CodingAgentRuntimeAdapter):
+    """Runs a task's prompt as a shell command inside an isolated,
+    network-disabled, resource-limited container rather than directly on
+    the backend host -- for safely executing arbitrary scripts, not for
+    talking to a hosted coding-agent provider. Needs no credential: the
+    only real dependency is a reachable local Docker daemon.
+    """
+
+    slug = "docker_sandbox"
+    display_name = "Docker Sandbox"
+    description = "Executes the task prompt as a shell command inside an isolated container (no network, memory/CPU limits)"
+    icon = "navigation/providers"
+    supported_connection_modes = ("local_runtime",)
+    auth_method = "Local Docker daemon (no credential needed)"
+
+    def capabilities(self) -> list[Capability]:
+        return [
+            Capability("Network-isolated execution", CapabilityState.TESTED),
+            Capability("Memory/CPU-limited execution", CapabilityState.TESTED),
+            Capability("Docker daemon detection", CapabilityState.VERIFIED),
+        ]
+
+    def health_check(self, credential_value: str | None) -> HealthCheckResult:
+        return _docker_daemon_status()
+
+    def start_execution(self, prompt: str, credential_value: str | None) -> ExecutionResult:
+        return _run_docker_sandbox(prompt)
+
+    def start_execution_streaming(self, prompt, credential_value, on_chunk, should_cancel) -> ExecutionResult:
+        return _run_docker_sandbox_streaming(prompt, on_chunk, should_cancel)
+
+
 class CustomAdapter(CodingAgentRuntimeAdapter):
     slug = "custom"
     display_name = "Custom Agent"

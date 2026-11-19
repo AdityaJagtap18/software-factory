@@ -1,12 +1,13 @@
-# Software Factory — Backend (Phases 1–7: Foundation Through the Knowledge Graph)
+# Software Factory — Backend (Phases 1–8: Foundation Through Docker Execution Isolation)
 
 FastAPI + PostgreSQL (+ Neo4j) backend implementing real authentication,
 organizations, membership, RBAC, projects, workspaces, coding-agent runtime
 connectivity, real-time streaming task execution, the Factory Supervisor's
 multi-step workflow orchestration, real-time multi-user presence/
-collaboration, and a real Neo4j-backed knowledge graph of each project's
-actual work — the foundation the rest of the Software Factory execution
-spec (Temporal/LangGraph orchestration, Docker execution isolation, etc.)
+collaboration, a real Neo4j-backed knowledge graph of each project's
+actual work, and genuine Docker-isolated task execution — the foundation
+the rest of the Software Factory execution spec (Temporal/LangGraph
+orchestration, repository-code ingestion into the knowledge graph, etc.)
 builds on.
 
 ## What's implemented
@@ -240,6 +241,51 @@ provider API key makes the same code paths report a real "Connected."**
   idempotency check, and skip honestly (rather than fail) if Neo4j isn't
   reachable in a given test environment.
 
+### Phase 8 — Docker execution isolation
+- **A new `DockerSandboxAdapter`** (`app/services/agent_runtime/adapters.py`)
+  implements the same Common Agent Runtime Interface as every other
+  adapter, but instead of talking to a hosted coding-agent provider it
+  runs a task's prompt as a shell command inside a container via the
+  host's real `docker` CLI: `docker run --rm --network none --memory
+  256m --cpus 0.5 python:3.11-slim sh -c "<prompt>"`. `--network none`
+  means the container has no network stack at all (not just a firewall
+  rule), and `--memory`/`--cpus` are real limits enforced by the Docker
+  daemon itself, not documentation.
+- **`health_check()`** shells out to `docker version` on the backend
+  host; if the daemon isn't reachable (or the CLI isn't installed), it
+  honestly reports `not_connected` with the real error — exactly like
+  every other adapter's honest-failure path. On this development
+  machine, Docker Desktop's daemon genuinely is reachable, which makes
+  this **the first adapter in the whole project whose health check and
+  task execution can both genuinely succeed** here, rather than only
+  exercising the honest-failure path.
+- **`start_execution()`/`start_execution_streaming()`** reuse the exact
+  same `subprocess.Popen` line-by-line streaming and `proc.terminate()`
+  cancellation pattern established in Phase 4 — a cancelled sandboxed
+  task really kills the `docker run` client and the container it
+  started, not just a flag.
+- Verified with real, non-mocked tests (`tests/test_docker_sandbox.py`):
+  a real command's stdout comes back out of a real container; a DNS
+  lookup from inside the container genuinely fails with
+  `socket.gaierror`/"Temporary failure in name resolution", proving
+  `--network none` is real isolation and not just a label; a non-zero
+  exit code is reported as a genuine failure; a full task run against a
+  real `docker_sandbox` connection reaches `status: "completed"` with
+  real output (`real-sandbox-output`); and a genuine cancellation mid
+  -`sleep 30` returns in well under the full sleep window, proving the
+  container was actually killed rather than left running. 6 new backend
+  tests (57/57 total) — they skip honestly (never fail) if no Docker
+  daemon is reachable in a given test/CI environment.
+- Verified end-to-end in-browser against the real backend: the Settings
+  page lists "Docker Sandbox" automatically (same dynamic adapter-
+  registry catalog as every other runtime, zero frontend changes),
+  clicking Connect produces a real `"status": "connected"`,
+  `"detected_version": "28.5.1"` response from a real `docker version`
+  call, and a task created against that connection and started from the
+  browser reaches `"status": "completed"` with real output
+  `"real-sandbox-output\n"` and an empty `error_message` — confirmed via
+  the raw network responses, not UI copy.
+
 ## What's intentionally not here yet
 
 Temporal/LangGraph-based durable workflow orchestration (this pass's
@@ -247,10 +293,9 @@ Factory Supervisor sequences steps via a background thread against the
 real database, not a distributed workflow engine), parsing real
 repository code into the knowledge graph (no repository-ingestion
 pipeline exists yet — Phase 7's graph covers factory work, not source
-code), Docker execution isolation, and coordinating presence across
-multiple backend replicas (Phase 6's presence registry is single-
-process/in-memory) are later phases of the execution spec and are not
-implemented in this pass.
+code), and coordinating presence across multiple backend replicas
+(Phase 6's presence registry is single-process/in-memory) are later
+phases of the execution spec and are not implemented in this pass.
 
 ## Running locally
 

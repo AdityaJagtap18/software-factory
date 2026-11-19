@@ -1,0 +1,129 @@
+<div class="sf-page-header">
+  <div class="sf-page-header__title-group">
+    <span class="sf-page-header__icon tone-violet"><sf-icon name="workspace/graph-history" /></span>
+    <div>
+      <h1>Prompt Registry</h1>
+      <p>Manage, version, evaluate and publish prompts for all agents and workflows</p>
+    </div>
+  </div>
+  <div class="sf-page-header__actions">
+    <button class="sf-btn" type="button">Evaluate</button>
+    <button class="sf-btn" type="button">Import / Export</button>
+    <button class="sf-btn sf-btn--primary" type="button">New Prompt</button>
+  </div>
+</div>
+
+<div class="sf-stat-grid">
+  <div class="sf-stat-card sf-stat-card--blue"><div class="sf-stat-card__icon"><sf-icon name="navigation/artifacts" /></div><div><div class="sf-stat-card__label">Total Prompts</div><div class="sf-stat-card__value">{{ prompts().length * 7 }}</div></div></div>
+  <div class="sf-stat-card sf-stat-card--green"><div class="sf-stat-card__icon"><sf-icon name="status/success" /></div><div><div class="sf-stat-card__label">Published</div><div class="sf-stat-card__value">28</div></div></div>
+  <div class="sf-stat-card sf-stat-card--amber"><div class="sf-stat-card__icon"><sf-icon name="status/pending" /></div><div><div class="sf-stat-card__label">In Review</div><div class="sf-stat-card__value">5</div></div></div>
+  <div class="sf-stat-card sf-stat-card--violet"><div class="sf-stat-card__icon"><sf-icon name="navigation/workflows" /></div><div><div class="sf-stat-card__label">Versions</div><div class="sf-stat-card__value">136</div></div></div>
+  <div class="sf-stat-card sf-stat-card--green"><div class="sf-stat-card__icon"><sf-icon name="navigation/monitoring" /></div><div><div class="sf-stat-card__label">Avg Eval Score</div><div class="sf-stat-card__value">0.91 <span class="sf-stat-card__delta up">↑ +3.2%</span></div></div></div>
+</div>
+
+<div class="sf-tabs">
+  <button type="button" class="sf-tab active"><sf-icon name="navigation/artifacts" /> Prompt Library</button>
+  <button type="button" class="sf-tab"><sf-icon name="workspace/graph-history" /> Versions</button>
+  <button type="button" class="sf-tab"><sf-icon name="status/success" /> Evaluations</button>
+  <button type="button" class="sf-tab"><sf-icon name="navigation/settings" /> Experiments (A/B)</button>
+  <button type="button" class="sf-tab"><sf-icon name="navigation/approvals" /> Governance &amp; Policies</button>
+  <button type="button" class="sf-tab"><sf-icon name="navigation/monitoring" /> Usage Analytics</button>
+</div>
+
+<div class="pr-grid">
+  <aside class="sf-card">
+    <div class="sf-panel-title"><h3>Prompt Library ({{ filtered().length }})</h3></div>
+    <div class="ag-search" style="margin:12px;">
+      <sf-icon name="workspace/code-search" />
+      <input type="text" placeholder="Search prompts..." [value]="search()" (input)="search.set($any($event.target).value)" />
+    </div>
+    <div class="pr-list">
+      @for (p of filtered(); track p.id) {
+        <button type="button" class="pr-list__item" [class.active]="p.id === selected().id" (click)="select(p)">
+          <sf-icon [name]="p.icon" />
+          <div>
+            <div class="pr-list__name">{{ p.name }} <span class="pr-list__version">{{ p.version }}</span></div>
+            <div class="pr-list__desc">{{ p.description }}</div>
+            <span class="sf-badge" [class]="'sf-badge--' + statusTone(p.status)">{{ p.status }}</span>
+          </div>
+        </button>
+      }
+    </div>
+  </aside>
+
+  <section class="pr-main">
+    <div class="sf-card">
+      <div class="sf-panel-title">
+        <h3><sf-icon [name]="selected().icon" /> {{ selected().name }} <span class="pr-main__version">{{ selected().version }} · Updated {{ selected().updatedAt }}</span></h3>
+        <div style="display:flex;gap:8px;">
+          <span class="sf-badge" [class]="'sf-badge--' + statusTone(selected().status)">{{ selected().status }}</span>
+          <button class="sf-btn" type="button" style="padding:6px 12px;">Test Run</button>
+          <button class="sf-btn sf-btn--primary" type="button" style="padding:6px 12px;">Edit</button>
+        </div>
+      </div>
+      <div class="sf-tabs" style="margin:0 18px 10px;border:none;padding:0;">
+        <button type="button" class="sf-tab active">Prompt</button>
+        <button type="button" class="sf-tab">Parameters</button>
+        <button type="button" class="sf-tab">Test Cases</button>
+        <button type="button" class="sf-tab">Evaluation</button>
+        <button type="button" class="sf-tab">Usage</button>
+      </div>
+      <pre class="pr-code">{{ promptBody }}</pre>
+    </div>
+
+    <div class="pr-bottom">
+      <div class="sf-card">
+        <div class="sf-panel-title"><h3>Evaluation ({{ selected().version }})</h3><a class="view-all">View Details →</a></div>
+        <div class="pr-eval">
+          <div class="pr-eval__score">
+            <strong>{{ selected().evalScore }}</strong>
+            <span>Overall Score <br /><span class="sf-stat-card__delta up">↑ +3.2%</span></span>
+          </div>
+          <div class="pr-eval__bars">
+            @for (row of evalBreakdown; track row.label) {
+              <div class="pr-eval__row">
+                <span>{{ row.label }}</span>
+                <div class="sf-progress"><div class="sf-progress__bar" [style.width.%]="row.value * 100"></div></div>
+                <strong>{{ row.value }}</strong>
+              </div>
+            }
+          </div>
+        </div>
+      </div>
+
+      <div class="sf-card">
+        <div class="sf-panel-title"><h3>Usage (Last 30 Days)</h3><a class="view-all">View Analytics →</a></div>
+        <div class="pr-usage">
+          <div><strong>6,482</strong><span>Total Runs <span class="sf-stat-card__delta up">↑ +18%</span></span></div>
+          <div><strong>92.7%</strong><span>Success Rate <span class="sf-stat-card__delta up">↑ +4.1pp</span></span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <aside class="pr-right">
+    <div class="sf-card">
+      <div class="sf-panel-title"><h3>Prompt Details</h3></div>
+      <div class="pw-info" style="padding:6px 18px 14px;">
+        <div class="pw-info__row"><span class="label">Agent</span><span class="value">{{ selected().agent }}</span></div>
+        <div class="pw-info__row"><span class="label">Status</span><span class="sf-badge" [class]="'sf-badge--' + statusTone(selected().status)">{{ selected().status }}</span></div>
+        <div class="pw-info__row"><span class="label">Owner</span><span class="value">{{ selected().owner }}</span></div>
+        <div class="pw-info__row"><span class="label">Updated</span><span class="value">{{ selected().updatedAt }}</span></div>
+      </div>
+    </div>
+    <div class="sf-card">
+      <div class="sf-panel-title"><h3>Version History</h3><a class="view-all">View All →</a></div>
+      <div class="pr-history">
+        @for (v of versionHistory; track v.version) {
+          <div class="pr-history__item">
+            <span class="pr-history__dot" [class.current]="v.version === selected().version"></span>
+            <div>
+              <div class="pr-history__version">{{ v.version }} <span class="sf-badge" [class]="'sf-badge--' + statusTone(v.status)">{{ v.status }}</span></div>
+              <div class="pr-history__date">{{ v.date }}</div>
+            </div>
+          </div>
+        }
+      </div>
+    </div>
+  </aside>
+</div>

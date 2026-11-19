@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="420" height="88" viewBox="0 0 420 88" role="img" aria-label="Software Factory">
+<defs><linearGradient id="g" x1="5" y1="5" x2="75" y2="80" gradientUnits="userSpaceOnUse"><stop stop-color="#7467FF"/><stop offset="1" stop-color="#2478E8"/></linearGradient></defs>
+<g transform="translate(2 2)"><path d="M40 2 76 22v40L40 82 4 62V22L40 2Z" fill="url(#g)"/><path d="m40 13 25 14-25 14-25-14 25-14Z" fill="#EEF2FF"/><path d="m15 36 20 11v20L15 56V36Z" fill="#BFCBFF"/><path d="m65 36-20 11v20l20-11V36Z" fill="#8EA8FF"/><path d="m40 48 11 6v12l-11 6-11-6V54l11-6Z" fill="#fff"/></g>
+<text x="94" y="55" font-family="Inter,Arial,sans-serif" font-size="34" font-weight="700" fill="#14264D">Software Factory</text>
+</svg>

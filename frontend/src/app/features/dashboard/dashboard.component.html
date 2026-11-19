@@ -1,0 +1,137 @@
+<div class="sf-page-header">
+  <div>
+    <h1>Welcome back, {{ user().name.split(' ')[0] }} 👋</h1>
+    <p>Your AI-powered software engineering factory</p>
+  </div>
+  <div class="sf-page-header__actions">
+    <a class="sf-btn sf-btn--primary" routerLink="/projects">
+      <sf-icon name="navigation/projects" /> New Project
+    </a>
+  </div>
+</div>
+
+<div class="sf-stat-grid">
+  @for (stat of stats(); track stat.label) {
+    <div class="sf-stat-card" [class]="'sf-stat-card--' + stat.tone">
+      <div class="sf-stat-card__icon"><sf-icon [name]="stat.icon" /></div>
+      <div>
+        <div class="sf-stat-card__label">{{ stat.label }}</div>
+        <div class="sf-stat-card__value">
+          {{ stat.value }}
+          @if (stat.delta) {
+            <span class="sf-stat-card__delta" [class]="stat.deltaDirection">{{ stat.deltaDirection === 'up' ? '↑' : '↓' }} {{ stat.delta }}</span>
+          }
+        </div>
+      </div>
+    </div>
+  }
+</div>
+
+<div class="dash-grid">
+  <section class="sf-card">
+    <div class="sf-panel-title">
+      <h3><sf-icon name="navigation/projects" /> Projects</h3>
+      <a class="view-all" routerLink="/projects">View All →</a>
+    </div>
+    <table class="sf-table">
+      <thead>
+        <tr>
+          <th>Project</th>
+          <th>Repository</th>
+          <th>Status</th>
+          <th>Active Workflows</th>
+          <th>Last Activity</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (project of projects(); track project.id) {
+          <tr class="clickable" [routerLink]="['/projects', project.id]">
+            <td>
+              <div class="dash-grid__project">
+                <span class="dash-grid__project-icon" [class]="'tone-' + project.iconTone"><sf-icon [name]="project.icon" /></span>
+                <div>
+                  <div class="dash-grid__project-name">{{ project.name }}</div>
+                  <div class="dash-grid__project-desc">{{ project.description }}</div>
+                </div>
+              </div>
+            </td>
+            <td>
+              <span class="dash-grid__repo"><sf-icon name="navigation/repositories" /> {{ project.repository }}</span>
+            </td>
+            <td><span class="sf-badge" [class]="'sf-badge--' + statusTone(project.status)">{{ project.status }}</span></td>
+            <td>{{ project.activeWorkflows }}</td>
+            <td>{{ project.lastActivity }}</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </section>
+
+  <section class="sf-card">
+    <div class="sf-panel-title">
+      <h3>Recent Activity</h3>
+      <a class="view-all">View All →</a>
+    </div>
+    <div class="activity-list">
+      @for (item of recentActivity(); track item.id) {
+        <div class="activity-list__item">
+          <span class="activity-list__icon" [class]="'tone-' + item.tone"><sf-icon [name]="item.icon" /></span>
+          <div class="activity-list__body">
+            <div class="activity-list__title">{{ item.title }}</div>
+            <div class="activity-list__subtitle">{{ item.subtitle }}</div>
+          </div>
+          <span class="activity-list__time">{{ item.timestamp }}</span>
+        </div>
+      }
+    </div>
+  </section>
+
+  <section class="sf-card">
+    <div class="sf-panel-title">
+      <h3>Running Workflows</h3>
+      <a class="view-all" routerLink="/workflows">View All →</a>
+    </div>
+    <table class="sf-table">
+      <thead>
+        <tr>
+          <th>Workflow</th>
+          <th>Project</th>
+          <th>Current Step</th>
+          <th>Progress</th>
+          <th>ETA</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (wf of runningWorkflows(); track wf.id) {
+          <tr class="clickable" routerLink="/workflows">
+            <td>
+              <span class="dash-grid__wf-name"><sf-icon [name]="wf.icon" /> {{ wf.name }}</span>
+            </td>
+            <td><span class="sf-pill">{{ wf.project }}</span></td>
+            <td>{{ wf.currentStep }}</td>
+            <td class="dash-grid__progress-cell">
+              <div class="sf-progress"><div class="sf-progress__bar" [style.width.%]="wf.progress"></div></div>
+              <span>{{ wf.progress }}%</span>
+            </td>
+            <td>{{ wf.eta }}</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </section>
+
+  <section class="sf-card">
+    <div class="sf-panel-title">
+      <h3>System Health</h3>
+      <span class="sf-badge sf-badge--green">All Services Operational</span>
+    </div>
+    <div class="health-list">
+      @for (item of systemHealth(); track item.label) {
+        <div class="health-list__item">
+          <span><sf-icon [name]="item.icon" /> {{ item.label }}</span>
+          <span class="sf-badge sf-badge--green">{{ item.status }}</span>
+        </div>
+      }
+    </div>
+  </section>
+</div>

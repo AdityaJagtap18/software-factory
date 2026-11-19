@@ -1,0 +1,170 @@
+<div class="sf-breadcrumbs">
+  <a routerLink="/projects">Projects</a> <span>›</span>
+  <a>{{ task().project }}</a> <span>›</span>
+  <a routerLink="/tasks">Tasks</a> <span>›</span>
+  <a [routerLink]="['/tasks', task().id]">{{ task().id }}</a> <span>›</span>
+  <span class="current">Code Review</span>
+</div>
+
+<div class="sf-page-header">
+  <div class="sf-page-header__title-group">
+    <span class="sf-page-header__icon tone-violet"><sf-icon [name]="task().icon" /></span>
+    <div>
+      <h1>{{ task().id }} — Code Changes &amp; Review <span class="sf-badge sf-badge--blue">Ready for Review</span></h1>
+      <p>Review code changes, test results and quality checks before creating a pull request</p>
+    </div>
+  </div>
+  <div class="sf-page-header__actions">
+    <button class="sf-btn" type="button">Open in IDE</button>
+    <button class="sf-btn" type="button"><sf-icon name="navigation/repositories" /> View PR (Draft)</button>
+    <button class="sf-btn sf-btn--primary" type="button"><sf-icon name="status/success" /> Approve &amp; Create PR</button>
+  </div>
+</div>
+
+<div class="sf-tabs">
+  <button type="button" class="sf-tab" [class.active]="tab() === 'conversation'" (click)="tab.set('conversation')"><sf-icon name="navigation/approvals" /> Conversation</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'changes'" (click)="tab.set('changes')"><sf-icon name="workspace/code-diff" /> Code Changes ({{ changes().length }})</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'tests'" (click)="tab.set('tests')"><sf-icon name="status/success" /> Test Results</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'quality'" (click)="tab.set('quality')"><sf-icon name="agents/review-agent" /> Quality &amp; Security</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'artifacts'" (click)="tab.set('artifacts')"><sf-icon name="navigation/artifacts" /> Artifacts</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'logs'" (click)="tab.set('logs')"><sf-icon name="navigation/monitoring" /> Execution Logs</button>
+</div>
+
+@if (tab() === 'changes') {
+  <div class="cr-layout">
+    <aside class="sf-card cr-filelist">
+      <div class="sf-panel-title">
+        <h3>Changes ({{ changes().length }})</h3>
+      </div>
+      <div class="cr-filelist__summary">
+        <span class="added">+{{ totals().added }}</span>
+        <span class="removed">-{{ totals().removed }}</span>
+        <span>{{ totals().files }} files</span>
+      </div>
+      <div class="cr-filelist__items">
+        @for (f of changes(); track f.path) {
+          <button type="button" class="cr-filelist__item" [class.active]="f.path === selectedFile().path" (click)="selectFile(f)">
+            <sf-icon [name]="f.icon" />
+            <div>
+              <div class="cr-filelist__name">{{ f.name }}</div>
+              <div class="cr-filelist__delta"><span class="added">+{{ f.added }}</span> <span class="removed">-{{ f.removed }}</span></div>
+            </div>
+          </button>
+        }
+      </div>
+    </aside>
+
+    <section class="sf-card cr-diff">
+      <div class="cr-diff__head">
+        <span><sf-icon [name]="selectedFile().icon" /> {{ selectedFile().name }}</span>
+        <span class="added">+{{ selectedFile().added }}</span>
+        <span class="removed">-{{ selectedFile().removed }}</span>
+      </div>
+      <div class="cr-diff__path">{{ selectedFile().path }}</div>
+      <pre class="cr-diff__code">{{ '@@ -18,6 +18,10 @@ class InvoiceOCRService:' }}
+  def __init__(self, config: OCRConfig):
+    self.config = config
+<span class="add">+    self.validator = InvoiceValidator()</span>
+<span class="add">+    self.ocr_engine = PaddleOCR(</span>
+<span class="add">+        use_angle_cls=True, lang="en"</span>
+<span class="add">+    )</span>
+
+{{ '@@ -45,18 +49,60 @@ class InvoiceOCRService:' }}
+  def extract_invoice(self, file: UploadFile) -&gt; InvoiceData:
+    """Extract structured data from invoice using OCR"""
+<span class="remove">-    text = self._extract_text(file)</span>
+<span class="remove">-    return self._parse_invoice(text)</span>
+<span class="add">+    # Step 1: Extract text using OCR</span>
+<span class="add">+    text = self._extract_text(file)</span>
+<span class="add">+    # Step 2: Validate extracted text</span>
+<span class="add">+    validation_result = self.validator.validate(text)</span>
+<span class="add">+    if not validation_result.is_valid:</span>
+<span class="add">+        raise InvoiceExtractionError(</span>
+<span class="add">+            f"Validation failed: &#123;validation_result.errors&#125;"</span>
+<span class="add">+        )</span></pre>
+    </section>
+  </div>
+}
+
+@if (tab() === 'tests') {
+  <section class="sf-card">
+    <div class="sf-panel-title"><h3>Test Results</h3><span class="sf-badge sf-badge--green">18 / 18 Passed</span></div>
+    <div class="sf-panel-body">
+      <div class="sf-progress" style="height:8px;margin-bottom:14px;"><div class="sf-progress__bar" style="width:100%;background:var(--sf-green-600)"></div></div>
+      <table class="sf-table">
+        <tbody>
+          <tr><td>Unit Tests</td><td>14 / 14</td><td><sf-icon name="status/success" /></td></tr>
+          <tr><td>Integration Tests</td><td>4 / 4</td><td><sf-icon name="status/success" /></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+}
+
+@if (tab() === 'quality') {
+  <section class="sf-card">
+    <div class="sf-panel-title"><h3>Quality &amp; Security</h3><span class="sf-badge sf-badge--green">All Checks Passed</span></div>
+    <table class="sf-table">
+      <tbody>
+        <tr><td>Code Quality (Sonar)</td><td class="right">A</td></tr>
+        <tr><td>Security Scan (SAST)</td><td class="right">No Issues</td></tr>
+        <tr><td>Code Coverage</td><td class="right">92.4%</td></tr>
+        <tr><td>Complexity Changes</td><td class="right">+0.3 (within threshold)</td></tr>
+      </tbody>
+    </table>
+  </section>
+}
+
+@if (tab() === 'artifacts' || tab() === 'logs' || tab() === 'conversation') {
+  <section class="sf-card">
+    <div class="sf-empty">
+      @if (tab() === 'conversation') { See the Conversation tab on the <a [routerLink]="['/tasks', task().id]">Task Workspace</a> for the full agent conversation. }
+      @if (tab() === 'artifacts') { Generated artifacts for this execution will appear here once the artifact store is connected. }
+      @if (tab() === 'logs') { Full execution logs are available from the <a routerLink="/workflows">Workflow Visualizer</a>. }
+    </div>
+  </section>
+}
+
+<div class="cr-bottom">
+  <section class="sf-card cr-comments">
+    <div class="sf-tabs" style="margin:0;border:none;">
+      <button type="button" class="sf-tab active">Review Comments (2)</button>
+      <button type="button" class="sf-tab">Suggested Improvements (3)</button>
+    </div>
+    <div class="cr-comments__list">
+      <div class="cr-comments__item">
+        <span class="tw-message__avatar">AJ</span>
+        <div>
+          <div class="cr-comments__head"><strong>Aditya Jagtap</strong><span>10:58 AM</span></div>
+          <p>Can we add logging for validation failures?</p>
+        </div>
+      </div>
+      <div class="cr-comments__item">
+        <span class="tw-message__avatar">&lt;/&gt;</span>
+        <div>
+          <div class="cr-comments__head"><strong>Coding Agent</strong><span>11:07 AM</span><span class="sf-badge sf-badge--green">Resolved</span></div>
+          <p>Added structured logging for validation errors in the latest commit.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <aside class="cr-sidebar">
+    <section class="sf-card">
+      <div class="sf-panel-title"><h3>Change Summary</h3></div>
+      <div class="pw-info" style="padding:6px 18px 14px;">
+        <div class="pw-info__row"><span class="label">Files Changed</span><span class="value">{{ totals().files }}</span></div>
+        <div class="pw-info__row"><span class="label">Lines Added</span><span class="value added">+{{ totals().added }}</span></div>
+        <div class="pw-info__row"><span class="label">Lines Removed</span><span class="value removed">-{{ totals().removed }}</span></div>
+      </div>
+    </section>
+    <section class="sf-card">
+      <div class="sf-panel-title"><h3>Pull Request (Draft)</h3></div>
+      <div class="sf-panel-body">
+        <div class="sf-pill" style="margin-bottom:10px;">{{ task().branch }} → main</div>
+        <p style="font-size:12.5px;font-weight:600;margin-bottom:14px;">feat: {{ task().title.toLowerCase() }}</p>
+        <button class="sf-btn sf-btn--primary" style="width:100%;justify-content:center;" type="button">Open Pull Request</button>
+      </div>
+    </section>
+  </aside>
+</div>

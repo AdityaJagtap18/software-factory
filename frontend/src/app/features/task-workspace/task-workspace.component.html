@@ -1,0 +1,182 @@
+<div class="sf-breadcrumbs">
+  <a routerLink="/projects">Projects</a> <span>›</span>
+  <a>{{ selectedTask().project }}</a> <span>›</span>
+  <a routerLink="/tasks">Tasks</a> <span>›</span>
+  <span class="current">{{ selectedTask().id }}</span>
+</div>
+
+<div class="sf-page-header">
+  <div class="sf-page-header__title-group">
+    <span class="sf-page-header__icon tone-violet"><sf-icon [name]="selectedTask().icon" /></span>
+    <div>
+      <h1>{{ selectedTask().id }} — {{ selectedTask().title }} <span class="sf-badge sf-badge--blue tw-status">{{ selectedTask().status }}</span></h1>
+      <p>{{ selectedTask().description }}</p>
+    </div>
+  </div>
+  <div class="sf-page-header__actions">
+    <button class="sf-btn" type="button">Share</button>
+    <a class="sf-btn" [routerLink]="['/tasks', selectedTask().id, 'review']"><sf-icon name="workspace/pull-request" /> Create PR</a>
+  </div>
+</div>
+
+<div class="tw-steps">
+  @for (step of steps(); track step.label; let i = $index) {
+    <div class="tw-steps__item" [class]="step.status">
+      <span class="tw-steps__dot">
+        @if (step.status === 'completed') { <sf-icon name="status/success" /> } @else { {{ i + 1 }} }
+      </span>
+      <span>{{ step.label }}</span>
+      @if (step.detail) { <span class="tw-steps__detail">{{ step.detail }}</span> }
+    </div>
+    @if (i < steps().length - 1) { <span class="tw-steps__line"></span> }
+  }
+</div>
+
+<div class="tw-layout">
+  <aside class="sf-card tw-tasklist">
+    <div class="sf-panel-title">
+      <h3>Tasks</h3>
+      <button class="sf-btn" style="padding:5px 10px" type="button"><sf-icon name="navigation/tasks" /></button>
+    </div>
+    <div class="tw-tasklist__tabs">
+      <button type="button" [class.active]="listTab() === 'my'" (click)="listTab.set('my')">My Tasks</button>
+      <button type="button" [class.active]="listTab() === 'all'" (click)="listTab.set('all')">All Tasks</button>
+      <button type="button" [class.active]="listTab() === 'history'" (click)="listTab.set('history')">History</button>
+    </div>
+    <div class="tw-tasklist__items">
+      @for (t of allTasks(); track t.id) {
+        <a class="tw-tasklist__item" [class.active]="t.id === selectedTask().id" [routerLink]="['/tasks', t.id]">
+          <sf-icon [name]="t.icon" />
+          <div>
+            <div class="tw-tasklist__title">{{ t.id }} — {{ t.title }}</div>
+            <span class="sf-badge" [class]="'sf-badge--' + statusTone(t.status)">{{ t.status }}</span>
+          </div>
+        </a>
+      }
+    </div>
+  </aside>
+
+  <section class="sf-card tw-conversation">
+    <div class="sf-tabs" style="margin:0;border-radius:0;border-left:none;border-right:none;border-top:none;">
+      <button type="button" class="sf-tab" [class.active]="detailTab() === 'conversation'" (click)="detailTab.set('conversation')"><sf-icon name="navigation/approvals" /> Conversation</button>
+      <button type="button" class="sf-tab" [class.active]="detailTab() === 'files'" (click)="detailTab.set('files')"><sf-icon name="navigation/artifacts" /> Files ({{ codeChanges().length }})</button>
+      <button type="button" class="sf-tab" [class.active]="detailTab() === 'diff'" (click)="detailTab.set('diff')"><sf-icon name="workspace/code-diff" /> Code Diff</button>
+      <button type="button" class="sf-tab" [class.active]="detailTab() === 'execution'" (click)="detailTab.set('execution')"><sf-icon name="navigation/workflows" /> Execution</button>
+      <button type="button" class="sf-tab" [class.active]="detailTab() === 'timeline'" (click)="detailTab.set('timeline')"><sf-icon name="navigation/monitoring" /> Timeline</button>
+    </div>
+
+    @if (detailTab() === 'conversation') {
+      <div class="tw-messages">
+        @for (m of conversation(); track m.id) {
+          <div class="tw-message" [class]="m.authorKind">
+            <span class="tw-message__avatar">{{ m.authorKind === 'user' ? 'AJ' : m.authorKind === 'supervisor' ? '⚙' : 'AI' }}</span>
+            <div class="tw-message__body">
+              <div class="tw-message__head"><strong>{{ m.author }}</strong><span>{{ m.timestamp }}</span></div>
+              <p>{{ m.body }}</p>
+
+              @if (m.authorKind === 'supervisor') {
+                <div class="tw-plan">
+                  <div class="tw-plan__col">
+                    <h4><sf-icon name="navigation/workflows" /> Execution Plan</h4>
+                    <ol>
+                      @for (step of executionPlan(); track step.step) {
+                        <li>
+                          <span class="tw-plan__status" [class.done]="step.status === 'Completed'" [class.active]="step.status.startsWith('In Progress')">
+                            @if (step.status === 'Completed') { <sf-icon name="status/success" /> }
+                          </span>
+                          {{ step.step }}
+                          <span class="sf-pill">{{ step.status }}</span>
+                        </li>
+                      }
+                    </ol>
+                  </div>
+                  <div class="tw-plan__col">
+                    <h4><sf-icon name="navigation/agents" /> Task Breakdown (Agents)</h4>
+                    <ul>
+                      @for (a of agentBreakdown(); track a.name) {
+                        <li>
+                          <sf-icon [name]="a.icon" /> {{ a.name }}
+                          <span class="sf-badge" [class]="a.status === 'Completed' ? 'sf-badge--green' : a.status === 'Running' ? 'sf-badge--blue' : 'sf-badge--gray'">{{ a.status }}</span>
+                        </li>
+                      }
+                    </ul>
+                  </div>
+                </div>
+              }
+
+              @if (m.authorKind === 'agent') {
+                <div class="tw-files-chips">
+                  @for (c of codeChanges(); track c.path) {
+                    <span class="sf-pill"><sf-icon [name]="c.icon" /> {{ c.name }}</span>
+                  }
+                </div>
+              }
+            </div>
+          </div>
+        }
+      </div>
+      <div class="tw-composer">
+        <input type="text" placeholder="Send a message or add a follow-up instruction..." [(ngModel)]="draftMessage" (keyup.enter)="send()" />
+        <button class="sf-btn sf-btn--primary" type="button" (click)="send()">Send</button>
+      </div>
+    }
+
+    @if (detailTab() === 'files') {
+      <table class="sf-table">
+        <thead><tr><th>File</th><th>Added</th><th>Removed</th></tr></thead>
+        <tbody>
+          @for (c of codeChanges(); track c.path) {
+            <tr><td><sf-icon [name]="c.icon" /> {{ c.path }}</td><td style="color:var(--sf-green-600)">+{{ c.added }}</td><td style="color:var(--sf-red-600)">-{{ c.removed }}</td></tr>
+          }
+        </tbody>
+      </table>
+    }
+
+    @if (detailTab() === 'diff') {
+      <div class="sf-empty">Open the full <a routerLink="/tasks" [queryParams]="{}">Code Changes &amp; Review</a> workspace for a line-by-line diff.
+        <div style="margin-top:10px"><a class="sf-btn sf-btn--primary" [routerLink]="['/tasks', selectedTask().id, 'review']">Open Code Review →</a></div>
+      </div>
+    }
+
+    @if (detailTab() === 'execution' || detailTab() === 'timeline') {
+      <div class="sf-empty">See the <a routerLink="/workflows">Workflow Visualizer</a> for live execution steps, logs and timeline.</div>
+    }
+  </section>
+
+  <aside class="tw-sidebar">
+    <section class="sf-card">
+      <div class="sf-panel-title"><h3>Task Overview</h3></div>
+      <div class="pw-info" style="padding:6px 18px 14px;">
+        <div class="pw-info__row"><sf-icon name="navigation/projects" /><span class="label">Project</span><span class="value">{{ selectedTask().project }}</span></div>
+        <div class="pw-info__row"><sf-icon name="navigation/repositories" /><span class="label">Repository</span><span class="value link">{{ selectedTask().repository }}</span></div>
+        <div class="pw-info__row"><sf-icon name="navigation/workflows" /><span class="label">Branch</span><span class="sf-pill">{{ selectedTask().branch }}</span></div>
+        <div class="pw-info__row"><sf-icon name="workspace/code-diff" /><span class="label">Type</span><span class="value">{{ selectedTask().type }}</span></div>
+        <div class="pw-info__row"><sf-icon name="status/warning" /><span class="label">Priority</span><span class="sf-badge sf-badge--red">{{ selectedTask().priority }}</span></div>
+        <div class="pw-info__row"><sf-icon name="navigation/agents" /><span class="label">Created By</span><span class="value">{{ selectedTask().createdBy }}</span></div>
+        <div class="pw-info__row"><sf-icon name="navigation/monitoring" /><span class="label">Created At</span><span class="value">{{ selectedTask().createdAt }}</span></div>
+      </div>
+    </section>
+
+    <section class="sf-card">
+      <div class="sf-panel-title"><h3>Agent Execution</h3><span class="sf-badge sf-badge--blue">{{ agentBreakdown().length }} Active</span></div>
+      <div class="tw-agent-exec">
+        @for (a of agentBreakdown(); track a.name) {
+          <div class="tw-agent-exec__row">
+            <sf-icon [name]="a.icon" /><span>{{ a.name }}</span>
+            <span class="sf-badge" [class]="a.status === 'Completed' ? 'sf-badge--green' : a.status === 'Running' ? 'sf-badge--blue' : 'sf-badge--gray'">{{ a.status }}</span>
+          </div>
+        }
+      </div>
+    </section>
+
+    <section class="sf-card">
+      <div class="sf-panel-title"><h3>Project Context</h3></div>
+      <div class="pw-info" style="padding:6px 18px 14px;">
+        <div class="pw-info__row"><sf-icon name="navigation/knowledge" /><span class="label">Repo Graph</span><a class="value link" routerLink="/knowledge">View →</a></div>
+        <div class="pw-info__row"><sf-icon name="workspace/code-diff" /><span class="label">Relevant Code</span><span class="value">12 files</span></div>
+        <div class="pw-info__row"><sf-icon name="navigation/artifacts" /><span class="label">Knowledge</span><span class="value">3 documents</span></div>
+        <div class="pw-info__row"><sf-icon name="navigation/artifacts" /><span class="label">PRD</span><span class="value link">FINTRIX_PRD_v2.1.md</span></div>
+      </div>
+    </section>
+  </aside>
+</div>

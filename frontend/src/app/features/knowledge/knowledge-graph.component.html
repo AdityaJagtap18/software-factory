@@ -1,0 +1,121 @@
+<div class="sf-page-header">
+  <div class="sf-page-header__title-group">
+    <span class="sf-page-header__icon tone-violet"><sf-icon name="navigation/knowledge" /></span>
+    <div>
+      <h1>Knowledge Graph Explorer</h1>
+      <p>Explore code, engineering knowledge and project context in a unified graph</p>
+    </div>
+  </div>
+</div>
+
+<div class="sf-stat-grid">
+  <div class="sf-stat-card sf-stat-card--violet"><div class="sf-stat-card__icon"><sf-icon name="navigation/artifacts" /></div><div><div class="sf-stat-card__label">Entities</div><div class="sf-stat-card__value">37,892 <span class="sf-stat-card__delta up">↑ +12%</span></div></div></div>
+  <div class="sf-stat-card sf-stat-card--blue"><div class="sf-stat-card__icon"><sf-icon name="navigation/knowledge" /></div><div><div class="sf-stat-card__label">Relationships</div><div class="sf-stat-card__value">124,530 <span class="sf-stat-card__delta up">↑ +18%</span></div></div></div>
+  <div class="sf-stat-card sf-stat-card--amber"><div class="sf-stat-card__icon"><sf-icon name="navigation/repositories" /></div><div><div class="sf-stat-card__label">Repositories</div><div class="sf-stat-card__value">6</div></div></div>
+  <div class="sf-stat-card sf-stat-card--green"><div class="sf-stat-card__icon"><sf-icon name="navigation/artifacts" /></div><div><div class="sf-stat-card__label">Requirements</div><div class="sf-stat-card__value">214</div></div></div>
+  <div class="sf-stat-card sf-stat-card--violet"><div class="sf-stat-card__icon"><sf-icon name="navigation/workflows" /></div><div><div class="sf-stat-card__label">Architecture Decisions</div><div class="sf-stat-card__value">37</div></div></div>
+</div>
+
+<div class="kg-grid">
+  <aside class="sf-card">
+    <div class="sf-panel-title"><h3>Graph View</h3></div>
+    <div class="kg-filter-section">
+      <span class="sf-pill">Repository + Engineering</span>
+    </div>
+    <div class="kg-filter-section">
+      <h4>Node Types</h4>
+      @for (t of nodeTypes; track t.label) {
+        <label class="kg-check">
+          <input type="checkbox" [checked]="t.checked" />
+          {{ t.label }} ({{ t.count.toLocaleString() }})
+        </label>
+      }
+    </div>
+    <div class="kg-filter-section">
+      <h4>Relationship Types</h4>
+      @for (rel of ['DEPENDS_ON', 'CALLS', 'IMPLEMENTS', 'RELATES_TO']; track rel) {
+        <label class="kg-check"><input type="checkbox" checked /> {{ rel }}</label>
+      }
+    </div>
+    <div style="padding:6px 18px 18px;">
+      <button class="sf-btn sf-btn--primary" style="width:100%;justify-content:center;" type="button">Apply Filters</button>
+    </div>
+  </aside>
+
+  <section class="sf-card kg-canvas-card">
+    <div class="sf-panel-title">
+      <h3>{{ selected()?.label }}</h3>
+      <div class="ag-search" style="margin:0;width:260px;">
+        <sf-icon name="workspace/code-search" />
+        <input type="text" placeholder="Search in graph..." />
+      </div>
+    </div>
+    <div class="kg-canvas">
+      <svg class="kg-canvas__edges" viewBox="0 0 100 100" preserveAspectRatio="none">
+        @for (line of edgeLines(); track line.label + line.x + line.y) {
+          <line [attr.x1]="line.x" [attr.y1]="line.y" [attr.x2]="line.x2" [attr.y2]="line.y2" stroke="#d7dae8" stroke-width="0.4" vector-effect="non-scaling-stroke" />
+        }
+      </svg>
+      @for (entity of entities(); track entity.id) {
+        <button
+          type="button"
+          class="kg-node"
+          [class]="'tone-' + entity.tone"
+          [class.center]="entity.id === centerId"
+          [class.selected]="selected()?.id === entity.id"
+          [style.left]="position(entity).left"
+          [style.top]="position(entity).top"
+          (click)="select(entity)"
+        >
+          <sf-icon [name]="entity.icon" />
+          <span>{{ entity.label }}</span>
+          <small>{{ entity.type }}</small>
+        </button>
+      }
+    </div>
+  </section>
+
+  <aside class="sf-card kg-detail">
+    @if (selected(); as node) {
+      <div class="sf-panel-title">
+        <h3><sf-icon [name]="node.icon" /> {{ node.label }}</h3>
+      </div>
+      <p class="kg-detail__type">{{ node.type }}</p>
+      <div class="sf-tabs" style="margin:0 18px 10px;border:none;padding:0;">
+        <button type="button" class="sf-tab active">Overview</button>
+        <button type="button" class="sf-tab">Relationships</button>
+        <button type="button" class="sf-tab">Context</button>
+        <button type="button" class="sf-tab">History</button>
+      </div>
+      <div class="pw-info" style="padding:0 18px 16px;">
+        <div class="pw-info__row"><span class="label">Repository</span><span class="value link">invoice-service</span></div>
+        <div class="pw-info__row"><span class="label">Path</span><span class="value">src/main/java/...</span></div>
+        <div class="pw-info__row"><span class="label">Language</span><span class="value">Java</span></div>
+        <div class="pw-info__row"><span class="label">Complexity</span><span class="sf-badge sf-badge--amber">Medium</span></div>
+      </div>
+    }
+  </aside>
+</div>
+
+<section class="sf-card kg-related">
+  <div class="sf-tabs" style="margin:0;border:none;padding:10px 10px 0;">
+    <button type="button" class="sf-tab" [class.active]="resultsTab() === 'related'" (click)="resultsTab.set('related')">Related Entities</button>
+    <button type="button" class="sf-tab" [class.active]="resultsTab() === 'impact'" (click)="resultsTab.set('impact')">Impact Analysis</button>
+    <button type="button" class="sf-tab" [class.active]="resultsTab() === 'dependencies'" (click)="resultsTab.set('dependencies')">Dependencies</button>
+    <button type="button" class="sf-tab" [class.active]="resultsTab() === 'usage'" (click)="resultsTab.set('usage')">Usage</button>
+    <button type="button" class="sf-tab" [class.active]="resultsTab() === 'history'" (click)="resultsTab.set('history')">Change History</button>
+  </div>
+  <table class="sf-table">
+    <thead><tr><th>Entity</th><th>Type</th><th>Relationship</th><th>Details</th></tr></thead>
+    <tbody>
+      @for (rel of relationships(); track rel.from + rel.to) {
+        <tr>
+          <td>{{ rel.to }}</td>
+          <td><span class="sf-pill">entity</span></td>
+          <td><span class="sf-pill">{{ rel.label }}</span></td>
+          <td>Relationship between graph entities</td>
+        </tr>
+      }
+    </tbody>
+  </table>
+</section>

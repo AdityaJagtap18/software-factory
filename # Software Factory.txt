@@ -1,0 +1,1414 @@
+# Software Factory
+## Definitive Architecture, Data Model & Phase-Gated Implementation Blueprint
+
+**Document type:** Technical Architecture & Implementation Specification  
+**Architecture status:** Approved baseline  
+**Product:** Multi-Tenant AI Software Factory  
+**Primary objective:** Build a provider-independent AI engineering platform capable of planning, developing, testing, reviewing and delivering software through coordinated AI agents.
+
+---
+
+# 1. Product Vision
+
+The Software Factory is an AI-powered engineering platform that simulates and automates the operations of a software engineering organisation.
+
+Users submit requirements, projects or GitHub issues. The factory converts them into structured engineering tasks, assigns specialised agents, executes development in isolated environments, validates results and delivers approved changes.
+
+The platform supports multiple users, organisations, projects and AI providers simultaneously.
+
+### Core capabilities
+
+1. Multi-tenant user and organization management.
+2. AI-powered requirements analysis and architecture planning.
+3. Multi-agent engineering workforce.
+4. Provider-independent agent execution.
+5. Parallel development and task dependency management.
+6. Agent failure recovery and provider handover.
+7. Git-based code and change management.
+8. Central prompt and artifact versioning.
+9. Repository intelligence using Neo4j.
+10. Engineering knowledge graph using Neo4j.
+11. Hybrid project and organization knowledge sharing.
+12. Automated testing, security checks and code review.
+13. Engineering observability and cost management.
+14. Human approval and governance workflows.
+
+---
+
+# 2. Final Architecture Decisions
+
+| Decision | Final selection | Architectural implication |
+|---|---|---|
+| Frontend | Angular | Engineering operations interface |
+| Backend | Python FastAPI | Factory APIs and control plane |
+| Agent orchestration | LangGraph | Agent reasoning and state transitions |
+| Durable workflow | Temporal | Persistent execution and recovery |
+| Transactional database | PostgreSQL | Authoritative factory records |
+| Graph database | Neo4j | Repository and engineering knowledge |
+| Cache and messaging | Redis | Caching, queues and coordination |
+| Execution | Docker | Isolated agent environments |
+| Version control | Git / GitHub | Source code and integration |
+| Prompt management | Central registry | Immutable prompt versions |
+| Knowledge sharing | Hybrid | Project-private and approved organizational knowledge |
+| Artifact storage | S3-compatible object storage | Documents, reports and execution artifacts |
+| Observability | OpenTelemetry + Langfuse | Traces, metrics and LLM observability |
+| Evaluation | Custom evaluation framework | Agent quality and execution reliability |
+
+## 2.1 Architectural principles
+
+**Principle 1 — Factory-owned state**
+
+The factory owns tasks, decisions, checkpoints, artifacts and execution history. Agents are replaceable workers.
+
+**Principle 2 — Provider independence**
+
+Business logic must never depend directly on Claude, Gemini, Codex or Ollama.
+
+**Principle 3 — Reproducibility**
+
+Every execution must record the exact inputs, prompts, model configuration, Git state and knowledge snapshot.
+
+**Principle 4 — Isolation**
+
+Users, organizations, projects and execution environments must have enforceable security boundaries.
+
+**Principle 5 — Graphs are derived intelligence**
+
+Neo4j must be rebuildable from authoritative sources. Graph failures must not corrupt canonical project data.
+
+**Principle 6 — Human-controlled delivery**
+
+Production changes, sensitive operations and final approvals remain subject to explicit authorization.
+
+---
+
+# 3. Definitive System Architecture
+
+The system is divided into nine logical layers.
+
+## Layer 1 — Presentation Layer
+
+Technology: Angular
+
+Modules:
+
+- Factory Dashboard
+- Organization Management
+- Project Workspace
+- Agent Command Center
+- Workflow Visualizer
+- Prompt Registry
+- Knowledge Graph Explorer
+- Repository Intelligence
+- Execution History
+- Observability Dashboard
+- Approval Center
+- Administration and Governance
+
+Users must be able to switch between projects and workspaces without losing execution context.
+
+## Layer 2 — Multi-Tenant Management
+
+Responsibilities:
+
+- Organization registration.
+- User management.
+- Role-based access control.
+- Project memberships.
+- Workspace isolation.
+- Provider credentials and permissions.
+- Usage quotas.
+- Organization policies.
+
+Hierarchy:
+
+Organization → Projects → Workspaces → Tasks → Executions.
+
+A user can participate in multiple projects with different permissions.
+
+A user can also choose different model providers for different executions without changing the project's canonical configuration.
+
+## Layer 3 — Factory Control Plane
+
+Technology: FastAPI + LangGraph + Temporal.
+
+Components:
+
+| Component | Responsibility |
+|---|---|
+| Requirement Analyzer | Understand user requirements |
+| PRD Generator | Generate structured requirements |
+| Architecture Planner | Define system architecture |
+| Task Decomposer | Convert work into tasks |
+| DAG Manager | Establish task dependencies |
+| Agent Scheduler | Allocate available agents |
+| Provider Router | Select execution providers |
+| Execution Manager | Start and monitor agent executions |
+| Checkpoint Manager | Persist recoverable state |
+| Handover Manager | Transfer incomplete tasks |
+| Integration Coordinator | Coordinate branches and merges |
+| Approval Manager | Enforce human approval gates |
+
+LangGraph manages agent workflows and reasoning.
+
+Temporal manages durable business processes, execution retries, timers, failure recovery and workflow resumption.
+
+PostgreSQL stores canonical workflow and task records.
+
+## Layer 4 — Agent Workforce
+
+Initial agent roles:
+
+| Agent | Responsibility |
+|---|---|
+| Product Agent | Requirements and PRD |
+| Architect Agent | Architecture and technical decisions |
+| Planner Agent | Task decomposition |
+| Backend Agent | Backend development |
+| Frontend Agent | UI development |
+| Database Agent | Schema and migrations |
+| QA Agent | Test generation and execution |
+| Code Review Agent | Independent code review |
+| DevOps Agent | Build and deployment preparation |
+
+Agent roles are independent of providers.
+
+An execution may use Claude, Gemini, Codex or Ollama according to scheduling and policy decisions.
+
+## Layer 5 — Provider Adapter
+
+Implement a standard provider interface.
+
+Required operations:
+
+- Execute task.
+- Resume or reconstruct task context.
+- Retrieve execution status.
+- Retrieve output.
+- Cancel execution.
+- Handle provider errors.
+- Report token and cost information where available.
+
+Not every provider offers native resumable sessions. Therefore, logical task recovery must be implemented by the factory rather than depending on provider-specific session capabilities.
+
+## Layer 6 — Execution Environment
+
+Technology: Docker + Git.
+
+Every task receives an isolated execution environment.
+
+Components:
+
+- Repository checkout.
+- Dedicated Git branch.
+- Git worktree.
+- Docker execution container.
+- Task-specific filesystem permissions.
+- Resource limits.
+- Test execution environment.
+- Execution logs.
+
+Agents must not directly modify the shared main branch.
+
+## Layer 7 — Engineering Intelligence
+
+Technology: Neo4j.
+
+Two logical graph domains:
+
+1. Repository Knowledge Graph.
+2. Engineering Knowledge Graph.
+
+Both operate on the same graph platform but have distinct schemas, access policies, provenance and synchronization processes.
+
+## Layer 8 — Quality and Verification
+
+Pipeline:
+
+1. Static analysis.
+2. Unit testing.
+3. Integration testing.
+4. Security scanning.
+5. Independent code review.
+6. Acceptance criteria validation.
+7. Build verification.
+8. Pull Request generation.
+
+A developer agent cannot approve its own implementation.
+
+## Layer 9 — Data, Observability and Governance
+
+Components:
+
+- PostgreSQL.
+- Redis.
+- Neo4j.
+- Object storage.
+- OpenTelemetry.
+- Langfuse.
+- Audit logging.
+- Cost tracking.
+- Access control.
+- Approval policies.
+
+---
+
+# 4. Multi-Tenant Architecture
+
+## 4.1 Tenant hierarchy
+
+```text
+Software Factory
+      |
+      +-- Organization A
+      |       |
+      |       +-- Project A1
+      |       |      |
+      |       |      +-- User Workspace 1
+      |       |      +-- User Workspace 2
+      |       |
+      |       +-- Project A2
+      |
+      +-- Organization B
+              |
+              +-- Project B1
+                     |
+                     +-- User Workspace 3
+```
+
+## 4.2 Isolation requirements
+
+Every tenant-owned record must have an organization identifier.
+
+Every project-specific record must have a project identifier.
+
+Access must be checked at the API, service, database and graph-query boundaries.
+
+Implement:
+
+- PostgreSQL Row-Level Security.
+- Organization-scoped authorization.
+- Project membership checks.
+- Workspace-specific execution isolation.
+- Tenant-scoped object storage paths.
+- Graph-query authorization.
+- Credential isolation.
+
+Neo4j graph access must not depend solely on agents remembering to filter by tenant. The graph access service must inject and enforce tenant and project scope.
+
+For stronger enterprise isolation, support dedicated Neo4j databases or deployments for customers requiring separate infrastructure.
+
+## 4.3 Example multi-user execution
+
+```text
+Organization: ACME
+
+Project: SALES-INTELLIGENCE
+
+User 1:
+  Provider: Claude
+  Workspace: WS-001
+  Branch: feature/auth-service
+
+User 2:
+  Provider: Gemini
+  Workspace: WS-002
+  Branch: feature/dashboard
+
+User 3:
+  Provider: Codex
+  Workspace: WS-003
+  Branch: feature/analytics
+
+Shared:
+  PRD
+  Architecture
+  API Contracts
+  Approved Knowledge
+  Prompt Registry
+  Repository Graph Snapshots
+```
+
+Users share authorized project knowledge but do not share live execution sessions or working directories.
+
+---
+
+# 5. Central Prompt Registry
+
+The prompt registry is the authoritative source for all agent instructions.
+
+## 5.1 Registry structure
+
+```text
+Prompt Registry
+    |
+    +-- Product
+    |     +-- Requirement Analyzer
+    |     +-- PRD Generator
+    |
+    +-- Architecture
+    |     +-- System Architect
+    |     +-- Design Reviewer
+    |
+    +-- Development
+    |     +-- Backend Developer
+    |     +-- Frontend Developer
+    |     +-- Database Developer
+    |
+    +-- Quality
+    |     +-- QA Engineer
+    |     +-- Code Reviewer
+    |
+    +-- DevOps
+          +-- Build Engineer
+          +-- Deployment Planner
+```
+
+## 5.2 Prompt versioning
+
+Every published prompt is immutable.
+
+Example:
+
+```text
+backend-developer
+    |
+    +-- v1.0.0
+    +-- v1.1.0
+    +-- v1.2.0
+    +-- v2.0.0
+```
+
+Prompt changes create new versions.
+
+A prompt version contains:
+
+- Prompt ID.
+- Version.
+- Agent role.
+- Prompt content.
+- Input schema.
+- Output schema.
+- Required tools.
+- Model compatibility.
+- Evaluation results.
+- Author.
+- Approval status.
+- Creation timestamp.
+- Content hash.
+
+The registry should distinguish draft, published, deprecated and revoked states.
+
+## 5.3 Prompt execution reproducibility
+
+Each execution records:
+
+```text
+execution_id
+prompt_id
+prompt_version
+prompt_content_hash
+rendered_prompt_hash
+system_instruction_version
+provider
+model_identifier
+model_configuration
+tool_schema_version
+context_snapshot_id
+```
+
+The exact rendered prompt must be preserved securely, subject to data-retention and secret-redaction policies.
+
+## 5.4 Prompt governance
+
+Only authorized users can publish prompt versions.
+
+Experimental prompts must not automatically replace approved production prompts.
+
+Organization policies may restrict which prompt versions can be used in particular projects.
+
+The registry is centrally managed, while access and execution permissions remain organization-aware.
+
+---
+
+# 6. Neo4j Graph Architecture
+
+## 6.1 Graph domain separation
+
+Neo4j will host two logical graph domains.
+
+### A. Repository Knowledge Graph
+
+Purpose: Understand the structure and dependencies of the source code.
+
+Node types:
+
+- Repository
+- Commit
+- Branch
+- Directory
+- File
+- Class
+- Function
+- Method
+- API Endpoint
+- Database Table
+- Database Column
+- Test
+- Dependency
+- Package
+
+Relationships:
+
+```text
+(:Repository)-[:CONTAINS]->(:File)
+
+(:File)-[:DEFINES]->(:Class)
+
+(:Class)-[:HAS_METHOD]->(:Method)
+
+(:Method)-[:CALLS]->(:Method)
+
+(:Class)-[:DEPENDS_ON]->(:Class)
+
+(:Endpoint)-[:IMPLEMENTS]->(:Method)
+
+(:Test)-[:TESTS]->(:Method)
+
+(:Commit)-[:MODIFIES]->(:File)
+```
+
+Every graph node and relationship must retain source provenance, project scope and version information where applicable.
+
+### B. Engineering Knowledge Graph
+
+Purpose: Understand why the software exists and how it should behave.
+
+Node types:
+
+- Requirement
+- Feature
+- Architecture Decision
+- Technical Constraint
+- Business Rule
+- API Contract
+- Security Policy
+- Engineering Standard
+- Task
+- Known Issue
+- Implementation Reference
+- Knowledge Document
+
+Relationships:
+
+```text
+(:Requirement)-[:SATISFIED_BY]->(:Feature)
+
+(:Feature)-[:IMPLEMENTED_BY]->(:ImplementationReference)
+
+(:ArchitectureDecision)-[:GOVERNS]->(:Feature)
+
+(:Requirement)-[:CONSTRAINED_BY]->(:TechnicalConstraint)
+
+(:APIContract)-[:USED_BY]->(:Feature)
+
+(:Task)-[:IMPLEMENTS]->(:Requirement)
+
+(:KnownIssue)-[:AFFECTS]->(:Feature)
+```
+
+Implementation references connect engineering decisions to repository entities.
+
+This is what enables impact analysis across business requirements and actual code.
+
+## 6.2 Shared knowledge graph
+
+Knowledge sharing follows a controlled promotion process.
+
+```text
+Project A Knowledge
+       |
+       v
+Knowledge Candidate
+       |
+       v
+Validation
+       |
+       v
+Approval
+       |
+       v
+Organization Knowledge Library
+       |
+       v
+Authorized Project B
+```
+
+Rules:
+
+1. Project knowledge is private by default.
+2. No automatic cross-project knowledge access.
+3. Only explicitly approved knowledge can be promoted.
+4. Promoted knowledge retains its source and ownership.
+5. Sensitive information and secrets are excluded.
+6. Organization-level knowledge can be deprecated or revoked.
+7. Project agents can consume approved organizational knowledge according to permissions.
+
+Knowledge must be reusable without unintentionally exposing source-project information.
+
+## 6.3 Graph versioning
+
+Graph snapshots must reference exact source states.
+
+Example:
+
+```yaml
+project_id: SALES-INTELLIGENCE
+
+repository_graph:
+  snapshot_id: RG-205
+  source_commit: b91c320
+  status: published
+
+engineering_knowledge_graph:
+  snapshot_id: KG-205
+  knowledge_revision: 18
+  status: published
+
+consistency:
+  status: validated
+```
+
+A graph snapshot must be reproducible or reconstructable from its source records and transformation version.
+
+Graph updates should be idempotent.
+
+Graph synchronization must detect stale snapshots and failed processing rather than silently serving incomplete results.
+
+---
+
+# 7. Canonical Agent Execution Contract
+
+All agents receive structured tasks rather than arbitrary conversation histories.
+
+Example:
+
+```yaml
+execution_id: EXEC-10045
+organization_id: ACME
+project_id: SALES-INTELLIGENCE
+task_id: TASK-104
+
+objective:
+  Implement JWT authentication.
+
+provider:
+  selected: claude
+
+context:
+  prd_version: PRD-1.4
+  architecture_version: ARCH-1.4
+  prompt_version: BACKEND-2.1
+  repository_commit: a83f91c
+  repository_graph: RG-204
+  knowledge_graph: KG-204
+
+constraints:
+  framework: Spring Boot
+  database: PostgreSQL
+  security: Spring Security
+
+acceptance_criteria:
+  - Valid credentials return tokens.
+  - Invalid credentials return HTTP 401.
+  - Refresh token works.
+  - Tests pass.
+
+output:
+  - implementation
+  - tests
+  - git_diff
+  - execution_report
+```
+
+The actual execution contract should be a validated, versioned JSON schema. YAML above is illustrative.
+
+## 7.1 Execution manifest
+
+Each run produces an immutable execution manifest containing:
+
+- Execution ID.
+- Organization and project IDs.
+- User and initiating request.
+- Task and attempt IDs.
+- Provider and model identifiers.
+- Prompt version and hashes.
+- Tool definitions version.
+- Input context snapshot.
+- Input Git commit.
+- Output Git commit.
+- Graph snapshot references.
+- Checkpoint references.
+- Test results.
+- Artifact references.
+- Token usage and cost where available.
+- Approval history.
+- Execution status.
+
+This becomes the foundation for engineering auditability and reproducibility.
+
+---
+
+# 8. Data Architecture and Database Schema
+
+## 8.1 PostgreSQL — authoritative data store
+
+### Organization and identity domain
+
+| Table | Purpose |
+|---|---|
+| organizations | Tenant records |
+| users | User identities |
+| memberships | Organization roles |
+| project_members | Project-level permissions |
+| invitations | Organization invitations |
+| provider_connections | Provider connection metadata |
+| policies | Organization and project policies |
+
+### Project domain
+
+| Table | Purpose |
+|---|---|
+| projects | Project records |
+| repositories | Git repository metadata |
+| workspaces | Isolated development workspaces |
+| project_settings | Technical configuration |
+| project_artifacts | PRD, architecture and documentation references |
+| project_integrations | GitHub and external integrations |
+
+### Agent and workflow domain
+
+| Table | Purpose |
+|---|---|
+| agent_definitions | Agent roles and capabilities |
+| agent_assignments | Task-to-agent assignments |
+| agent_sessions | Provider session metadata |
+| tasks | Canonical tasks |
+| task_dependencies | DAG dependencies |
+| task_attempts | Individual execution attempts |
+| executions | Factory execution records |
+| checkpoints | Recoverable state |
+| execution_events | Execution history |
+| handover_records | Agent transfer history |
+| approvals | Human approval records |
+
+### Prompt and artifact domain
+
+| Table | Purpose |
+|---|---|
+| prompt_definitions | Prompt identities |
+| prompt_versions | Immutable prompt versions |
+| prompt_publications | Published versions |
+| prompt_evaluations | Prompt evaluation results |
+| artifacts | Artifact metadata |
+| artifact_versions | Immutable revisions |
+| execution_manifests | Reproducibility manifests |
+
+### Graph domain
+
+| Table | Purpose |
+|---|---|
+| graph_snapshots | Graph snapshot metadata |
+| graph_sync_jobs | Synchronization jobs |
+| graph_sync_events | Processed change events |
+| graph_promotions | Knowledge promotion records |
+| knowledge_sources | Source provenance |
+
+### Operations domain
+
+| Table | Purpose |
+|---|---|
+| audit_logs | Security and administrative activity |
+| usage_records | Model usage |
+| cost_records | Execution cost |
+| resource_allocations | Execution resources |
+| outbox_events | Reliable event publishing |
+| notifications | User notifications |
+
+## 8.2 Relationships
+
+```text
+Organization
+    |
+    +-- Memberships
+    |
+    +-- Projects
+           |
+           +-- Repositories
+           |
+           +-- Workspaces
+           |
+           +-- Tasks
+           |     |
+           |     +-- Dependencies
+           |     +-- Attempts
+           |     +-- Executions
+           |            |
+           |            +-- Checkpoints
+           |            +-- Artifacts
+           |            +-- Manifest
+           |
+           +-- Graph Snapshots
+           |
+           +-- Project Artifacts
+```
+
+## 8.3 Object storage
+
+Use an S3-compatible object store for large and immutable artifacts.
+
+Suggested structure:
+
+```text
+/organizations/{org_id}/
+    /projects/{project_id}/
+        /prd/
+        /architecture/
+        /prompts/
+        /executions/
+        /checkpoints/
+        /test-reports/
+        /agent-reports/
+        /graph-exports/
+```
+
+PostgreSQL stores metadata and references. Object storage stores file content.
+
+Apply encryption, access policies, retention rules and content hashes.
+
+## 8.4 Data ownership
+
+| Data | Authoritative location |
+|---|---|
+| Source code | Git |
+| Tasks and workflow state | PostgreSQL |
+| User and tenant records | PostgreSQL |
+| Prompts | Central prompt registry |
+| PRDs and architecture | Artifact registry |
+| Execution history | PostgreSQL and audit/event records |
+| Large execution artifacts | Object storage |
+| Repository relationships | Neo4j projection |
+| Engineering knowledge relationships | Neo4j projection |
+| Agent context | Versioned context snapshots |
+| Metrics and traces | Observability infrastructure |
+
+---
+
+# 9. Cross-System Data Consistency
+
+The factory must prevent PostgreSQL, Git and Neo4j from silently diverging.
+
+## 9.1 Event-driven synchronization
+
+Use the transactional outbox pattern.
+
+```text
+Git / PostgreSQL Change
+          |
+          v
+Transactional Outbox
+          |
+          v
+Event Publisher
+          |
+          v
+Redis / Event Transport
+          |
+          v
+Graph Synchronization Workers
+          |
+          +-- Repository Graph Builder
+          |
+          +-- Knowledge Graph Builder
+          |
+          v
+Validation
+          |
+          v
+Published Graph Snapshot
+```
+
+Redis may provide event transport and caching, but durable events must remain recoverable from the outbox or an equivalent persistent event system.
+
+## 9.2 Consistency requirements
+
+- Every event has a unique ID.
+- Consumers must be idempotent.
+- Failed jobs must be retryable.
+- Graph synchronization must track source versions.
+- Duplicate events must not duplicate graph relationships.
+- Graph snapshots must never claim to represent a newer commit than they actually processed.
+- Failed synchronization must be observable.
+- Reconciliation jobs must periodically compare canonical sources with graph projections.
+
+## 9.3 Context snapshot consistency
+
+Every task pins:
+
+- PRD version.
+- Architecture version.
+- Prompt version.
+- Git commit.
+- Repository graph snapshot.
+- Engineering knowledge graph snapshot.
+- API contract version.
+- Relevant organizational knowledge revisions.
+
+If the canonical state changes, the existing task does not silently change its context.
+
+The factory must decide whether to continue, rebase, invalidate or re-plan the task.
+
+---
+
+# 10. Concurrent Development and Git Integration
+
+## 10.1 Branch strategy
+
+```text
+main
+  |
+  +-- feature/TASK-101-auth
+  |
+  +-- feature/TASK-102-dashboard
+  |
+  +-- feature/TASK-103-analytics
+```
+
+Each independent execution receives a dedicated branch and worktree.
+
+## 10.2 Integration coordinator
+
+Responsibilities:
+
+1. Track active changes.
+2. Identify overlapping file modifications.
+3. Detect dependency conflicts.
+4. Manage branch rebasing.
+5. Run integration tests.
+6. Escalate unresolved conflicts.
+7. Prepare pull requests.
+
+Introduce advisory file leases for high-conflict resources.
+
+A lease should include an owner, task, resource, expiration and renewal mechanism.
+
+Git remains the final authority for code integration. A file lease is a coordination mechanism, not a replacement for merge conflict detection.
+
+## 10.3 Delivery workflow
+
+```text
+Agent Implementation
+        |
+        v
+Feature Branch
+        |
+        v
+Automated Tests
+        |
+        v
+Independent Review
+        |
+        v
+Integration Coordinator
+        |
+        v
+Pull Request
+        |
+        v
+Human Approval
+        |
+        v
+Protected Main Branch
+```
+
+---
+
+# 11. Agent Failure and Handover
+
+The factory must recover tasks independently of provider sessions.
+
+Example:
+
+```text
+TASK-104
+   |
+   v
+Claude executes
+   |
+   v
+Checkpoint created
+   |
+   v
+Provider failure
+   |
+   v
+Factory detects timeout
+   |
+   v
+Execution marked interrupted
+   |
+   v
+Checkpoint and repository inspected
+   |
+   v
+Gemini assigned
+   |
+   v
+Context reconstructed
+   |
+   v
+Gemini continues task
+   |
+   v
+Independent verification
+```
+
+Handover context must contain:
+
+- Original task contract.
+- Completed work.
+- Remaining work.
+- Previous decisions.
+- Relevant conversation summary.
+- Git diff.
+- Current commit.
+- Test results.
+- Known issues.
+- Graph snapshot references.
+- Outstanding acceptance criteria.
+
+A handover creates a new execution attempt linked to the original task.
+
+The original attempt remains immutable.
+
+---
+
+# 12. Security and Governance
+
+Security is a first-class architectural requirement.
+
+### Tenant security
+
+- PostgreSQL RLS.
+- Organization and project authorization.
+- Tenant-scoped graph access.
+- Secure provider credentials.
+- Object storage isolation.
+
+### Execution security
+
+- Isolated Docker environments.
+- Restricted network access.
+- CPU, memory and execution-time limits.
+- Secrets injection through controlled mechanisms.
+- No unrestricted host filesystem access.
+- Audit logs for sensitive actions.
+
+### AI security
+
+- Prompt injection detection.
+- Untrusted repository and document content isolation.
+- Tool authorization.
+- Least-privilege agent permissions.
+- Output validation.
+- Sensitive data redaction.
+- Model-provider data policies.
+
+### Human approval
+
+Require authorization for:
+
+- Production deployment.
+- Protected branch modifications.
+- Destructive database operations.
+- Credential and permission changes.
+- Organization knowledge promotion.
+- Prompt publication.
+- Sensitive external actions.
+
+---
+
+# 13. Observability and Evaluation
+
+Track the factory as an engineering production system.
+
+### Operational metrics
+
+- Active executions.
+- Tasks completed.
+- Task failure rate.
+- Average execution time.
+- Agent utilization.
+- Handover success rate.
+- Retry rate.
+- Queue waiting time.
+- Graph synchronization lag.
+- Integration failure rate.
+
+### Quality metrics
+
+- Test pass rate.
+- Acceptance criteria completion.
+- Review rejection rate.
+- Defect rate.
+- Security findings.
+- Rework frequency.
+
+### Economic metrics
+
+- Tokens per task.
+- Cost per execution.
+- Cost per successful task.
+- Provider cost comparison.
+- Cost of retries.
+- Resource consumption.
+
+### Evaluation framework
+
+Every major agent role should have repeatable evaluation datasets and test cases.
+
+Evaluate:
+
+- Requirement interpretation.
+- Task decomposition quality.
+- Implementation correctness.
+- Code quality.
+- Test quality.
+- Context retrieval accuracy.
+- Handover success.
+- Provider-to-provider consistency.
+
+Do not use identical output text as the definition of provider consistency. The objective is consistent contracts, behavior, acceptance criteria and verified outcomes.
+
+---
+
+# 14. Phase-Gated Implementation Roadmap
+
+The implementation must have explicit exit criteria. A phase is complete only when its acceptance tests pass.
+
+## Phase 0 — Architecture and Engineering Foundation
+
+**Deliverables**
+
+- Architecture specification.
+- Repository structure.
+- Domain boundaries.
+- API conventions.
+- Data ownership definitions.
+- Security model.
+- Development environment.
+- CI pipeline.
+- Architecture decision records.
+
+**Exit criteria**
+
+- Architecture reviewed.
+- Core data ownership documented.
+- Repository and deployment environment operational.
+- Engineering standards established.
+
+## Phase 1 — Multi-Tenant Factory Foundation
+
+**Deliverables**
+
+- Angular application shell.
+- FastAPI backend.
+- PostgreSQL schema.
+- Organization and user management.
+- Project management.
+- RBAC and RLS.
+- Workspace management.
+- GitHub integration.
+- Basic task management.
+- Central prompt registry.
+- Artifact versioning.
+- Execution manifest.
+
+**Exit criteria**
+
+A user can create an organization, register a project, connect a repository, create a task, select a provider and execute a basic coding workflow.
+
+Two organizations must not be able to access each other's project data.
+
+## Phase 2 — Agent Orchestration and Recovery
+
+**Deliverables**
+
+- LangGraph integration.
+- Temporal integration.
+- Agent definitions.
+- Provider adapters.
+- Execution contract.
+- Agent scheduler.
+- Execution history.
+- Checkpoint persistence.
+- Provider failure handling.
+- Agent handover.
+- Retry policies.
+
+**Exit criteria**
+
+A task started with one provider must be recoverable by another provider after a simulated failure, without losing the canonical task state or existing repository changes.
+
+## Phase 3 — Parallel Engineering
+
+**Deliverables**
+
+- DAG task decomposition.
+- Dependency management.
+- Parallel scheduler.
+- Git worktrees.
+- Branch isolation.
+- File leases.
+- Integration coordinator.
+- Merge conflict detection.
+- Multi-user project execution.
+
+**Exit criteria**
+
+Multiple users can work on independent tasks in the same project with isolated environments, controlled integration and no unauthorized changes to shared branches.
+
+## Phase 4 — Repository and Engineering Intelligence
+
+**Deliverables**
+
+- Neo4j infrastructure.
+- Repository graph ingestion.
+- Code parsing and symbol extraction.
+- Dependency relationships.
+- Engineering knowledge graph.
+- Requirement-to-code relationships.
+- Graph synchronization pipeline.
+- Snapshot management.
+- Provenance tracking.
+- Hybrid knowledge sharing.
+- Graph validation and reconciliation.
+
+**Exit criteria**
+
+An agent can retrieve relevant code dependencies and approved engineering decisions from a pinned graph snapshot.
+
+Changes in Git must result in an observable graph synchronization workflow.
+
+Project knowledge must not leak into another project without an explicit authorized promotion.
+
+## Phase 5 — Quality, Verification and Governance
+
+**Deliverables**
+
+- Test orchestration.
+- Static analysis.
+- Security scanning.
+- Independent review.
+- Acceptance criteria engine.
+- Prompt evaluation.
+- Model benchmarking.
+- Approval workflows.
+- Audit logs.
+- Cost tracking.
+- Observability dashboard.
+
+**Exit criteria**
+
+The factory can produce a reviewable pull request with recorded verification results, traceable artifacts and an auditable execution manifest.
+
+## Phase 6 — Production-Ready Software Factory
+
+**Deliverables**
+
+- Multi-project orchestration.
+- Organization-level knowledge library.
+- Agent performance management.
+- Provider selection policies.
+- Usage quotas.
+- Advanced execution recovery.
+- Disaster recovery.
+- Infrastructure monitoring.
+- Deployment automation.
+- Enterprise governance.
+
+**Exit criteria**
+
+The factory can operate multiple projects and users with controlled resource allocation, recoverable executions, secure knowledge sharing and repeatable software delivery.
+
+---
+
+# 15. Proposed Repository Structure
+
+```text
+software-factory/
+│
+├── frontend/
+│   └── angular-app/
+│
+├── backend/
+│   └── factory-api/
+│
+├── orchestration/
+│   ├── langgraph/
+│   ├── temporal/
+│   ├── scheduler/
+│   └── workflows/
+│
+├── agents/
+│   ├── product/
+│   ├── architect/
+│   ├── planner/
+│   ├── backend/
+│   ├── frontend/
+│   ├── database/
+│   ├── qa/
+│   ├── reviewer/
+│   └── devops/
+│
+├── providers/
+│   ├── claude/
+│   ├── codex/
+│   ├── gemini/
+│   ├── ollama/
+│   └── common/
+│
+├── intelligence/
+│   ├── repository-graph/
+│   ├── engineering-knowledge/
+│   ├── graph-sync/
+│   ├── context-retrieval/
+│   └── snapshots/
+│
+├── prompts/
+│   ├── schemas/
+│   ├── evaluations/
+│   └── registry/
+│
+├── execution/
+│   ├── docker/
+│   ├── git/
+│   ├── worktrees/
+│   └── integration/
+│
+├── quality/
+│   ├── testing/
+│   ├── security/
+│   ├── review/
+│   └── evaluation/
+│
+├── data/
+│   ├── migrations/
+│   ├── postgres/
+│   ├── neo4j/
+│   └── event-schemas/
+│
+├── observability/
+│   ├── telemetry/
+│   ├── dashboards/
+│   └── cost-tracking/
+│
+├── infrastructure/
+│   ├── docker/
+│   ├── deployment/
+│   └── monitoring/
+│
+├── tests/
+│   ├── unit/
+│   ├── integration/
+│   ├── e2e/
+│   ├── security/
+│   └── recovery/
+│
+└── docs/
+    ├── architecture/
+    ├── adr/
+    ├── api/
+    ├── data-model/
+    └── implementation/
+```
+
+This is a logical module structure. It does not imply that every directory needs to become a separate deployable service.
+
+---
+
+# 16. Non-Functional Requirements
+
+The platform must be designed for:
+
+| Area | Requirement |
+|---|---|
+| Isolation | Tenant and project boundaries enforced |
+| Reliability | Durable task and execution recovery |
+| Reproducibility | Immutable execution manifests |
+| Scalability | Horizontally scalable execution workers |
+| Security | Least-privilege access |
+| Consistency | Versioned context and graph projections |
+| Extensibility | New providers and agents without redesign |
+| Observability | Execution-level tracing |
+| Maintainability | Modular architecture and automated tests |
+| Governance | Auditable approvals and data access |
+
+Performance and availability targets should be established through workload benchmarking before being treated as production SLAs.
+
+---
+
+# 17. Final Architectural Rules
+
+These decisions are considered architectural constraints.
+
+1. PostgreSQL is the authoritative store for factory transactional data.
+2. Git is the authoritative store for source code history.
+3. Object storage holds immutable large artifacts.
+4. Neo4j stores repository and engineering knowledge projections.
+5. Repository and engineering knowledge graphs have separate schemas and access policies.
+6. Cross-project knowledge sharing requires explicit promotion and authorization.
+7. Prompt versions are centrally managed and immutable after publication.
+8. Every execution pins its prompt and context versions.
+9. Every task has a canonical execution contract.
+10. Provider sessions are replaceable; task state is not.
+11. Every agent executes in an isolated environment.
+12. Git integration is controlled by the factory.
+13. Graph synchronization is asynchronous, observable and recoverable.
+14. Graph snapshots cannot claim freshness beyond their verified source state.
+15. Independent verification is mandatory before delivery.
+16. Sensitive operations require human authorization.
+
+# 18. Definition of the First Successful Factory
+
+The first complete demonstration should be:
+
+**Scenario: Multi-user, multi-provider software development**
+
+1. Organization creates a project and connects a GitHub repository.
+2. User 1 selects Claude and starts a backend task.
+3. User 2 selects Gemini and starts a frontend task.
+4. Both tasks receive versioned execution contracts.
+5. Both agents work in isolated Git worktrees.
+6. Factory records prompts, outputs, commits and execution manifests.
+7. Repository graph is updated after commits.
+8. Engineering knowledge graph connects requirements to implementations.
+9. Claude execution is deliberately interrupted.
+10. Factory reconstructs its task context and hands it to Codex.
+11. Codex continues the existing task.
+12. Integration coordinator combines completed changes.
+13. QA and independent review validate the result.
+14. Factory creates a GitHub Pull Request.
+15. Authorized user approves delivery.
+
+**Success condition:** All work is traceable, version-controlled, recoverable, tenant-isolated and independently verified.
+
+---
+
+## Final Product Definition
+
+The Software Factory is a multi-tenant, provider-independent AI engineering platform that uses persistent orchestration, specialised AI agents, isolated execution environments, version-controlled engineering artifacts and graph-powered repository and organizational knowledge to automate the software development lifecycle.
+
+Its fundamental differentiator is not that it can generate code.
+
+Its differentiator is that it can **coordinate, preserve, recover, verify and deliver engineering work across multiple users, agents, models and projects without losing consistency or control.**

@@ -1,0 +1,62 @@
+<div class="shell">
+  <aside class="sidebar">
+    <div class="sidebar__brand">
+      <sf-icon name="logos/software-factory-mark" class="sidebar__brand-mark" />
+      <span>Software Factory</span>
+    </div>
+
+    <nav class="sidebar__nav">
+      @for (item of navItems; track item.route) {
+        <a
+          class="sidebar__link"
+          [routerLink]="item.route"
+          routerLinkActive="active"
+          [routerLinkActiveOptions]="{ exact: false }"
+        >
+          <sf-icon [name]="item.icon" />
+          <span>{{ item.label }}</span>
+          @if (item.route === '/approvals' && approvalsPending().length) {
+            <span class="sidebar__badge">{{ approvalsPending().length }}</span>
+          }
+        </a>
+      }
+    </nav>
+
+    <div class="sidebar__org">
+      <span class="sidebar__org-label">Organization</span>
+      <div class="sidebar__org-select">
+        <sf-icon name="navigation/projects" />
+        <select [value]="activeOrg().id" (change)="setOrg($any($event.target).value)">
+          @for (org of organizations(); track org.id) {
+            <option [value]="org.id">{{ org.name }}</option>
+          }
+        </select>
+      </div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="topbar__search">
+        <sf-icon name="workspace/code-search" />
+        <input type="text" placeholder="Search projects, tasks, agents, artifacts..." />
+      </div>
+      <div class="topbar__actions">
+        <button class="topbar__icon-btn" type="button" aria-label="Notifications">
+          <sf-icon name="navigation/approvals" />
+          <span class="topbar__dot"></span>
+        </button>
+        <button class="topbar__icon-btn" type="button" aria-label="Help">?</button>
+        <div class="topbar__user">
+          <span class="topbar__avatar">{{ user().initials }}</span>
+          <span class="topbar__name">{{ user().name }}</span>
+          <sf-icon name="navigation/workflows" class="topbar__chevron" />
+        </div>
+      </div>
+    </header>
+
+    <main class="content">
+      <router-outlet />
+    </main>
+  </div>
+</div>

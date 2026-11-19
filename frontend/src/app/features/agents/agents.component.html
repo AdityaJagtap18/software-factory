@@ -1,0 +1,134 @@
+<div class="sf-page-header">
+  <div class="sf-page-header__title-group">
+    <span class="sf-page-header__icon tone-violet"><sf-icon name="navigation/agents" /></span>
+    <div>
+      <h1>Agent Command Center</h1>
+      <p>Create, manage and monitor AI agents for your software factory</p>
+    </div>
+  </div>
+  <div class="sf-page-header__actions">
+    <button class="sf-btn sf-btn--primary" type="button"><sf-icon name="navigation/agents" /> Create Agent</button>
+  </div>
+</div>
+
+<div class="sf-stat-grid">
+  <div class="sf-stat-card sf-stat-card--blue">
+    <div class="sf-stat-card__icon"><sf-icon name="navigation/agents" /></div>
+    <div><div class="sf-stat-card__label">Total Agents</div><div class="sf-stat-card__value">{{ agents().length }} <span class="sf-stat-card__delta up">↑ +3</span></div></div>
+  </div>
+  <div class="sf-stat-card sf-stat-card--violet">
+    <div class="sf-stat-card__icon"><sf-icon name="navigation/workflows" /></div>
+    <div><div class="sf-stat-card__label">Active Runs</div><div class="sf-stat-card__value">8 <span class="sf-stat-card__delta up">↑ +2</span></div></div>
+  </div>
+  <div class="sf-stat-card sf-stat-card--green">
+    <div class="sf-stat-card__icon"><sf-icon name="status/success" /></div>
+    <div><div class="sf-stat-card__label">Success Rate</div><div class="sf-stat-card__value">96.8% <span class="sf-stat-card__delta up">↑ +1.9%</span></div></div>
+  </div>
+  <div class="sf-stat-card sf-stat-card--amber">
+    <div class="sf-stat-card__icon"><sf-icon name="navigation/monitoring" /></div>
+    <div><div class="sf-stat-card__label">Avg. Run Time</div><div class="sf-stat-card__value">7.4 min <span class="sf-stat-card__delta down">↓ -18%</span></div></div>
+  </div>
+</div>
+
+<div class="sf-tabs">
+  <button type="button" class="sf-tab" [class.active]="tab() === 'registry'" (click)="tab.set('registry')"><sf-icon name="navigation/agents" /> Agent Registry</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'runs'" (click)="tab.set('runs')"><sf-icon name="navigation/workflows" /> Runs &amp; Sessions</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'capabilities'" (click)="tab.set('capabilities')"><sf-icon name="navigation/settings" /> Capabilities</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'providers'" (click)="tab.set('providers')"><sf-icon name="navigation/providers" /> Providers</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'health'" (click)="tab.set('health')"><sf-icon name="navigation/monitoring" /> Worker Health</button>
+</div>
+
+@if (tab() === 'registry') {
+  <div class="ag-grid">
+    <section class="sf-card">
+      <div class="sf-panel-title">
+        <h3>Agent Registry ({{ filtered().length }})</h3>
+      </div>
+      <div class="ag-search">
+        <sf-icon name="workspace/code-search" />
+        <input type="text" placeholder="Search agents..." [value]="search()" (input)="search.set($any($event.target).value)" />
+      </div>
+      <table class="sf-table">
+        <thead><tr><th>Agent</th><th>Type</th><th>Model / Provider</th><th>Status</th><th>Active Runs</th><th>Last Run</th></tr></thead>
+        <tbody>
+          @for (a of filtered(); track a.id) {
+            <tr class="clickable" [class.selected]="a.id === selected().id" (click)="select(a)">
+              <td>
+                <div class="ag-name"><sf-icon [name]="a.icon" /><div><strong>{{ a.name }}</strong><div class="ag-desc">{{ a.description }}</div></div></div>
+              </td>
+              <td><span class="sf-pill">{{ a.type }}</span></td>
+              <td>{{ a.model }}</td>
+              <td><span class="sf-badge" [class]="'sf-badge--' + statusTone(a.status)">{{ a.status }}</span></td>
+              <td>{{ a.activeRuns }}</td>
+              <td>{{ a.lastRun }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </section>
+
+    <aside class="sf-card">
+      <div class="sf-panel-title">
+        <h3><sf-icon [name]="selected().icon" /> {{ selected().name }}</h3>
+        <span class="sf-badge" [class]="'sf-badge--' + statusTone(selected().status)">{{ selected().status }}</span>
+      </div>
+      <p class="ag-detail-desc">{{ selected().description }}</p>
+      <div class="sf-tabs" style="margin:0 18px 10px;border:none;padding:0;">
+        <button type="button" class="sf-tab" [class.active]="detailTab() === 'overview'" (click)="detailTab.set('overview')">Overview</button>
+        <button type="button" class="sf-tab" [class.active]="detailTab() === 'configuration'" (click)="detailTab.set('configuration')">Configuration</button>
+        <button type="button" class="sf-tab" [class.active]="detailTab() === 'runs'" (click)="detailTab.set('runs')">Runs</button>
+        <button type="button" class="sf-tab" [class.active]="detailTab() === 'logs'" (click)="detailTab.set('logs')">Logs</button>
+      </div>
+
+      @if (detailTab() === 'overview') {
+        <div class="ag-section">
+          <h4>Key Details</h4>
+          <div class="pw-info" style="padding:0 0 10px;">
+            <div class="pw-info__row"><span class="label">Agent ID</span><span class="value">{{ selected().id }}</span></div>
+            <div class="pw-info__row"><span class="label">Type</span><span class="sf-pill">{{ selected().type }}</span></div>
+            <div class="pw-info__row"><span class="label">Model / Provider</span><span class="value">{{ selected().model }}</span></div>
+            <div class="pw-info__row"><span class="label">Last Used</span><span class="value">{{ selected().lastRun }}</span></div>
+          </div>
+        </div>
+        <div class="ag-section">
+          <h4>Capabilities</h4>
+          <div class="ag-capabilities">
+            @for (cap of selected().capabilities; track cap) {
+              <span class="sf-pill"><sf-icon name="status/success" /> {{ cap }}</span>
+            }
+          </div>
+        </div>
+      }
+
+      @if (detailTab() !== 'overview') {
+        <div class="sf-empty">Configure the full behavior of this agent from <a routerLink="/settings">Settings → Agents</a>.</div>
+      }
+    </aside>
+  </div>
+}
+
+@if (tab() === 'runs') {
+  <section class="sf-card">
+    <div class="sf-panel-title"><h3>Recent Runs &amp; Sessions</h3></div>
+    <table class="sf-table">
+      <thead><tr><th>Agent</th><th>Task</th><th>Status</th><th>Duration</th></tr></thead>
+      <tbody>
+        @for (a of agents(); track a.id) {
+          @if (a.activeRuns > 0) {
+            <tr><td>{{ a.name }}</td><td>{{ a.activeRuns }} active session(s)</td><td><span class="sf-badge sf-badge--blue">Running</span></td><td>—</td></tr>
+          }
+        }
+      </tbody>
+    </table>
+  </section>
+}
+
+@if (tab() === 'capabilities' || tab() === 'providers' || tab() === 'health') {
+  <section class="sf-card">
+    <div class="sf-empty">
+      @if (tab() === 'capabilities') { Capability profiles (model, adapter, runtime, execution-environment layers) are managed from <a routerLink="/settings">Settings</a>. }
+      @if (tab() === 'providers') { Provider connections for agent execution are managed from <a routerLink="/providers">Providers &amp; Models</a>. }
+      @if (tab() === 'health') { Worker pool health is available on <a routerLink="/monitoring">Monitoring &amp; Observability</a>. }
+    </div>
+  </section>
+}

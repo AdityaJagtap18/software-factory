@@ -1,0 +1,121 @@
+.tone-violet {
+  background: #e3e0ff !important;
+  sf-icon { color: var(--sf-violet-600); }
+}
+
+.apr-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.apr-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+}
+
+.apr-list__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  text-align: left;
+  border: 1px solid transparent;
+  border-radius: var(--sf-radius-md);
+  background: transparent;
+  padding: 12px;
+
+  sf-icon { width: 20px; height: 20px; color: var(--sf-text-secondary); margin-top: 2px; }
+
+  &:hover { background: var(--sf-surface-muted); }
+  &.active { background: #eef2ff; border-color: #c7d4ff; }
+}
+
+.apr-list__title {
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.apr-list__subtitle {
+  font-size: 12px;
+  color: var(--sf-text-secondary);
+  margin: 3px 0 6px;
+}
+
+.apr-list__tags {
+  display: flex;
+  gap: 6px;
+}
+
+.apr-list__time {
+  font-size: 11px;
+  color: var(--sf-text-tertiary);
+  white-space: nowrap;
+}
+
+.apr-decisions {
+  padding: 10px 18px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.apr-decisions__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+
+  sf-icon { width: 14px; height: 14px; margin-right: 4px; }
+}
+
+.apr-decisions__time {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--sf-text-tertiary);
+}
+
+.apr-detail-sub {
+  padding: 0 18px 12px;
+  font-size: 12.5px;
+  color: var(--sf-text-secondary);
+}
+
+.apr-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  padding: 0 18px 18px;
+
+  h4 {
+    font-size: 11.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--sf-text-tertiary);
+    margin: 14px 0 8px;
+
+    &:first-child { margin-top: 0; }
+  }
+
+  p {
+    font-size: 12.5px;
+    color: var(--sf-text-secondary);
+    line-height: 1.6;
+  }
+}
+
+.apr-actions {
+  display: flex;
+  gap: 10px;
+  padding: 14px 18px;
+  border-top: 1px solid var(--sf-border);
+}
+
+@media (max-width: 1150px) {
+  .apr-grid { grid-template-columns: 1fr; }
+}

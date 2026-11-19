@@ -1,0 +1,115 @@
+<div class="sf-breadcrumbs">
+  <a routerLink="/projects">Projects</a> <span>›</span> <a>FINTRIX</a> <span>›</span>
+  <span class="current">Repository Intelligence</span>
+</div>
+
+<div class="sf-page-header">
+  <div class="sf-page-header__title-group">
+    <span class="sf-page-header__icon tone-violet"><sf-icon name="navigation/repositories" /></span>
+    <div>
+      <h1>FINTRIX — Repository Intelligence</h1>
+      <p>Code graph, dependencies and engineering context for the repository</p>
+    </div>
+  </div>
+  <div class="sf-page-header__actions">
+    <span class="sf-pill">main</span>
+    <span class="sf-badge sf-badge--green">Indexed</span>
+    <button class="sf-btn" type="button"><sf-icon name="navigation/workflows" /> Sync Now</button>
+  </div>
+</div>
+
+<div class="sf-tabs">
+  <button type="button" class="sf-tab" [class.active]="tab() === 'overview'" (click)="tab.set('overview')"><sf-icon name="navigation/dashboard" /> Overview</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'graph'" (click)="tab.set('graph')"><sf-icon name="workspace/repository-graph" /> Repository Graph</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'search'" (click)="tab.set('search')"><sf-icon name="workspace/code-search" /> Code Search</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'dependencies'" (click)="tab.set('dependencies')"><sf-icon name="workspace/dependencies" /> Dependencies</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'impact'" (click)="tab.set('impact')"><sf-icon name="workspace/impact-analysis" /> Impact Analysis</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'history'" (click)="tab.set('history')"><sf-icon name="workspace/graph-history" /> Graph History</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'indexing'" (click)="tab.set('indexing')"><sf-icon name="workspace/indexing" /> Indexing</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'settings'" (click)="tab.set('settings')"><sf-icon name="navigation/settings" /> Settings</button>
+</div>
+
+<div class="ri-grid">
+  <aside class="sf-card">
+    <div class="sf-panel-title"><h3>Repository</h3></div>
+    <div class="ri-tree">
+      <ng-container *ngTemplateOutlet="treeTpl; context: { $implicit: repoTree() }" />
+    </div>
+    <ng-template #treeTpl let-node>
+      <div class="rt-item" [class.active]="node.active" (click)="node.type === 'folder' ? toggle(node) : null">
+        @if (node.type === 'folder') {
+          <sf-icon name="navigation/workflows" class="rt-item__chevron" [class.open]="isExpanded(node)" />
+          <sf-icon name="navigation/repositories" class="rt-item__icon" />
+        } @else {
+          <span class="rt-item__spacer"></span>
+          <sf-icon name="workspace/code-diff" class="rt-item__icon" />
+        }
+        <span>{{ node.name }}</span>
+      </div>
+      @if (node.type === 'folder' && isExpanded(node) && node.children) {
+        <div class="rt-children">
+          @for (child of node.children; track child.name) {
+            <ng-container *ngTemplateOutlet="treeTpl; context: { $implicit: child }" />
+          }
+        </div>
+      }
+    </ng-template>
+  </aside>
+
+  <section class="sf-card ri-graph-card">
+    <div class="sf-panel-title"><h3>Repository Graph</h3></div>
+    <div class="ri-graph">
+      <div class="ri-graph__node ri-graph__node--center"><sf-icon name="navigation/artifacts" /><span>InvoiceExtractionService</span><small>Service</small></div>
+      <div class="ri-graph__node" style="left:8%;top:10%;"><sf-icon name="workspace/code-diff" /><span>InvoiceController</span><small>Controller</small></div>
+      <div class="ri-graph__node" style="left:38%;top:4%;"><sf-icon name="navigation/repositories" /><span>InvoiceRepository</span><small>Repository</small></div>
+      <div class="ri-graph__node" style="left:68%;top:10%;"><sf-icon name="navigation/artifacts" /><span>Invoice</span><small>Model</small></div>
+      <div class="ri-graph__node" style="left:4%;top:55%;"><sf-icon name="navigation/settings" /><span>DocumentParserService</span><small>Service</small></div>
+      <div class="ri-graph__node" style="left:28%;top:78%;"><sf-icon name="navigation/settings" /><span>ClassificationService</span><small>Service</small></div>
+      <div class="ri-graph__node" style="left:70%;top:60%;"><sf-icon name="navigation/providers" /><span>StorageService</span><small>Service</small></div>
+      <div class="ri-graph__node" style="left:88%;top:30%;"><sf-icon name="workspace/code-diff" /><span>OCRClient</span><small>Client</small></div>
+      <div class="ri-graph__node" style="left:45%;top:88%;"><sf-icon name="navigation/settings" /><span>ExtractionConfig</span><small>Config</small></div>
+    </div>
+  </section>
+
+  <aside class="sf-card">
+    <div class="sf-panel-title"><h3>InvoiceExtractionService</h3></div>
+    <p class="kg-detail__type">Service Class</p>
+    <div class="pw-info" style="padding:0 18px 14px;">
+      <div class="pw-info__row"><span class="label">Type</span><span class="value">Service</span></div>
+      <div class="pw-info__row"><span class="label">Package</span><span class="value">com.fintrix.service</span></div>
+      <div class="pw-info__row"><span class="label">LOC</span><span class="value">842</span></div>
+      <div class="pw-info__row"><span class="label">Complexity</span><span class="sf-badge sf-badge--amber">Medium</span></div>
+    </div>
+    <div class="ri-desc">
+      <strong>Description</strong>
+      <p>Core service for invoice processing. Extracts structured data from invoices using OCR and applies business rules for validation and classification.</p>
+    </div>
+  </aside>
+</div>
+
+<div class="ri-bottom">
+  <section class="sf-card">
+    <div class="sf-panel-title"><h3>Dependencies ({{ dependencies.length }})</h3><a class="view-all">View All →</a></div>
+    <table class="sf-table">
+      <thead><tr><th>Dependency</th><th>Type</th><th>Direction</th></tr></thead>
+      <tbody>
+        @for (d of dependencies; track d.name) {
+          <tr><td>{{ d.name }}</td><td><span class="sf-pill">{{ d.type }}</span></td><td>→ {{ d.direction }}</td></tr>
+        }
+      </tbody>
+    </table>
+  </section>
+
+  <section class="sf-card">
+    <div class="sf-panel-title"><h3>Impact Analysis</h3><a class="view-all">View Impact →</a></div>
+    <p class="ri-impact-note">If InvoiceExtractionService changes, the following will be impacted.</p>
+    <div class="sf-stat-grid" style="padding:0 18px 18px;margin-bottom:0;">
+      @for (i of impact; track i.label) {
+        <div class="sf-stat-card sf-stat-card--blue">
+          <div class="sf-stat-card__icon"><sf-icon [name]="i.icon" /></div>
+          <div><div class="sf-stat-card__value">{{ i.value }}</div><div class="sf-stat-card__label">{{ i.label }}</div></div>
+        </div>
+      }
+    </div>
+  </section>
+</div>

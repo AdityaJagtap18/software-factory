@@ -1,0 +1,104 @@
+<div class="sf-breadcrumbs"><a>Administration</a> <span>›</span> <span class="current">Provider &amp; Model Management</span></div>
+
+<div class="sf-page-header">
+  <div class="sf-page-header__title-group">
+    <span class="sf-page-header__icon tone-violet"><sf-icon name="navigation/providers" /></span>
+    <div>
+      <h1>Provider &amp; Model Management</h1>
+      <p>Configure LLM providers, models, routing policies and usage controls for the Software Factory</p>
+    </div>
+  </div>
+  <div class="sf-page-header__actions">
+    <button class="sf-btn" type="button">Test Connection</button>
+    <button class="sf-btn" type="button">Usage &amp; Cost</button>
+    <button class="sf-btn sf-btn--primary" type="button">Add Provider</button>
+  </div>
+</div>
+
+<div class="sf-stat-grid">
+  <div class="sf-stat-card sf-stat-card--blue"><div class="sf-stat-card__icon"><sf-icon name="navigation/providers" /></div><div><div class="sf-stat-card__label">Configured Providers</div><div class="sf-stat-card__value">{{ providers().length }}</div></div></div>
+  <div class="sf-stat-card sf-stat-card--violet"><div class="sf-stat-card__icon"><sf-icon name="navigation/artifacts" /></div><div><div class="sf-stat-card__label">Available Models</div><div class="sf-stat-card__value">{{ models().length * 3 + 3 }}</div></div></div>
+  <div class="sf-stat-card sf-stat-card--amber"><div class="sf-stat-card__icon"><sf-icon name="navigation/workflows" /></div><div><div class="sf-stat-card__label">Active Routing Policies</div><div class="sf-stat-card__value">{{ routingPolicies.length }}</div></div></div>
+  <div class="sf-stat-card sf-stat-card--green"><div class="sf-stat-card__icon"><sf-icon name="status/success" /></div><div><div class="sf-stat-card__label">Healthy Providers</div><div class="sf-stat-card__value">{{ providers().length }} / {{ providers().length }}</div></div></div>
+  <div class="sf-stat-card sf-stat-card--blue"><div class="sf-stat-card__icon"><sf-icon name="navigation/artifacts" /></div><div><div class="sf-stat-card__label">This Month (LLM Cost)</div><div class="sf-stat-card__value">₹218.40 <span class="sf-stat-card__delta down">↓ -21%</span></div></div></div>
+</div>
+
+<div class="sf-tabs">
+  <button type="button" class="sf-tab" [class.active]="tab() === 'overview'" (click)="tab.set('overview')"><sf-icon name="navigation/dashboard" /> Overview</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'providers'" (click)="tab.set('providers')"><sf-icon name="navigation/agents" /> Providers</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'models'" (click)="tab.set('models')"><sf-icon name="navigation/artifacts" /> Models</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'routing'" (click)="tab.set('routing')"><sf-icon name="navigation/workflows" /> Routing &amp; Policies</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'quotas'" (click)="tab.set('quotas')"><sf-icon name="status/success" /> Quotas &amp; Limits</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'cost'" (click)="tab.set('cost')"><sf-icon name="navigation/artifacts" /> Cost Management</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'audit'" (click)="tab.set('audit')"><sf-icon name="navigation/monitoring" /> Audit &amp; Usage</button>
+</div>
+
+<div class="prov-grid">
+  <section class="sf-card">
+    <div class="sf-panel-title"><h3>Provider Status</h3></div>
+    <table class="sf-table">
+      <thead><tr><th>Provider</th><th>Type</th><th>Status</th><th>Models</th><th>Last Checked</th></tr></thead>
+      <tbody>
+        @for (p of providers(); track p.id) {
+          <tr>
+            <td><sf-icon [name]="p.icon" /> {{ p.name }}</td>
+            <td><span class="sf-pill">{{ p.type }}</span></td>
+            <td><span class="sf-badge sf-badge--green">{{ p.status }}</span></td>
+            <td>{{ p.models }}</td>
+            <td>{{ p.lastChecked }}</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </section>
+
+  <section class="sf-card">
+    <div class="sf-panel-title"><h3>Model Catalog ({{ models().length }})</h3></div>
+    <table class="sf-table">
+      <thead><tr><th>Model</th><th>Provider</th><th>Context</th><th>Status</th></tr></thead>
+      <tbody>
+        @for (m of models(); track m.id) {
+          <tr>
+            <td><strong>{{ m.model }}</strong></td>
+            <td>{{ m.provider }}</td>
+            <td>{{ m.context }}</td>
+            <td><span class="sf-badge sf-badge--green">{{ m.status }}</span></td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </section>
+</div>
+
+<div class="prov-grid">
+  <section class="sf-card">
+    <div class="sf-panel-title"><h3>Routing &amp; Model Selection</h3><a class="view-all">View All →</a></div>
+    <div class="prov-routing">
+      @for (r of routingPolicies; track r.name) {
+        <div class="prov-routing__row">
+          <div>
+            <div class="prov-routing__title">{{ r.name }}</div>
+            <div class="prov-routing__desc">{{ r.description }}</div>
+          </div>
+          <div class="prov-routing__chain"><span class="sf-pill">{{ r.primary }}</span> › <span class="sf-pill">{{ r.fallback }}</span></div>
+        </div>
+      }
+    </div>
+  </section>
+
+  <aside class="sf-card">
+    <div class="sf-panel-title"><h3>Provider Quotas</h3><a class="view-all">Manage →</a></div>
+    <div class="prov-quotas">
+      @for (q of quotas; track q.name) {
+        <div class="prov-quotas__row">
+          <sf-icon [name]="q.icon" />
+          <div class="prov-quotas__body">
+            <div class="prov-quotas__head"><span>{{ q.name }}</span><strong>{{ q.pct }}%</strong></div>
+            <div class="sf-progress"><div class="sf-progress__bar" [style.width.%]="q.pct"></div></div>
+            <span class="prov-quotas__usage">{{ q.usage }}</span>
+          </div>
+        </div>
+      }
+    </div>
+  </aside>
+</div>

@@ -1,0 +1,57 @@
+// Software Factory design tokens
+// Derived from UI reference screens + SVG asset pack README.
+
+:root {
+  // Brand palette
+  --sf-navy-900: #0c1b3f;
+  --sf-navy-800: #14264d;
+  --sf-navy-700: #1b3066;
+  --sf-blue-600: #2478e8;
+  --sf-blue-500: #3b82f6;
+  --sf-violet-600: #7467ff;
+  --sf-violet-500: #8b7cff;
+  --sf-blue-tint: #bfcbff;
+
+  // Status colors
+  --sf-green-600: #16a34a;
+  --sf-green-100: #dcfce7;
+  --sf-amber-600: #d97706;
+  --sf-amber-100: #fef3c7;
+  --sf-red-600: #dc2626;
+  --sf-red-100: #fee2e2;
+  --sf-blue-100: #dbeafe;
+
+  // Surfaces
+  --sf-bg: #f5f6fb;
+  --sf-surface: #ffffff;
+  --sf-surface-muted: #f8f9fc;
+  --sf-border: #e5e7f0;
+  --sf-border-strong: #d7dae8;
+
+  // Text
+  --sf-text-primary: #111827;
+  --sf-text-secondary: #5b6474;
+  --sf-text-tertiary: #8891a2;
+  --sf-text-inverse: #ffffff;
+
+  // Typography
+  --sf-font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --sf-font-mono: 'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+
+  // Radii
+  --sf-radius-sm: 6px;
+  --sf-radius-md: 10px;
+  --sf-radius-lg: 14px;
+  --sf-radius-pill: 999px;
+
+  // Shadows
+  --sf-shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --sf-shadow-md: 0 4px 12px rgba(16, 24, 40, 0.08);
+  --sf-shadow-lg: 0 12px 32px rgba(16, 24, 40, 0.12);
+
+  // Layout
+  --sf-sidebar-width: 248px;
+  --sf-topbar-height: 64px;
+
+  color-scheme: light;
+}

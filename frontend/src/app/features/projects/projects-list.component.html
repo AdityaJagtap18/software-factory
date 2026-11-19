@@ -1,0 +1,56 @@
+<div class="sf-page-header">
+  <div class="sf-page-header__title-group">
+    <span class="sf-page-header__icon"><sf-icon name="navigation/projects" /></span>
+    <div>
+      <h1>Projects</h1>
+      <p>All engineering projects across your organization</p>
+    </div>
+  </div>
+  <div class="sf-page-header__actions">
+    <button class="sf-btn sf-btn--primary" type="button"><sf-icon name="navigation/projects" /> New Project</button>
+  </div>
+</div>
+
+<div class="projects-toolbar">
+  <div class="projects-toolbar__search">
+    <sf-icon name="workspace/code-search" />
+    <input type="text" placeholder="Search projects..." [value]="search()" (input)="search.set($any($event.target).value)" />
+  </div>
+  <div class="projects-toolbar__filters">
+    @for (status of ['All', 'Active', 'In Progress', 'Paused', 'Archived']; track status) {
+      <button
+        type="button"
+        class="projects-toolbar__chip"
+        [class.active]="statusFilter() === status"
+        (click)="statusFilter.set($any(status))"
+      >
+        {{ status }}
+      </button>
+    }
+  </div>
+</div>
+
+<div class="projects-grid">
+  @for (project of projects(); track project.id) {
+    <a class="sf-card projects-grid__card" [routerLink]="['/projects', project.id]">
+      <div class="projects-grid__head">
+        <span class="projects-grid__icon" [class]="'tone-' + project.iconTone"><sf-icon [name]="project.icon" /></span>
+        <span class="sf-badge" [class]="'sf-badge--' + statusTone(project.status)">{{ project.status }}</span>
+      </div>
+      <h3>{{ project.name }}</h3>
+      <p>{{ project.description }}</p>
+      <div class="projects-grid__repo"><sf-icon name="navigation/repositories" /> {{ project.repository }}</div>
+      <div class="projects-grid__tech">
+        @for (tech of project.technologies.slice(0, 3); track tech) {
+          <span class="sf-pill">{{ tech }}</span>
+        }
+      </div>
+      <div class="projects-grid__footer">
+        <span>{{ project.activeWorkflows }} active workflows</span>
+        <span>{{ project.lastActivity }}</span>
+      </div>
+    </a>
+  } @empty {
+    <div class="sf-empty">No projects match your search.</div>
+  }
+</div>

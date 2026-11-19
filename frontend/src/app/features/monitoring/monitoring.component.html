@@ -1,0 +1,125 @@
+<div class="sf-breadcrumbs"><a>Monitoring</a> <span>›</span> <span class="current">Observability</span></div>
+
+<div class="sf-page-header">
+  <div class="sf-page-header__title-group">
+    <span class="sf-page-header__icon tone-violet"><sf-icon name="navigation/monitoring" /></span>
+    <div>
+      <h1>Monitoring &amp; Observability</h1>
+      <p>Real-time insights into tasks, agents, workflows and platform health</p>
+    </div>
+  </div>
+  <div class="sf-page-header__actions">
+    <div class="mon-range">
+      @for (r of [['24h','Last 24 Hours'],['7d','Last 7 Days'],['30d','Last 30 Days']]; track r[0]) {
+        <button type="button" [class.active]="range() === r[0]" (click)="range.set($any(r[0]))">{{ r[1] }}</button>
+      }
+    </div>
+    <button class="sf-btn" type="button" [class.on]="autoRefresh()" (click)="autoRefresh.set(!autoRefresh())">
+      <sf-icon name="navigation/workflows" /> Auto Refresh ({{ autoRefresh() ? '30s' : 'Off' }})
+    </button>
+  </div>
+</div>
+
+<div class="sf-stat-grid">
+  <div class="sf-stat-card sf-stat-card--blue"><div class="sf-stat-card__icon"><sf-icon name="navigation/workflows" /></div><div><div class="sf-stat-card__label">Task Executions</div><div class="sf-stat-card__value">127 <span class="sf-stat-card__delta up">↑ +18%</span></div></div></div>
+  <div class="sf-stat-card sf-stat-card--green"><div class="sf-stat-card__icon"><sf-icon name="status/success" /></div><div><div class="sf-stat-card__label">Success Rate</div><div class="sf-stat-card__value">92.1% <span class="sf-stat-card__delta up">↑ +4.3pp</span></div></div></div>
+  <div class="sf-stat-card sf-stat-card--amber"><div class="sf-stat-card__icon"><sf-icon name="navigation/monitoring" /></div><div><div class="sf-stat-card__label">Avg. Execution Time</div><div class="sf-stat-card__value">4 min 32 sec <span class="sf-stat-card__delta down">↓ -28%</span></div></div></div>
+  <div class="sf-stat-card sf-stat-card--violet"><div class="sf-stat-card__icon"><sf-icon name="navigation/providers" /></div><div><div class="sf-stat-card__label">Total Cost (LLM)</div><div class="sf-stat-card__value">₹218.40 <span class="sf-stat-card__delta down">↓ -21%</span></div></div></div>
+  <div class="sf-stat-card sf-stat-card--green"><div class="sf-stat-card__icon"><sf-icon name="navigation/agents" /></div><div><div class="sf-stat-card__label">Active Agents</div><div class="sf-stat-card__value">6 / 8</div></div></div>
+</div>
+
+<div class="sf-tabs">
+  <button type="button" class="sf-tab" [class.active]="tab() === 'overview'" (click)="tab.set('overview')"><sf-icon name="navigation/dashboard" /> Overview</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'executions'" (click)="tab.set('executions')"><sf-icon name="navigation/artifacts" /> Executions</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'agents'" (click)="tab.set('agents')"><sf-icon name="navigation/agents" /> Agent Performance</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'workflows'" (click)="tab.set('workflows')"><sf-icon name="navigation/workflows" /> Workflows (DAGs)</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'providers'" (click)="tab.set('providers')"><sf-icon name="navigation/providers" /> Provider Usage</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'costs'" (click)="tab.set('costs')"><sf-icon name="navigation/monitoring" /> Costs</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'incidents'" (click)="tab.set('incidents')"><sf-icon name="status/warning" /> Incidents &amp; Alerts</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'health'" (click)="tab.set('health')"><sf-icon name="navigation/settings" /> System Health</button>
+</div>
+
+<div class="mon-grid">
+  <section class="sf-card">
+    <div class="sf-panel-title"><h3>Execution Status</h3></div>
+    <div class="mon-donut-wrap">
+      <div class="mon-donut">
+        <div class="mon-donut__center"><strong>127</strong><span>Tasks</span></div>
+      </div>
+      <div class="mon-donut__legend">
+        @for (s of executionStatus; track s.label) {
+          <div class="mon-donut__row">
+            <span class="dot" [class]="s.tone"></span>{{ s.label }}
+            <strong>{{ s.value }}</strong><span class="pct">({{ s.pct }}%)</span>
+          </div>
+        }
+      </div>
+    </div>
+  </section>
+
+  <section class="sf-card">
+    <div class="sf-panel-title"><h3>Platform Health</h3><span class="sf-badge sf-badge--green">All Systems Operational</span></div>
+    <div class="health-list">
+      @for (h of platformHealth(); track h.label) {
+        <div class="health-list__item">
+          <span><sf-icon [name]="h.icon" /> {{ h.label }}</span>
+          <span class="mon-uptime">99.{{ 1 + $index }}%</span>
+        </div>
+      }
+    </div>
+  </section>
+
+  <section class="sf-card">
+    <div class="sf-panel-title"><h3>Alerts &amp; Incidents</h3><a class="view-all">View All →</a></div>
+    <div class="mon-alerts">
+      @for (a of alerts(); track a.id) {
+        <div class="mon-alerts__item">
+          <span class="sf-badge" [class]="'sf-badge--' + severityTone(a.severity)">{{ a.severity }}</span>
+          <div>
+            <div class="mon-alerts__title">{{ a.title }}</div>
+            <div class="mon-alerts__detail">{{ a.detail }}</div>
+          </div>
+          <span class="mon-alerts__time">{{ a.timestamp }}</span>
+        </div>
+      }
+    </div>
+  </section>
+</div>
+
+<div class="mon-grid mon-grid--bottom">
+  <section class="sf-card">
+    <div class="sf-panel-title"><h3>Agent Performance</h3></div>
+    <table class="sf-table">
+      <thead><tr><th>Agent</th><th>Tasks</th><th>Success Rate</th><th>Avg. Time</th></tr></thead>
+      <tbody>
+        @for (a of agentPerformance(); track a.id) {
+          <tr><td>{{ a.name }}</td><td>{{ a.activeRuns * 9 + 12 }}</td><td class="green">{{ 90 + a.activeRuns }}%</td><td>{{ 1 + a.activeRuns }} min {{ 10 + a.activeRuns * 3 }} sec</td></tr>
+        }
+      </tbody>
+    </table>
+  </section>
+
+  <section class="sf-card">
+    <div class="sf-panel-title"><h3>LLM Provider Usage &amp; Cost</h3></div>
+    <table class="sf-table">
+      <thead><tr><th>Provider</th><th>Models</th><th>Status</th></tr></thead>
+      <tbody>
+        @for (p of providers(); track p.id) {
+          <tr><td><sf-icon [name]="p.icon" /> {{ p.name }}</td><td>{{ p.models }}</td><td><span class="sf-badge sf-badge--green">{{ p.status }}</span></td></tr>
+        }
+      </tbody>
+    </table>
+  </section>
+</div>
+
+<section class="sf-card mon-exec">
+  <div class="sf-panel-title"><h3>Recent Executions</h3></div>
+  <table class="sf-table">
+    <thead><tr><th>Task ID</th><th>Task</th><th>Status</th><th>Created</th></tr></thead>
+    <tbody>
+      @for (t of recentExecutions(); track t.id) {
+        <tr><td class="link">{{ t.id }}</td><td>{{ t.title }}</td><td><span class="sf-badge" [class]="t.status === 'Completed' ? 'sf-badge--green' : 'sf-badge--blue'">{{ t.status }}</span></td><td>{{ t.createdAt }}</td></tr>
+      }
+    </tbody>
+  </table>
+</section>

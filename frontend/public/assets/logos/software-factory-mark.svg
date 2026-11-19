@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96" role="img" aria-label="Software Factory mark">
+<defs><linearGradient id="g" x1="12" y1="10" x2="82" y2="86" gradientUnits="userSpaceOnUse"><stop stop-color="#7467FF"/><stop offset="1" stop-color="#2478E8"/></linearGradient></defs>
+<path d="M48 5 88 27.5v41L48 91 8 68.5v-41L48 5Z" fill="url(#g)"/>
+<path d="m48 17 28 16-28 16-28-16 28-16Z" fill="#EAF0FF"/>
+<path d="m20 43 22 12.5v22L20 65V43Z" fill="#BFCBFF"/>
+<path d="m76 43-22 12.5v22L76 65V43Z" fill="#8EA8FF"/>
+<path d="m48 56 12 6.8v13.4l-12 6.8-12-6.8V62.8L48 56Z" fill="#fff"/>
+<path d="m48 63 6 3.4v6.8l-6 3.4-6-3.4v-6.8l6-3.4Z" fill="#345CEB"/>
+</svg>

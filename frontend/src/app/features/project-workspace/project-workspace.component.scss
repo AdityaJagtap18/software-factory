@@ -3,6 +3,13 @@
   vertical-align: middle;
 }
 
+.set-rt-desc {
+  font-size: 11px;
+  color: var(--sf-text-tertiary);
+  font-weight: 400;
+  margin-top: 2px;
+}
+
 .tone-violet {
   background: #e3e0ff !important;
   sf-icon { color: var(--sf-violet-600); }

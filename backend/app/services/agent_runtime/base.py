@@ -41,6 +41,13 @@ class HealthCheckResult:
     checked_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+@dataclass(frozen=True)
+class ExecutionResult:
+    succeeded: bool
+    output: str = ""
+    error: str = ""
+
+
 class CodingAgentRuntimeAdapter(ABC):
     """Base class every runtime adapter implements."""
 
@@ -61,4 +68,14 @@ class CodingAgentRuntimeAdapter(ABC):
 
         Must never return `connected=True` without having actually observed
         evidence of a working runtime in this call.
+        """
+
+    @abstractmethod
+    def start_execution(self, prompt: str, credential_value: str | None) -> ExecutionResult:
+        """Hand a task prompt to the real runtime and return its real output.
+
+        Must never return `succeeded=True` with fabricated output. If the
+        runtime cannot actually be reached (CLI missing, no credential,
+        provider error), this returns `succeeded=False` with an honest
+        `error` describing what actually happened.
         """

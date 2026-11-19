@@ -1,9 +1,9 @@
-# Software Factory — Backend (Phase 1 + 2: Foundation & Agent Connectivity)
+# Software Factory — Backend (Phases 1–3: Foundation, Connectivity & Execution)
 
 FastAPI + PostgreSQL backend implementing real authentication, organizations,
-membership, RBAC, projects, workspaces, and coding-agent runtime connectivity
-— the foundation the rest of the Software Factory execution spec (task
-execution, knowledge graph, etc.) builds on.
+membership, RBAC, projects, workspaces, coding-agent runtime connectivity,
+and task execution — the foundation the rest of the Software Factory
+execution spec (orchestration, knowledge graph, etc.) builds on.
 
 ## What's implemented
 
@@ -60,12 +60,43 @@ every runtime in the Settings UI correctly shows "Not configured" or "Not
 connected," not a faked "Connected." Supplying a real CLI install or a real
 provider API key makes the same code paths report a real "Connected."**
 
+### Phase 3 — Task execution engine
+- **Task model** (`app/models/task.py`): project-scoped tasks (`title`,
+  `description`, `priority`, `status`, an optional
+  `coding_agent_connection_id`), with a `not_started` → `running` →
+  `completed`/`failed` lifecycle.
+- **`start_execution`** added to the Common Agent Runtime Interface
+  (`app/services/agent_runtime/base.py`) and every adapter. A local-runtime
+  adapter shells out to the real CLI non-interactively (`claude -p`, `codex
+  exec`, `gemini -p`); a factory-managed adapter makes a real chat-completion
+  call to the provider's own API with the stored credential. Either path
+  returns real output or a real error — never fabricated.
+- **`app/services/task_execution.py`**: `POST
+  /projects/{id}/tasks/{task_id}/start` re-runs the assigned connection's
+  `health_check` immediately before execution (a cached "connected" status
+  can go stale — CLI removed, key revoked), and only calls
+  `start_execution` if that check currently passes. No connection assigned,
+  a stale connection, or a failed runtime call all mark the task `failed`
+  with the real reason; only an adapter that actually succeeded marks it
+  `completed` with its actual output.
+- Verified end-to-end in-browser against the real backend: a task with no
+  connection assigned fails with "No coding-agent connection assigned to
+  this task," and a task assigned to this machine's (CLI-less) Claude Code
+  connection fails with "Claude Code is not connected: 'claude' CLI not
+  found on PATH" — both are real responses from the real pipeline, not UI
+  copy. 7 new backend tests (30/30 total), including a non-mocked one
+  confirming this machine's honest failure path.
+- The project workspace's **Tasks** tab (previously mock "Preview data") now
+  creates, lists, and starts real tasks against real connections.
+
 ## What's intentionally not here yet
 
-Task execution, the Factory Supervisor, streaming a running agent's output,
-Temporal/LangGraph orchestration, the Neo4j knowledge graph, Docker
-execution isolation, and real-time collaboration are later phases of the
-execution spec and are not implemented in this pass.
+The Factory Supervisor's multi-step orchestration, streaming a running
+agent's output live (execution is currently synchronous, bounded by a
+request timeout), Temporal/LangGraph workflow orchestration, the Neo4j
+knowledge graph, Docker execution isolation, and real-time collaboration
+are later phases of the execution spec and are not implemented in this
+pass.
 
 ## Running locally
 

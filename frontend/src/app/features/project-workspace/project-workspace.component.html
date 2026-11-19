@@ -23,7 +23,9 @@
         <sf-icon name="navigation/repositories" /> Open Repository
       </a>
       <button class="sf-btn" type="button"><sf-icon name="navigation/workflows" /> Run Workflow</button>
-      <a class="sf-btn sf-btn--primary" routerLink="/tasks"><sf-icon name="navigation/tasks" /> New Task</a>
+      <button class="sf-btn sf-btn--primary" type="button" (click)="activeTab.set('tasks'); openCreateTask()">
+        <sf-icon name="navigation/tasks" /> New Task
+      </button>
     </div>
   </div>
 
@@ -63,30 +65,97 @@
 
     <section class="sf-card pw-executions">
       <div class="sf-panel-title"><h3>Task Execution</h3></div>
-      <div class="sf-empty">
-        Task creation, agent assignment and execution history connect to this project once the Factory Supervisor and
-        execution backend (Phase 3 of the build) are implemented. The tabs below preview that experience with sample data.
-      </div>
+      @if (!tasksLoaded()) {
+        <div class="sf-empty">Loading…</div>
+      } @else if (tasks().length === 0) {
+        <div class="sf-empty">
+          No tasks yet. Open the <a (click)="activeTab.set('tasks')">Tasks tab</a> to create one and hand it to a
+          connected coding-agent runtime.
+        </div>
+      } @else {
+        <div class="sf-empty">
+          {{ tasks().length }} task(s) — {{ tasks().filter(t => t.status === 'completed').length }} completed,
+          {{ tasks().filter(t => t.status === 'failed').length }} failed,
+          {{ tasks().filter(t => t.status === 'not_started').length }} not started. Open the
+          <a (click)="activeTab.set('tasks')">Tasks tab</a> for details.
+        </div>
+      }
     </section>
   }
 
   @if (activeTab() === 'tasks') {
     <section class="sf-card">
-      <div class="sf-panel-title"><h3>Tasks <span class="sf-pill">Preview data</span></h3></div>
-      <table class="sf-table">
-        <thead><tr><th>Task</th><th>Type</th><th>Priority</th><th>Status</th></tr></thead>
-        <tbody>
-          @for (t of tasks(); track t.id) {
-            <tr class="clickable" [routerLink]="['/tasks', t.id]">
-              <td><strong>{{ t.id }}</strong> — {{ t.title }}</td>
-              <td>{{ t.type }}</td>
-              <td><span class="sf-pill">{{ t.priority }}</span></td>
-              <td><span class="sf-badge" [class]="'sf-badge--' + statusTone(t.status)">{{ t.status }}</span></td>
-            </tr>
-          }
-        </tbody>
-      </table>
+      <div class="sf-panel-title">
+        <h3>Tasks</h3>
+        <button class="sf-btn sf-btn--primary" type="button" style="padding:6px 14px;" (click)="openCreateTask()">
+          <sf-icon name="navigation/tasks" /> New Task
+        </button>
+      </div>
+      <p class="set-note" style="padding:0 18px 14px; font-size:12.5px; color: var(--sf-text-secondary);">
+        Starting a task hands its description to the assigned coding-agent connection's real runtime. If that
+        runtime isn't actually connected, the task honestly fails rather than reporting a fake result.
+      </p>
+      @if (!tasksLoaded()) {
+        <div class="sf-empty">Loading tasks…</div>
+      } @else if (tasks().length === 0) {
+        <div class="sf-empty">No tasks yet. Create one to hand it to a connected coding-agent runtime.</div>
+      } @else {
+        <table class="sf-table">
+          <thead><tr><th>Task</th><th>Priority</th><th>Status</th><th>Result</th><th></th></tr></thead>
+          <tbody>
+            @for (t of tasks(); track t.id) {
+              <tr>
+                <td><strong>{{ t.title }}</strong><div class="set-rt-desc">{{ t.description || 'No description' }}</div></td>
+                <td><span class="sf-pill">{{ t.priority }}</span></td>
+                <td><span class="sf-badge" [class]="'sf-badge--' + statusTone(t.status)">{{ taskStatusLabel(t.status) }}</span></td>
+                <td>
+                  @if (t.error_message) { <span class="set-rt-desc">{{ t.error_message }}</span> }
+                  @else if (t.output) { <span class="set-rt-desc">{{ t.output.slice(0, 120) }}{{ t.output.length > 120 ? '…' : '' }}</span> }
+                  @else { — }
+                </td>
+                <td>
+                  <button class="sf-btn" type="button" style="padding:5px 10px;" [disabled]="t.status === 'running' || startingTaskId() === t.id" (click)="startTask(t)">
+                    {{ startingTaskId() === t.id || t.status === 'running' ? 'Running…' : (t.status === 'not_started' ? 'Start' : 'Restart') }}
+                  </button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
     </section>
+
+    @if (showCreateTask()) {
+      <div class="org-modal__backdrop" (click)="closeCreateTask()">
+        <div class="org-modal" (click)="$event.stopPropagation()">
+          <h3>New task</h3>
+          <p>Describe the work and, optionally, assign a connected coding-agent runtime to perform it.</p>
+
+          <label for="taskTitle">Title</label>
+          <input id="taskTitle" type="text" placeholder="e.g. Fix null pointer on empty password" [value]="newTaskTitle()" (input)="newTaskTitle.set($any($event.target).value)" />
+
+          <label for="taskDesc">Description</label>
+          <input id="taskDesc" type="text" placeholder="What should the agent do?" [value]="newTaskDescription()" (input)="newTaskDescription.set($any($event.target).value)" />
+
+          <label for="taskConn">Coding-agent connection</label>
+          <select id="taskConn" [value]="newTaskConnectionId()" (change)="newTaskConnectionId.set($any($event.target).value)">
+            <option value="">Unassigned (configure later)</option>
+            @for (c of connections(); track c.runtime_slug) {
+              @if (c.id) {
+                <option [value]="c.id">{{ c.runtime_name }} ({{ c.status.replace('_', ' ') }})</option>
+              }
+            }
+          </select>
+
+          <div class="org-modal__actions">
+            <button type="button" class="sf-btn" (click)="closeCreateTask()">Cancel</button>
+            <button type="button" class="sf-btn sf-btn--primary" [disabled]="creatingTask()" (click)="submitCreateTask()">
+              {{ creatingTask() ? 'Creating…' : 'Create task' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    }
   }
 
   @if (activeTab() === 'workflows') {

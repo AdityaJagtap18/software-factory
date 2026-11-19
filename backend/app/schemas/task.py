@@ -33,5 +33,7 @@ class TaskResponse(BaseModel):
     output: str
     error_message: str
     created_at: datetime
+    workflow_id: UUID | None = None
+    step_order: int | None = None
 
     model_config = {"from_attributes": True}

@@ -6,8 +6,10 @@ import { MockDataService } from '../../core/mock-data.service';
 import { ProjectService } from '../../core/org/project.service';
 import { TaskService } from '../../core/org/task.service';
 import { AgentRuntimeService } from '../../core/org/agent-runtime.service';
+import { WorkflowService } from '../../core/org/workflow.service';
 import { ApiProject } from '../../core/auth/auth.models';
 import { ApiTask } from '../../core/org/task.models';
+import { ApiWorkflow, CreateWorkflowStepPayload } from '../../core/org/workflow.models';
 
 type TabId = 'overview' | 'tasks' | 'workflows' | 'agents' | 'knowledge' | 'artifacts' | 'activity' | 'settings';
 
@@ -25,6 +27,7 @@ export class ProjectWorkspaceComponent {
   private readonly projectService = inject(ProjectService);
   private readonly taskService = inject(TaskService);
   private readonly runtimeService = inject(AgentRuntimeService);
+  private readonly workflowService = inject(WorkflowService);
 
   private readonly projectId = toSignal(this.route.paramMap, { initialValue: this.route.snapshot.paramMap });
 
@@ -43,11 +46,20 @@ export class ProjectWorkspaceComponent {
   readonly creatingTask = signal(false);
   readonly startingTaskId = signal<string | null>(null);
 
+  readonly workflows = this.workflowService.workflows;
+  readonly workflowsLoaded = this.workflowService.loaded;
+
+  readonly showCreateWorkflow = signal(false);
+  readonly newWorkflowName = signal('');
+  readonly newWorkflowDescription = signal('');
+  readonly newWorkflowSteps = signal<CreateWorkflowStepPayload[]>([{ title: '', coding_agent_connection_id: null }]);
+  readonly creatingWorkflow = signal(false);
+  readonly startingWorkflowId = signal<string | null>(null);
+
   /**
-   * Workflows/agents aren't backend-owned yet (later phases of the execution
-   * spec), so these tabs keep showing illustrative mock data until that lands.
+   * Agents aren't backend-owned yet (a later phase of the execution spec),
+   * so that tab keeps showing illustrative mock data until that lands.
    */
-  readonly workflows = this.data.runningWorkflows;
   readonly agents = this.data.agents;
   readonly recentActivity = this.data.recentActivity;
 
@@ -76,6 +88,7 @@ export class ProjectWorkspaceComponent {
           this.loading.set(false);
           this.taskService.listForProject(project.id).subscribe();
           this.runtimeService.listForOrg(project.organization_id).subscribe();
+          this.workflowService.listForProject(project.id).subscribe();
         },
         error: () => {
           this.notFound.set(true);
@@ -148,5 +161,73 @@ export class ProjectWorkspaceComponent {
     const project = this.project();
     if (!project) return;
     this.taskService.cancel(project.id, task.id).subscribe();
+  }
+
+  workflowStatusLabel(status: string): string {
+    return this.taskStatusLabel(status);
+  }
+
+  openCreateWorkflow() {
+    this.newWorkflowName.set('');
+    this.newWorkflowDescription.set('');
+    this.newWorkflowSteps.set([{ title: '', coding_agent_connection_id: null }]);
+    this.showCreateWorkflow.set(true);
+  }
+
+  closeCreateWorkflow() {
+    this.showCreateWorkflow.set(false);
+  }
+
+  addWorkflowStep() {
+    this.newWorkflowSteps.update((steps) => [...steps, { title: '', coding_agent_connection_id: null }]);
+  }
+
+  removeWorkflowStep(index: number) {
+    this.newWorkflowSteps.update((steps) => steps.filter((_, i) => i !== index));
+  }
+
+  updateWorkflowStepTitle(index: number, title: string) {
+    this.newWorkflowSteps.update((steps) => steps.map((s, i) => (i === index ? { ...s, title } : s)));
+  }
+
+  updateWorkflowStepConnection(index: number, connectionId: string) {
+    this.newWorkflowSteps.update((steps) =>
+      steps.map((s, i) => (i === index ? { ...s, coding_agent_connection_id: connectionId || null } : s))
+    );
+  }
+
+  submitCreateWorkflow() {
+    const project = this.project();
+    const name = this.newWorkflowName().trim();
+    const steps = this.newWorkflowSteps()
+      .map((s) => ({ ...s, title: s.title.trim() }))
+      .filter((s) => s.title.length > 0);
+    if (!project || !name || steps.length === 0) return;
+    this.creatingWorkflow.set(true);
+    this.workflowService
+      .create(project.id, { name, description: this.newWorkflowDescription().trim(), steps })
+      .subscribe({
+        next: () => {
+          this.creatingWorkflow.set(false);
+          this.showCreateWorkflow.set(false);
+        },
+        error: () => this.creatingWorkflow.set(false)
+      });
+  }
+
+  startWorkflow(workflow: ApiWorkflow) {
+    const project = this.project();
+    if (!project) return;
+    this.startingWorkflowId.set(workflow.id);
+    this.workflowService.start(project.id, workflow.id).subscribe({
+      complete: () => this.startingWorkflowId.set(null),
+      error: () => this.startingWorkflowId.set(null)
+    });
+  }
+
+  cancelWorkflow(workflow: ApiWorkflow) {
+    const project = this.project();
+    if (!project) return;
+    this.workflowService.cancel(project.id, workflow.id).subscribe();
   }
 }

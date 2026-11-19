@@ -1,10 +1,11 @@
-# Software Factory — Backend (Phases 1–4: Foundation Through Live Execution)
+# Software Factory — Backend (Phases 1–5: Foundation Through Multi-Step Orchestration)
 
 FastAPI + PostgreSQL backend implementing real authentication, organizations,
 membership, RBAC, projects, workspaces, coding-agent runtime connectivity,
-and real-time streaming task execution — the foundation the rest of the
-Software Factory execution spec (Temporal/LangGraph orchestration, knowledge
-graph, etc.) builds on.
+real-time streaming task execution, and the Factory Supervisor's multi-step
+workflow orchestration — the foundation the rest of the Software Factory
+execution spec (Temporal/LangGraph orchestration, knowledge graph, etc.)
+builds on.
 
 ## What's implemented
 
@@ -123,12 +124,59 @@ provider API key makes the same code paths report a real "Connected."**
   flag actually stops a streaming mock with the correct partial output, and
   one reading real SSE bytes off the stream endpoint.
 
+### Phase 5 — Factory Supervisor multi-step orchestration
+- **Workflow model** (`app/models/workflow.py`): project-scoped, with a
+  `not_started` → `running` → `completed`/`failed` lifecycle, a
+  `current_step_index`, and a `cancel_requested` flag — the same shape as
+  `Task`. Each workflow's ordered steps **are** `Task` rows (new nullable
+  `workflow_id` + `step_order` columns on `Task`), so every step reuses the
+  exact same execution pipeline as a standalone task — health-check,
+  real streaming execution, cancellation — with no second, parallel
+  execution path to keep honest.
+- **`app/services/task_execution.py`** was refactored to expose
+  `execute_task(db, task, extra_should_cancel=None)`, the per-task
+  execution core (previously inlined in `_run`), so it can be called
+  directly — within the same DB session/thread — once per step, instead
+  of only from its own standalone background thread.
+- **`app/services/workflow_execution.py`** (the Factory Supervisor): runs a
+  workflow's steps in order in a single background thread. It checks
+  `workflow.cancel_requested` before starting each step and threads an
+  `extra_should_cancel` closure into the currently-running step so a
+  workflow-level cancel also interrupts it at its next real chunk boundary
+  — never a fabricated instant stop. The **first step that genuinely
+  fails halts the whole workflow**: it is marked `failed` and every later
+  step is left `not_started` — never run, and never reported as
+  succeeded. A workflow only reaches `completed` once every one of its
+  steps has genuinely completed.
+- **Routes** (`app/api/routes/workflows.py`): `POST/GET
+  /projects/{id}/workflows`, `GET/DELETE .../workflows/{workflow_id}`,
+  `POST .../start` (non-blocking, mirrors task start), `POST .../cancel`,
+  and `GET .../stream` (SSE: real workflow + per-step status/output polled
+  from the database, exactly like the task stream).
+- Verified end-to-end in-browser against the real backend: creating a
+  two-step workflow with no coding-agent connection assigned, then
+  starting it, produces (confirmed via the raw SSE bytes on the network
+  tab) a real `"status": "failed"` with step one's actual error —
+  `"No coding-agent connection assigned to this task."` — and step two
+  honestly left `"status": "not_started"`, never started. 10 new backend
+  tests (43/43 total), including a non-mocked one confirming this
+  machine's honest step failure, a mocked all-steps-succeed test, a
+  mocked "step 2 never runs after step 1 fails" test, a workflow-cancel
+  test, an SSE-stream-reading test, and a cascade-delete test.
+- The project workspace's **Workflows** tab (previously mock "Preview
+  data") now creates (with an ordered, addable/removable step list, each
+  optionally assigned a connection), lists, starts, and cancels real
+  workflows, with live per-step progress chips driven by the same
+  fetch+SSE pattern as the Tasks tab.
+
 ## What's intentionally not here yet
 
-The Factory Supervisor's multi-step orchestration, Temporal/LangGraph
-workflow orchestration, the Neo4j knowledge graph, Docker execution
-isolation, and real-time multi-user collaboration are later phases of the
-execution spec and are not implemented in this pass.
+Temporal/LangGraph-based durable workflow orchestration (this pass's
+Factory Supervisor sequences steps via a background thread against the
+real database, not a distributed workflow engine), the Neo4j knowledge
+graph, Docker execution isolation, and real-time multi-user collaboration
+are later phases of the execution spec and are not implemented in this
+pass.
 
 ## Running locally
 

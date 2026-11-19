@@ -5,6 +5,7 @@ from app.models.project import Project, ProjectMember, Workspace
 from app.models.session import Session
 from app.models.task import Task, TaskPriority, TaskStatus
 from app.models.user import User
+from app.models.workflow import Workflow, WorkflowStatus
 
 __all__ = [
     "AuditLog",

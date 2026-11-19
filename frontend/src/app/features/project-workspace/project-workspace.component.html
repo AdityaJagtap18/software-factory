@@ -22,7 +22,9 @@
       <a class="sf-btn" [routerLink]="['/projects', proj.id, 'repository-intelligence']">
         <sf-icon name="navigation/repositories" /> Open Repository
       </a>
-      <button class="sf-btn" type="button"><sf-icon name="navigation/workflows" /> Run Workflow</button>
+      <button class="sf-btn" type="button" (click)="activeTab.set('workflows'); openCreateWorkflow()">
+        <sf-icon name="navigation/workflows" /> Run Workflow
+      </button>
       <button class="sf-btn sf-btn--primary" type="button" (click)="activeTab.set('tasks'); openCreateTask()">
         <sf-icon name="navigation/tasks" /> New Task
       </button>
@@ -168,19 +170,97 @@
 
   @if (activeTab() === 'workflows') {
     <section class="sf-card">
-      <div class="sf-panel-title"><h3>Workflows <span class="sf-pill">Preview data</span></h3></div>
-      <table class="sf-table">
-        <thead><tr><th>Workflow</th><th>Current Step</th><th>Progress</th><th>ETA</th></tr></thead>
-        <tbody>
-          @for (wf of workflows(); track wf.id) {
-            <tr class="clickable" routerLink="/workflows">
-              <td>{{ wf.name }}</td><td>{{ wf.currentStep }}</td>
-              <td>{{ wf.progress }}%</td><td>{{ wf.eta }}</td>
-            </tr>
-          }
-        </tbody>
-      </table>
+      <div class="sf-panel-title">
+        <h3>Workflows</h3>
+        <button class="sf-btn sf-btn--primary" type="button" style="padding:6px 14px;" (click)="openCreateWorkflow()">
+          <sf-icon name="navigation/workflows" /> New Workflow
+        </button>
+      </div>
+      <p class="set-note" style="padding:0 18px 14px; font-size:12.5px; color: var(--sf-text-secondary);">
+        The Factory Supervisor runs a workflow's steps in order against their assigned coding-agent
+        connections. If a step genuinely fails, the workflow stops there — later steps never run.
+      </p>
+      @if (!workflowsLoaded()) {
+        <div class="sf-empty">Loading workflows…</div>
+      } @else if (workflows().length === 0) {
+        <div class="sf-empty">No workflows yet. Create one to chain several steps together.</div>
+      } @else {
+        <table class="sf-table">
+          <thead><tr><th>Workflow</th><th>Current Step</th><th>Status</th><th>Steps</th><th></th></tr></thead>
+          <tbody>
+            @for (wf of workflows(); track wf.id) {
+              <tr>
+                <td><strong>{{ wf.name }}</strong><div class="set-rt-desc">{{ wf.description || 'No description' }}</div></td>
+                <td>
+                  @if (wf.steps.length > 0 && wf.current_step_index < wf.steps.length) {
+                    {{ wf.current_step_index + 1 }} / {{ wf.steps.length }} — {{ wf.steps[wf.current_step_index].title }}
+                  } @else {
+                    {{ wf.steps.length }} / {{ wf.steps.length }}
+                  }
+                </td>
+                <td><span class="sf-badge" [class]="'sf-badge--' + statusTone(wf.status)">{{ workflowStatusLabel(wf.status) }}</span></td>
+                <td>
+                  <div class="pw-wf-steps">
+                    @for (step of wf.steps; track step.id) {
+                      <span class="sf-badge" [class]="'sf-badge--' + statusTone(step.status)" [title]="step.error_message || step.output">{{ step.title }}: {{ taskStatusLabel(step.status) }}</span>
+                    }
+                  </div>
+                </td>
+                <td>
+                  @if (wf.status === 'running') {
+                    <button class="sf-btn" type="button" style="padding:5px 10px;" (click)="cancelWorkflow(wf)">Cancel</button>
+                  } @else {
+                    <button class="sf-btn" type="button" style="padding:5px 10px;" [disabled]="startingWorkflowId() === wf.id" (click)="startWorkflow(wf)">
+                      {{ startingWorkflowId() === wf.id ? 'Starting…' : (wf.status === 'not_started' ? 'Start' : 'Restart') }}
+                    </button>
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
     </section>
+
+    @if (showCreateWorkflow()) {
+      <div class="org-modal__backdrop" (click)="closeCreateWorkflow()">
+        <div class="org-modal" (click)="$event.stopPropagation()">
+          <h3>New workflow</h3>
+          <p>Define an ordered sequence of steps. Each step runs only once the previous one genuinely succeeds.</p>
+
+          <label for="wfName">Name</label>
+          <input id="wfName" type="text" placeholder="e.g. Ship feature X" [value]="newWorkflowName()" (input)="newWorkflowName.set($any($event.target).value)" />
+
+          <label for="wfDesc">Description</label>
+          <input id="wfDesc" type="text" placeholder="What does this workflow accomplish?" [value]="newWorkflowDescription()" (input)="newWorkflowDescription.set($any($event.target).value)" />
+
+          <label>Steps</label>
+          @for (step of newWorkflowSteps(); track $index) {
+            <div class="pw-wf-step-row">
+              <span class="pw-wf-step-row__index">{{ $index + 1 }}</span>
+              <input type="text" placeholder="Step title" [value]="step.title" (input)="updateWorkflowStepTitle($index, $any($event.target).value)" />
+              <select [value]="step.coding_agent_connection_id ?? ''" (change)="updateWorkflowStepConnection($index, $any($event.target).value)">
+                <option value="">Unassigned</option>
+                @for (c of connections(); track c.runtime_slug) {
+                  @if (c.id) {
+                    <option [value]="c.id">{{ c.runtime_name }}</option>
+                  }
+                }
+              </select>
+              <button type="button" class="sf-btn" style="padding:4px 8px;" [disabled]="newWorkflowSteps().length <= 1" (click)="removeWorkflowStep($index)">✕</button>
+            </div>
+          }
+          <button type="button" class="sf-btn" style="margin-top:6px;" (click)="addWorkflowStep()">+ Add step</button>
+
+          <div class="org-modal__actions">
+            <button type="button" class="sf-btn" (click)="closeCreateWorkflow()">Cancel</button>
+            <button type="button" class="sf-btn sf-btn--primary" [disabled]="creatingWorkflow()" (click)="submitCreateWorkflow()">
+              {{ creatingWorkflow() ? 'Creating…' : 'Create workflow' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    }
   }
 
   @if (activeTab() === 'agents') {

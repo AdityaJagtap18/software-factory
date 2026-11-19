@@ -45,6 +45,10 @@ export class ProjectWorkspaceComponent implements OnDestroy {
   readonly viewers = this.presenceService.viewers;
   readonly knowledgeGraph = this.knowledgeService.graph;
   readonly syncingKnowledge = signal(false);
+  readonly codeGraph = this.knowledgeService.codeGraph;
+  readonly ingestPath = signal('');
+  readonly ingestingRepository = signal(false);
+  readonly ingestError = signal('');
 
   readonly showCreateTask = signal(false);
   readonly newTaskTitle = signal('');
@@ -98,6 +102,7 @@ export class ProjectWorkspaceComponent implements OnDestroy {
           this.workflowService.listForProject(project.id).subscribe();
           this.presenceService.watch(project.id);
           this.knowledgeService.fetchGraph(project.id).subscribe();
+          this.knowledgeService.fetchCodeGraph(project.id).subscribe();
         },
         error: () => {
           this.notFound.set(true);
@@ -253,6 +258,24 @@ export class ProjectWorkspaceComponent implements OnDestroy {
   nodeLabel(nodeId: string): string {
     const node = this.knowledgeGraph()?.nodes.find((n) => n.id === nodeId);
     return node?.label ?? nodeId;
+  }
+
+  ingestRepository() {
+    const project = this.project();
+    const path = this.ingestPath().trim();
+    if (!project || !path) return;
+    this.ingestingRepository.set(true);
+    this.ingestError.set('');
+    this.knowledgeService.ingestRepository(project.id, path).subscribe({
+      next: (result) => {
+        if (!result.connected) this.ingestError.set(result.detail);
+        this.ingestingRepository.set(false);
+      },
+      error: (err) => {
+        this.ingestError.set(err?.error?.detail ?? 'Failed to ingest repository.');
+        this.ingestingRepository.set(false);
+      }
+    });
   }
 
   ngOnDestroy(): void {

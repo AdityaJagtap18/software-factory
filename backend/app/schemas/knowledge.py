@@ -29,3 +29,35 @@ class KnowledgeGraphResponse(BaseModel):
     detail: str
     nodes: list[KnowledgeNode] = []
     edges: list[KnowledgeEdge] = []
+
+
+class IngestRepositoryRequest(BaseModel):
+    path: str
+
+
+class CodeSymbolSchema(BaseModel):
+    name: str
+    kind: str
+    line: int
+
+
+class CodeFileSchema(BaseModel):
+    path: str
+    language: str
+    symbols: list[CodeSymbolSchema] = []
+
+
+class IngestRepositoryResponse(BaseModel):
+    connected: bool
+    detail: str
+    files_scanned: int = 0
+    symbols_found: int = 0
+    nodes_synced: int = 0
+    relationships_synced: int = 0
+    synced_at: datetime | None = None
+
+
+class CodeGraphResponse(BaseModel):
+    connected: bool
+    detail: str
+    files: list[CodeFileSchema] = []

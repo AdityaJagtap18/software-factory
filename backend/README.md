@@ -1,14 +1,14 @@
-# Software Factory — Backend (Phases 1–8: Foundation Through Docker Execution Isolation)
+# Software Factory — Backend (Phases 1–9: Foundation Through Repository Code Ingestion)
 
 FastAPI + PostgreSQL (+ Neo4j) backend implementing real authentication,
 organizations, membership, RBAC, projects, workspaces, coding-agent runtime
 connectivity, real-time streaming task execution, the Factory Supervisor's
 multi-step workflow orchestration, real-time multi-user presence/
 collaboration, a real Neo4j-backed knowledge graph of each project's
-actual work, and genuine Docker-isolated task execution — the foundation
-the rest of the Software Factory execution spec (Temporal/LangGraph
-orchestration, repository-code ingestion into the knowledge graph, etc.)
-builds on.
+actual work, genuine Docker-isolated task execution, and real repository
+source-code parsing into that knowledge graph — the foundation the rest
+of the Software Factory execution spec (Temporal/LangGraph orchestration,
+etc.) builds on.
 
 ## What's implemented
 
@@ -286,16 +286,52 @@ provider API key makes the same code paths report a real "Connected."**
   `"real-sandbox-output\n"` and an empty `error_message` — confirmed via
   the raw network responses, not UI copy.
 
+### Phase 9 — Real repository code ingestion into the knowledge graph
+- **`app/services/code_ingestion.py`**: walks a real directory on the
+  backend host and parses real source files — Python with the real `ast`
+  module (genuine function/class definitions with real line numbers),
+  TypeScript/JavaScript with a lightweight top-level-declaration regex
+  scan (clearly scoped as a declaration scan, not a full compiler, so it
+  can miss unusual syntax but never reports a symbol that isn't really
+  there). `node_modules`, `.git`, `.venv`, build output, etc. are
+  skipped; a nonexistent or non-directory path raises a real error
+  rather than returning a silently-empty "success."
+- **Deliberately local-path only, no remote-git-URL variant**: cloning an
+  arbitrary URL server-side would turn this endpoint into an
+  SSRF/arbitrary-fetch vector. Ingestion only ever reads a directory the
+  backend process can already see — a real constraint, documented in
+  the API and the UI, not a missing feature.
+- **`knowledge_graph.ingest_repository()`**: before writing, it deletes
+  this project's *previous* File/Function/Class subgraph, so a file or
+  symbol that genuinely no longer exists on disk doesn't linger as a
+  stale node after re-ingestion — then `MERGE`s the current, real
+  disk state in. `get_code_graph()` reads it straight back out.
+- **Routes** (`app/api/routes/knowledge.py`): `POST
+  /projects/{id}/knowledge/ingest-repository` (restricted to
+  `project_admin` — this is an elevated operation, since it reads
+  whatever filesystem path the backend can see, not a read-only one) and
+  `GET /projects/{id}/knowledge/code-graph`.
+- Verified end-to-end in-browser against the real backend: ingesting
+  this very repository's own `app/services/agent_runtime/` directory
+  returned `files_scanned: 4`, `symbols_found: 51` (confirmed via the
+  raw response body), and the Knowledge tab's new "Repository Code
+  Structure" card rendered the real file list with every real function
+  and class — including `DockerSandboxAdapter` from Phase 8 — at its
+  real line number. 7 new backend tests (62/62 total): real symbol
+  parsing from a `tmp_path` fixture, a real "path doesn't exist" error,
+  a real Neo4j round trip, and a real 403 for a non-admin project
+  member.
+
 ## What's intentionally not here yet
 
 Temporal/LangGraph-based durable workflow orchestration (this pass's
 Factory Supervisor sequences steps via a background thread against the
-real database, not a distributed workflow engine), parsing real
-repository code into the knowledge graph (no repository-ingestion
-pipeline exists yet — Phase 7's graph covers factory work, not source
-code), and coordinating presence across multiple backend replicas
-(Phase 6's presence registry is single-process/in-memory) are later
-phases of the execution spec and are not implemented in this pass.
+real database, not a distributed workflow engine), cloning a remote git
+repository server-side for ingestion (by design — see Phase 9; ingestion
+only reads a local path the backend host can already see), and
+coordinating presence across multiple backend replicas (Phase 6's
+presence registry is single-process/in-memory) are later phases of the
+execution spec and are not implemented in this pass.
 
 ## Running locally
 

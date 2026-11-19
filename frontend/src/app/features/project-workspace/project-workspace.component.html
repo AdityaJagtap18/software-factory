@@ -333,6 +333,72 @@
         </table>
       }
     </section>
+
+    <section class="sf-card" style="margin-top:16px;">
+      <div class="sf-panel-title">
+        <h3>Repository Code Structure</h3>
+      </div>
+      <p class="set-note" style="padding:0 18px 14px; font-size:12.5px; color: var(--sf-text-secondary);">
+        Parses a real directory of source files already present on the backend host (Python via the
+        real <code>ast</code> module, TypeScript/JavaScript via a lightweight top-level-declaration
+        scan) into real File/Function/Class nodes — project admins only, since it reads whatever path
+        the backend process can see. There is no remote-git-URL option here by design.
+      </p>
+      <div class="set-note" style="display:flex; gap:8px; padding:0 18px 14px; align-items:center;">
+        <input
+          style="flex:1;"
+          type="text"
+          placeholder="Absolute path on the backend host, e.g. C:\path\to\repo"
+          [value]="ingestPath()"
+          (input)="ingestPath.set($any($event.target).value)"
+        />
+        <button
+          class="sf-btn sf-btn--primary"
+          type="button"
+          style="padding:6px 14px; white-space:nowrap;"
+          [disabled]="ingestingRepository() || !ingestPath().trim()"
+          (click)="ingestRepository()"
+        >
+          {{ ingestingRepository() ? 'Ingesting…' : 'Ingest repository' }}
+        </button>
+      </div>
+      @if (ingestError()) {
+        <div class="sf-empty" style="color: var(--sf-danger, #d04444);">{{ ingestError() }}</div>
+      }
+      @if (codeGraph() === null) {
+        <div class="sf-empty">Loading…</div>
+      } @else if (!codeGraph()!.connected) {
+        <div class="sf-empty">Knowledge graph service not available: {{ codeGraph()!.detail }}</div>
+      } @else if (codeGraph()!.files.length === 0) {
+        <div class="sf-empty">Not ingested yet. Enter a real path on the backend host and click "Ingest repository".</div>
+      } @else {
+        <div class="kg-stats">
+          <div><strong>{{ codeGraph()!.files.length }}</strong><span>Files</span></div>
+          <div>
+            <strong>{{ codeGraph()!.files.reduce((n, f) => n + f.symbols.length, 0) }}</strong>
+            <span>Symbols</span>
+          </div>
+        </div>
+        <table class="sf-table">
+          <thead><tr><th>File</th><th>Language</th><th>Symbols</th></tr></thead>
+          <tbody>
+            @for (file of codeGraph()!.files; track file.path) {
+              <tr>
+                <td>{{ file.path }}</td>
+                <td><span class="sf-pill">{{ file.language }}</span></td>
+                <td>
+                  <div class="pw-wf-steps">
+                    @for (symbol of file.symbols; track symbol.name + symbol.line) {
+                      <span class="sf-badge sf-badge--blue">{{ symbol.kind }} {{ symbol.name }}:{{ symbol.line }}</span>
+                    }
+                  </div>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
+    </section>
   }
 
   @if (activeTab() === 'artifacts' || activeTab() === 'activity' || activeTab() === 'settings') {

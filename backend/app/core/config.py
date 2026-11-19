@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60
     refresh_token_expire_days: int = 30
     cors_origins: list[str] = ["http://localhost:4200"]
+    credential_encryption_key: str = "dev-credential-key-change-me"
 
 
 @lru_cache

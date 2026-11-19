@@ -28,50 +28,104 @@
   <section class="sf-card">
     <div class="sf-panel-title">
       <h3><sf-icon name="navigation/agents" /> Coding Agent Connections</h3>
-      <button class="sf-btn sf-btn--primary" type="button" style="padding:6px 14px;"><sf-icon name="navigation/agents" /> Add Coding Agent</button>
     </div>
     <p class="set-note">
-      Connect and authenticate coding-agent runtimes (Codex, Claude Code, Gemini CLI, or a custom adapter). These are
-      separate integration resources from LLM provider connections under <strong>Providers &amp; Models</strong> — connecting
-      an API key there does not connect a coding-agent runtime here.
+      Connect and authenticate coding-agent runtimes (Codex, Claude Code, Gemini CLI, or a custom adapter). Status
+      reflects a real backend health check — a local runtime is only "Connected" if its CLI was actually detected on
+      the backend host, and a factory-managed runtime is only "Connected" if its credential was actually verified
+      against the provider's API. These are separate integration resources from LLM provider connections under
+      <strong>Providers &amp; Models</strong> — connecting an API key there does not connect a coding-agent runtime here.
     </p>
-    <table class="sf-table">
-      <thead><tr><th>Runtime</th><th>Connection</th><th>Authentication</th><th>Status</th><th>Version</th><th>Last Health Check</th><th></th></tr></thead>
-      <tbody>
-        @for (r of runtimes(); track r.id) {
-          <tr>
-            <td><sf-icon [name]="r.icon" /> <strong>{{ r.name }}</strong><div class="set-rt-desc">{{ r.description }}</div></td>
-            <td>{{ r.connectionMode }}</td>
-            <td>{{ r.authMethod }}</td>
-            <td><span class="sf-badge" [class]="'sf-badge--' + statusTone(r.status)">{{ r.status }}</span></td>
-            <td>{{ r.version || '—' }}</td>
-            <td>{{ r.lastHealthCheck || '—' }}</td>
-            <td>
-              @if (r.status === 'Connected') {
-                <button class="sf-btn" type="button" style="padding:5px 10px;">Reconnect</button>
-              } @else {
-                <button class="sf-btn sf-btn--primary" type="button" style="padding:5px 10px;">Connect</button>
-              }
-            </td>
-          </tr>
-        }
-      </tbody>
-    </table>
+    @if (!connectionsLoaded()) {
+      <div class="sf-empty">Loading connections…</div>
+    } @else {
+      <table class="sf-table">
+        <thead><tr><th>Runtime</th><th>Connection</th><th>Authentication</th><th>Status</th><th>Version</th><th>Last Health Check</th><th></th></tr></thead>
+        <tbody>
+          @for (r of connections(); track r.runtime_slug) {
+            <tr>
+              <td><sf-icon [name]="r.icon" /> <strong>{{ r.runtime_name }}</strong><div class="set-rt-desc">{{ r.description }}</div></td>
+              <td>{{ connectionModeLabel(r.connection_mode) }}</td>
+              <td>{{ r.auth_method }}</td>
+              <td>
+                <span class="sf-badge" [class]="'sf-badge--' + statusTone(r.status)">{{ statusLabel(r.status) }}</span>
+                @if (r.last_error) { <div class="set-rt-desc">{{ r.last_error }}</div> }
+              </td>
+              <td>{{ r.detected_version || '—' }}</td>
+              <td>{{ r.last_health_check_at ? (r.last_health_check_at | date: 'short') : '—' }}</td>
+              <td>
+                @if (r.is_configured) {
+                  <button class="sf-btn" type="button" style="padding:5px 10px;" [disabled]="recheckingId() === r.id" (click)="recheck(r)">
+                    {{ recheckingId() === r.id ? 'Checking…' : 'Recheck' }}
+                  </button>
+                  <button class="sf-btn" type="button" style="padding:5px 10px;" (click)="disconnect(r)">Remove</button>
+                } @else {
+                  <button class="sf-btn sf-btn--primary" type="button" style="padding:5px 10px;" (click)="openConnect(r)">Connect</button>
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    }
   </section>
 
   <section class="sf-card" style="margin-top:16px;">
     <div class="sf-panel-title"><h3>Runtime Capabilities</h3></div>
+    <p class="set-note">
+      Capability validation states are honest metadata, not a claim of guaranteed behavior: only
+      <strong>verified</strong> capabilities are exercised by this backend's own health check on every run.
+    </p>
     <div class="set-rt-caps">
-      @for (r of runtimes(); track r.id) {
+      @for (r of connections(); track r.runtime_slug) {
         <div class="set-rt-caps__col">
-          <h4><sf-icon [name]="r.icon" /> {{ r.name }}</h4>
+          <h4><sf-icon [name]="r.icon" /> {{ r.runtime_name }}</h4>
           <div class="ag-capabilities">
-            @for (c of r.capabilities; track c) { <span class="sf-pill">{{ c }}</span> }
+            @for (c of r.capabilities; track c.name) {
+              <span class="sf-pill" [title]="c.state">{{ c.name }}</span>
+            }
           </div>
         </div>
       }
     </div>
   </section>
+
+  @if (connectTarget()) {
+    <div class="org-modal__backdrop" (click)="closeConnect()">
+      <div class="org-modal" (click)="$event.stopPropagation()">
+        <h3>Connect {{ connectTarget()!.runtime_name }}</h3>
+        <p>{{ connectTarget()!.description }}</p>
+
+        <label for="connMode">Connection mode</label>
+        <select id="connMode" [value]="connectMode()" (change)="connectMode.set($any($event.target).value)">
+          <option value="local_runtime">Local runtime (detect CLI on backend host)</option>
+          <option value="factory_managed">Factory-managed (verify a provider API key)</option>
+        </select>
+
+        @if (connectMode() === 'factory_managed') {
+          <label for="connCred">Provider API key</label>
+          <input id="connCred" type="password" placeholder="Pasted here, encrypted at rest, never shown again"
+                 [value]="credentialValue()" (input)="credentialValue.set($any($event.target).value)" />
+        } @else {
+          <p class="set-note" style="padding-left:0;">
+            The backend will run <code>{{ connectTarget()!.runtime_slug }} --version</code> on its own host. If that
+            CLI isn't installed there, this will honestly report "Not connected" — it will not be faked as working.
+          </p>
+        }
+
+        @if (connectError()) {
+          <p class="set-note" style="color: var(--sf-red-600); padding-left:0;">{{ connectError() }}</p>
+        }
+
+        <div class="org-modal__actions">
+          <button type="button" class="sf-btn" (click)="closeConnect()">Cancel</button>
+          <button type="button" class="sf-btn sf-btn--primary" [disabled]="connecting()" (click)="submitConnect()">
+            {{ connecting() ? 'Connecting…' : 'Connect' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  }
 }
 
 @if (topTab() === 'agents') {

@@ -3,7 +3,7 @@ import { Injectable, inject, signal } from '@angular/core';
 import { Observable, tap } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { AuthService } from '../auth/auth.service';
-import { ApiTask, CreateTaskPayload } from './task.models';
+import { ApiTask, CreateTaskPayload, MyApiTask } from './task.models';
 
 @Injectable({ providedIn: 'root' })
 export class TaskService {
@@ -12,8 +12,19 @@ export class TaskService {
 
   readonly tasks = signal<ApiTask[]>([]);
   readonly loaded = signal(false);
+  readonly myTasks = signal<MyApiTask[]>([]);
+  readonly myTasksLoaded = signal(false);
 
   private readonly watching = new Set<string>();
+
+  listMine(): Observable<MyApiTask[]> {
+    return this.http.get<MyApiTask[]>(`${environment.apiBaseUrl}/tasks/mine`).pipe(
+      tap((tasks) => {
+        this.myTasks.set(tasks);
+        this.myTasksLoaded.set(true);
+      })
+    );
+  }
 
   listForProject(projectId: string): Observable<ApiTask[]> {
     return this.http.get<ApiTask[]>(`${environment.apiBaseUrl}/projects/${projectId}/tasks`).pipe(
@@ -43,6 +54,7 @@ export class TaskService {
 
   private patchTask(taskId: string, patch: Partial<ApiTask>): void {
     this.tasks.update((list) => list.map((t) => (t.id === taskId ? { ...t, ...patch } : t)));
+    this.myTasks.update((list) => list.map((t) => (t.id === taskId ? { ...t, ...patch } : t)));
   }
 
   /**

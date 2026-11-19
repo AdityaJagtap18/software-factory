@@ -37,3 +37,7 @@ class TaskResponse(BaseModel):
     step_order: int | None = None
 
     model_config = {"from_attributes": True}
+
+
+class MyTaskResponse(TaskResponse):
+    project_name: str

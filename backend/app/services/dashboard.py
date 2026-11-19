@@ -14,12 +14,13 @@ from sqlalchemy.orm import Session as DBSession
 
 from app.models.agent_runtime import CodingAgentConnection, ConnectionStatus
 from app.models.audit import AuditLog
-from app.models.organization import OrgRole, OrganizationMember
-from app.models.project import Project, ProjectMember
+from app.models.organization import OrganizationMember
+from app.models.project import Project
 from app.models.task import Task, TaskStatus
 from app.models.user import User
 from app.models.workflow import Workflow, WorkflowStatus
 from app.services import knowledge_graph
+from app.services.access import visible_project_ids
 
 
 @dataclass
@@ -64,30 +65,6 @@ class DashboardSummary:
     system_health: list[HealthItem] = field(default_factory=list)
 
 
-def _visible_project_ids(db: DBSession, user: User, org_ids: list) -> set:
-    """Mirrors the access rule enforced by `require_project_access`:
-    explicit project membership, or org-admin of the project's
-    organization -- never "every project in an org the user can see"."""
-    if not org_ids:
-        return set()
-
-    admin_org_ids = {
-        m.organization_id
-        for m in db.query(OrganizationMember).filter_by(user_id=user.id).all()
-        if m.role == OrgRole.ORG_ADMIN
-    }
-    member_project_ids = {
-        m.project_id for m in db.query(ProjectMember).filter_by(user_id=user.id).all()
-    }
-
-    projects = db.query(Project).filter(Project.organization_id.in_(org_ids)).all()
-    return {
-        p.id
-        for p in projects
-        if p.id in member_project_ids or p.organization_id in admin_org_ids
-    }
-
-
 def _postgres_health(db: DBSession) -> HealthItem:
     try:
         db.execute(text("SELECT 1"))
@@ -105,7 +82,7 @@ def get_summary(db: DBSession, user: User) -> DashboardSummary:
     org_memberships = db.query(OrganizationMember).filter_by(user_id=user.id).all()
     org_ids = [m.organization_id for m in org_memberships]
 
-    project_ids = _visible_project_ids(db, user, org_ids)
+    project_ids = visible_project_ids(db, user)
 
     tasks = db.query(Task).filter(Task.project_id.in_(project_ids)).all() if project_ids else []
     workflows = (

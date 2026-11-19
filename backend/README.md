@@ -1,4 +1,4 @@
-# Software Factory — Backend (Phases 1–10: Foundation Through the Real Dashboard)
+# Software Factory — Backend (Phases 1–11: Foundation Through a Real Global Task View)
 
 FastAPI + PostgreSQL (+ Neo4j) backend implementing real authentication,
 organizations, membership, RBAC, projects, workspaces, coding-agent runtime
@@ -364,6 +364,41 @@ provider API key makes the same code paths report a real "Connected."**
   activity entries in the real order they happened, and both dependency
   checks reporting `connected: true`.
 
+### Phase 11 — A real global "My Tasks" view
+- **The global `/tasks` page was the last major holdout of fabricated
+  UI**: it rendered a hardcoded `TSK-4827` demo task with an invented
+  multi-agent chat, a fake "Execution Plan," a fake "Task Breakdown
+  (Agents)" panel, and fake file/PRD references — entirely disconnected
+  from the real `Task` model every other task-facing surface in this
+  app (the project workspace's Tasks tab, task start/cancel/stream) has
+  used since Phase 3. This phase removes that fabricated page and
+  replaces it with a real one, rather than inventing backend features
+  (per-task chat threads, multi-agent breakdown, file diffs) that
+  nothing else in this codebase has asked for or could honestly back.
+- **`app/services/access.py`**: `visible_project_ids(db, user)` — the
+  same explicit-membership-or-org-admin visibility rule
+  `require_project_access` enforces per-request, factored out so it can
+  be computed once for a whole cross-project view. `app/services/
+  dashboard.py` (Phase 10) now calls this shared helper instead of its
+  own private copy.
+- **`GET /tasks/mine`**: every real task across every project this user
+  actually belongs to, each annotated with its real project name. A
+  user with access to nothing gets a genuinely empty list.
+- The rebuilt task-workspace page shows only what's real: title,
+  description, priority, status, real timestamps, and the task's real
+  `output`/`error_message` — with working Start/Cancel buttons wired to
+  the same real execution pipeline as every other task surface.
+- 3 new backend tests (69/69 total): real cross-project aggregation,
+  a genuinely empty list for a user with no access, and a real 401 for
+  an unauthenticated request.
+- Verified end-to-end in-browser against the real backend: a user with
+  tasks in two different projects saw both, correctly labeled with
+  their real project names; starting a task with no coding-agent
+  connection assigned produced a real `"status": "failed"` with the
+  real error `"No coding-agent connection assigned to this task."`,
+  rendered live in the UI via the existing real SSE stream — not a
+  fabricated multi-agent transcript.
+
 ## What's intentionally not here yet
 
 Temporal/LangGraph-based durable workflow orchestration (this pass's
@@ -374,6 +409,16 @@ only reads a local path the backend host can already see), and
 coordinating presence across multiple backend replicas (Phase 6's
 presence registry is single-process/in-memory) are later phases of the
 execution spec and are not implemented in this pass.
+
+Several frontend-only pages the original UI scaffold shipped with are
+still backed by static mock data rather than this backend — Agents,
+Prompts, Artifacts, Approvals, Monitoring, Providers, Repository
+Intelligence, Workflow Detail, and Code Review. (Dashboard, the global
+Task view, and the project workspace's Tasks/Workflows/Knowledge tabs
+are real — see Phases 3–11.) Each of those remaining pages implies
+backend features this spec hasn't asked for yet (per-task chat threads,
+file diffs, approval workflows, log aggregation); they're listed here
+rather than quietly left inconsistent with the rest of the app.
 
 ## Running locally
 

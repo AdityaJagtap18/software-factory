@@ -9,11 +9,12 @@ from starlette.responses import StreamingResponse
 from app.api.deps import ProjectContext, get_current_user, require_project_access
 from app.core.database import SessionLocal, get_db
 from app.models.agent_runtime import CodingAgentConnection
-from app.models.project import ProjectRole
+from app.models.project import Project, ProjectRole
 from app.models.task import Task, TaskStatus
 from app.models.user import User
-from app.schemas.task import TaskCreate, TaskResponse, TaskUpdate
+from app.schemas.task import MyTaskResponse, TaskCreate, TaskResponse, TaskUpdate
 from app.services import audit
+from app.services.access import visible_project_ids
 from app.services.task_execution import start_task_in_background
 
 _STREAM_POLL_SECONDS = 0.5
@@ -29,6 +30,34 @@ def _get_task_or_404(db: DBSession, project_id: uuid.UUID, task_id: uuid.UUID) -
     if task is None or task.project_id != project_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Task not found")
     return task
+
+
+@router.get("/tasks/mine", response_model=list[MyTaskResponse])
+def list_my_tasks(
+    user: User = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+) -> list[MyTaskResponse]:
+    """Every real task across every project this user actually belongs
+    to -- the same visibility rule enforced per-project elsewhere, applied
+    across all of them at once, for a genuine global "My Tasks" view."""
+    project_ids = visible_project_ids(db, user)
+    if not project_ids:
+        return []
+
+    projects_by_id = {p.id: p for p in db.query(Project).filter(Project.id.in_(project_ids)).all()}
+    tasks = (
+        db.query(Task)
+        .filter(Task.project_id.in_(project_ids))
+        .order_by(Task.created_at.desc())
+        .all()
+    )
+    return [
+        MyTaskResponse(
+            **TaskResponse.model_validate(t).model_dump(),
+            project_name=projects_by_id[t.project_id].name,
+        )
+        for t in tasks
+    ]
 
 
 @router.get("/projects/{project_id}/tasks", response_model=list[TaskResponse])

@@ -16,6 +16,10 @@ export interface ApiTask {
   created_at: string;
 }
 
+export interface MyApiTask extends ApiTask {
+  project_name: string;
+}
+
 export interface CreateTaskPayload {
   title: string;
   description?: string;

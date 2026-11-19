@@ -1,14 +1,15 @@
-# Software Factory — Backend (Phases 1–9: Foundation Through Repository Code Ingestion)
+# Software Factory — Backend (Phases 1–10: Foundation Through the Real Dashboard)
 
 FastAPI + PostgreSQL (+ Neo4j) backend implementing real authentication,
 organizations, membership, RBAC, projects, workspaces, coding-agent runtime
 connectivity, real-time streaming task execution, the Factory Supervisor's
 multi-step workflow orchestration, real-time multi-user presence/
 collaboration, a real Neo4j-backed knowledge graph of each project's
-actual work, genuine Docker-isolated task execution, and real repository
-source-code parsing into that knowledge graph — the foundation the rest
-of the Software Factory execution spec (Temporal/LangGraph orchestration,
-etc.) builds on.
+actual work, genuine Docker-isolated task execution, real repository
+source-code parsing into that knowledge graph, and a dashboard built
+entirely from real, access-scoped aggregate queries — the foundation
+the rest of the Software Factory execution spec (Temporal/LangGraph
+orchestration, etc.) builds on.
 
 ## What's implemented
 
@@ -321,6 +322,47 @@ provider API key makes the same code paths report a real "Connected."**
   parsing from a `tmp_path` fixture, a real "path doesn't exist" error,
   a real Neo4j round trip, and a real 403 for a non-admin project
   member.
+
+### Phase 10 — A real dashboard
+- **The previous dashboard's stat cards, "Recent Activity," "Running
+  Workflows," and "System Health" panels were all static mock data**
+  (`MockDataService`) — the project list beside them was already real,
+  which made the page an inconsistent mix of real and fabricated
+  content. This phase replaces every one of those panels with a real,
+  access-scoped aggregate.
+- **`app/services/dashboard.py`**: `get_summary(db, user)` computes real
+  `COUNT()`-equivalent totals (organizations, projects, tasks,
+  workflows, configured connections) over exactly the organizations and
+  projects this user can actually access — `_visible_project_ids()`
+  mirrors the same explicit-membership-or-org-admin rule enforced by
+  `require_project_access` elsewhere, not "every row in the database."
+  A user with no access to anything gets a genuinely empty dashboard,
+  not another user's numbers.
+- **No fabricated ETA**: a running workflow's progress is `current_step
+  / total_steps` from real rows, and its displayed duration is a real
+  `now - started_at` elapsed time — there is no invented "~4 min
+  remaining" estimate, which this codebase has no honest way to
+  compute.
+- **Real system health, not a static "All Services Operational"
+  banner**: each dependency (Postgres, Neo4j) is checked with a real
+  query (`SELECT 1`, and the same `knowledge_graph.health_check()` used
+  by Phase 7) at request time, and the banner only claims "reachable"
+  when every check actually passed.
+- **Route**: `GET /dashboard/summary`, authenticated but with no
+  project/org path parameter — it computes its own visibility scope
+  per-user rather than trusting a caller-supplied ID.
+- 4 new backend tests (66/66 total): real counts scoped correctly for
+  one user and genuinely zero for another user with no access, real
+  workflow progress/elapsed-time math (driven via a direct DB fixture
+  to avoid racing the Factory Supervisor's background thread rather
+  than asserting on a flaky timing window), real dependency health, and
+  a real 401 for an unauthenticated request.
+- Verified end-to-end in-browser against the real backend: a fresh
+  user/org/project/task/workflow created via the real API produced
+  `tasks_total: 3` (1 standalone task + the 2 real Task rows that are a
+  workflow's steps — confirmed via the raw response body), real recent-
+  activity entries in the real order they happened, and both dependency
+  checks reporting `connected: true`.
 
 ## What's intentionally not here yet
 

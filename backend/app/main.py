@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import (
     agent_runtimes,
     auth,
+    dashboard,
     knowledge,
     organizations,
     presence,
@@ -33,6 +34,7 @@ app.include_router(tasks.router, prefix="/api/v1")
 app.include_router(workflows.router, prefix="/api/v1")
 app.include_router(presence.router, prefix="/api/v1")
 app.include_router(knowledge.router, prefix="/api/v1")
+app.include_router(dashboard.router, prefix="/api/v1")
 
 
 @app.get("/api/v1/health")

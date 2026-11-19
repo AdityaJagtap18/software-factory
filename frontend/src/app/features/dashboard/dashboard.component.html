@@ -11,17 +11,15 @@
 </div>
 
 <div class="sf-stat-grid">
+  @if (summary() === null) {
+    <div class="sf-empty">Loading…</div>
+  }
   @for (stat of stats(); track stat.label) {
-    <div class="sf-stat-card" [class]="'sf-stat-card--' + stat.tone">
+    <div class="sf-stat-card">
       <div class="sf-stat-card__icon"><sf-icon [name]="stat.icon" /></div>
       <div>
         <div class="sf-stat-card__label">{{ stat.label }}</div>
-        <div class="sf-stat-card__value">
-          {{ stat.value }}
-          @if (stat.delta) {
-            <span class="sf-stat-card__delta" [class]="stat.deltaDirection">{{ stat.deltaDirection === 'up' ? '↑' : '↓' }} {{ stat.delta }}</span>
-          }
-        </div>
+        <div class="sf-stat-card__value">{{ stat.value }}</div>
       </div>
     </div>
   }
@@ -75,13 +73,15 @@
     <div class="activity-list">
       @for (item of recentActivity(); track item.id) {
         <div class="activity-list__item">
-          <span class="activity-list__icon" [class]="'tone-' + item.tone"><sf-icon [name]="item.icon" /></span>
+          <span class="activity-list__icon"><sf-icon name="navigation/dashboard" /></span>
           <div class="activity-list__body">
-            <div class="activity-list__title">{{ item.title }}</div>
-            <div class="activity-list__subtitle">{{ item.subtitle }}</div>
+            <div class="activity-list__title">{{ item.action }}</div>
+            <div class="activity-list__subtitle">{{ item.actor_name || 'Someone' }} · {{ item.target_type }}</div>
           </div>
-          <span class="activity-list__time">{{ item.timestamp }}</span>
+          <span class="activity-list__time">{{ relativeTime(item.created_at) }}</span>
         </div>
+      } @empty {
+        <div class="sf-empty">No activity yet.</div>
       }
     </div>
   </section>
@@ -96,25 +96,27 @@
         <tr>
           <th>Workflow</th>
           <th>Project</th>
-          <th>Current Step</th>
+          <th>Step</th>
           <th>Progress</th>
-          <th>ETA</th>
+          <th>Elapsed</th>
         </tr>
       </thead>
       <tbody>
         @for (wf of runningWorkflows(); track wf.id) {
           <tr class="clickable" routerLink="/workflows">
             <td>
-              <span class="dash-grid__wf-name"><sf-icon [name]="wf.icon" /> {{ wf.name }}</span>
+              <span class="dash-grid__wf-name"><sf-icon name="navigation/workflows" /> {{ wf.name }}</span>
             </td>
-            <td><span class="sf-pill">{{ wf.project }}</span></td>
-            <td>{{ wf.currentStep }}</td>
+            <td><span class="sf-pill">{{ wf.project_name }}</span></td>
+            <td>{{ wf.current_step }} / {{ wf.total_steps }}</td>
             <td class="dash-grid__progress-cell">
-              <div class="sf-progress"><div class="sf-progress__bar" [style.width.%]="wf.progress"></div></div>
-              <span>{{ wf.progress }}%</span>
+              <div class="sf-progress"><div class="sf-progress__bar" [style.width.%]="wf.progress_percent"></div></div>
+              <span>{{ wf.progress_percent }}%</span>
             </td>
-            <td>{{ wf.eta }}</td>
+            <td>{{ elapsedLabel(wf.elapsed_seconds) }}</td>
           </tr>
+        } @empty {
+          <tr><td colspan="5" class="sf-empty">No workflows running right now.</td></tr>
         }
       </tbody>
     </table>
@@ -123,13 +125,17 @@
   <section class="sf-card">
     <div class="sf-panel-title">
       <h3>System Health</h3>
-      <span class="sf-badge sf-badge--green">All Services Operational</span>
+      <span class="sf-badge" [class]="allHealthy() ? 'sf-badge--green' : 'sf-badge--amber'">
+        {{ allHealthy() ? 'All Dependencies Reachable' : 'Degraded — see detail below' }}
+      </span>
     </div>
     <div class="health-list">
-      @for (item of systemHealth(); track item.label) {
+      @for (item of systemHealth(); track item.name) {
         <div class="health-list__item">
-          <span><sf-icon [name]="item.icon" /> {{ item.label }}</span>
-          <span class="sf-badge sf-badge--green">{{ item.status }}</span>
+          <span><sf-icon name="navigation/monitoring" /> {{ item.name }}</span>
+          <span class="sf-badge" [class]="item.connected ? 'sf-badge--green' : 'sf-badge--red'" [title]="item.detail">
+            {{ item.connected ? 'Connected' : 'Not reachable' }}
+          </span>
         </div>
       }
     </div>

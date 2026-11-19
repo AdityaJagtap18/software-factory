@@ -13,13 +13,26 @@ export class WorkflowService {
   readonly workflows = signal<ApiWorkflow[]>([]);
   readonly loaded = signal(false);
 
+  private readonly watching = new Set<string>();
+
   listForProject(projectId: string): Observable<ApiWorkflow[]> {
     return this.http.get<ApiWorkflow[]>(`${environment.apiBaseUrl}/projects/${projectId}/workflows`).pipe(
       tap((workflows) => {
         this.workflows.set(workflows);
         this.loaded.set(true);
+        // A workflow someone else started is already running when this
+        // viewer opens the page — watch it live too, not just its starter.
+        for (const workflow of workflows) {
+          if (workflow.status === 'running') this.watch(projectId, workflow.id);
+        }
       })
     );
+  }
+
+  private watch(projectId: string, workflowId: string): void {
+    if (this.watching.has(workflowId)) return;
+    this.watching.add(workflowId);
+    void this.streamUntilDone(projectId, workflowId).finally(() => this.watching.delete(workflowId));
   }
 
   create(projectId: string, payload: CreateWorkflowPayload): Observable<ApiWorkflow> {
@@ -43,7 +56,7 @@ export class WorkflowService {
       .pipe(
         tap((workflow) => {
           this.patchWorkflow(workflowId, workflow);
-          void this.streamUntilDone(projectId, workflowId);
+          this.watch(projectId, workflowId);
         })
       );
   }

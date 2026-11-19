@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnDestroy, computed, effect, inject, signal } from '@angular/core';
 import { RouterLink, ActivatedRoute } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { IconComponent } from '../../shared/icon/icon.component';
@@ -7,6 +7,7 @@ import { ProjectService } from '../../core/org/project.service';
 import { TaskService } from '../../core/org/task.service';
 import { AgentRuntimeService } from '../../core/org/agent-runtime.service';
 import { WorkflowService } from '../../core/org/workflow.service';
+import { PresenceService } from '../../core/org/presence.service';
 import { ApiProject } from '../../core/auth/auth.models';
 import { ApiTask } from '../../core/org/task.models';
 import { ApiWorkflow, CreateWorkflowStepPayload } from '../../core/org/workflow.models';
@@ -21,13 +22,14 @@ type TabId = 'overview' | 'tasks' | 'workflows' | 'agents' | 'knowledge' | 'arti
   templateUrl: './project-workspace.component.html',
   styleUrl: './project-workspace.component.scss'
 })
-export class ProjectWorkspaceComponent {
+export class ProjectWorkspaceComponent implements OnDestroy {
   private readonly data = inject(MockDataService);
   private readonly route = inject(ActivatedRoute);
   private readonly projectService = inject(ProjectService);
   private readonly taskService = inject(TaskService);
   private readonly runtimeService = inject(AgentRuntimeService);
   private readonly workflowService = inject(WorkflowService);
+  private readonly presenceService = inject(PresenceService);
 
   private readonly projectId = toSignal(this.route.paramMap, { initialValue: this.route.snapshot.paramMap });
 
@@ -38,6 +40,7 @@ export class ProjectWorkspaceComponent {
   readonly tasks = this.taskService.tasks;
   readonly tasksLoaded = this.taskService.loaded;
   readonly connections = this.runtimeService.connections;
+  readonly viewers = this.presenceService.viewers;
 
   readonly showCreateTask = signal(false);
   readonly newTaskTitle = signal('');
@@ -89,6 +92,7 @@ export class ProjectWorkspaceComponent {
           this.taskService.listForProject(project.id).subscribe();
           this.runtimeService.listForOrg(project.organization_id).subscribe();
           this.workflowService.listForProject(project.id).subscribe();
+          this.presenceService.watch(project.id);
         },
         error: () => {
           this.notFound.set(true);
@@ -229,5 +233,9 @@ export class ProjectWorkspaceComponent {
     const project = this.project();
     if (!project) return;
     this.workflowService.cancel(project.id, workflow.id).subscribe();
+  }
+
+  ngOnDestroy(): void {
+    this.presenceService.stop();
   }
 }

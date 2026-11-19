@@ -15,6 +15,12 @@
         <p>
           {{ proj.description || 'No description yet' }}
           <span class="sf-badge sf-badge--green pw-status">{{ proj.status }}</span>
+          @if (viewers().length > 0) {
+            <span class="sf-pill pw-viewers" [title]="viewers().map(v => v.full_name).join(', ')">
+              <sf-icon name="navigation/agents" />
+              {{ viewers().length }} viewing now
+            </span>
+          }
         </p>
       </div>
     </div>

@@ -1,11 +1,11 @@
-# Software Factory — Backend (Phases 1–5: Foundation Through Multi-Step Orchestration)
+# Software Factory — Backend (Phases 1–6: Foundation Through Live Collaboration)
 
 FastAPI + PostgreSQL backend implementing real authentication, organizations,
 membership, RBAC, projects, workspaces, coding-agent runtime connectivity,
-real-time streaming task execution, and the Factory Supervisor's multi-step
-workflow orchestration — the foundation the rest of the Software Factory
-execution spec (Temporal/LangGraph orchestration, knowledge graph, etc.)
-builds on.
+real-time streaming task execution, the Factory Supervisor's multi-step
+workflow orchestration, and real-time multi-user presence/collaboration —
+the foundation the rest of the Software Factory execution spec
+(Temporal/LangGraph orchestration, knowledge graph, etc.) builds on.
 
 ## What's implemented
 
@@ -169,14 +169,47 @@ provider API key makes the same code paths report a real "Connected."**
   workflows, with live per-step progress chips driven by the same
   fetch+SSE pattern as the Tasks tab.
 
+### Phase 6 — Real-time multi-user collaboration
+- **Live project presence** (`app/services/presence.py`,
+  `app/api/routes/presence.py`): a `WebSocket` endpoint,
+  `GET /projects/{id}/presence/ws`, backed by an in-memory, per-process
+  connection registry. A viewer appears the instant their socket connects
+  (after a real JWT + project-membership check — a browser `WebSocket`
+  can't send an `Authorization` header, so the access token travels as a
+  query parameter, verified exactly like `get_current_user`) and
+  disappears the instant it closes — tab closed, navigation away, network
+  drop. Every join or leave triggers a real server-pushed broadcast of
+  the current viewer list to every other open socket on that project —
+  not a per-client poll or a locally-estimated count. Honestly scoped:
+  this coordinates presence within a single backend process, not across
+  multiple replicas (that would need a shared pub/sub this pass doesn't
+  add).
+- **Shared live task/workflow progress**: previously, only the browser
+  tab that actually clicked "Start" ever attached to a task's or
+  workflow's SSE stream, so a second viewer of the same project wouldn't
+  see progress update until they manually refreshed. `TaskService` and
+  `WorkflowService` (frontend) now also attach the live stream for any
+  task/workflow that is already `running` when a viewer's page loads —
+  every viewer watching real progress, not just the one who started it.
+- Verified end-to-end with two real logged-in users and two real
+  WebSocket connections: opening the same project in a second session
+  live-pushed an updated viewer count to the first session with no
+  refresh (confirmed via the raw presence payload), and a task flipped to
+  `running` was picked up live by a browser tab that never clicked Start
+  (confirmed by its automatic `GET .../tasks/{id}/stream` request). 4 new
+  backend tests (47/47 total) exercise the WebSocket directly — invalid
+  token, no project access, a single viewer seeing themselves join, and a
+  second real socket triggering a genuine broadcast to the first.
+
 ## What's intentionally not here yet
 
 Temporal/LangGraph-based durable workflow orchestration (this pass's
 Factory Supervisor sequences steps via a background thread against the
 real database, not a distributed workflow engine), the Neo4j knowledge
-graph, Docker execution isolation, and real-time multi-user collaboration
-are later phases of the execution spec and are not implemented in this
-pass.
+graph, Docker execution isolation, and coordinating presence across
+multiple backend replicas (this pass's presence registry is single-
+process/in-memory) are later phases of the execution spec and are not
+implemented in this pass.
 
 ## Running locally
 

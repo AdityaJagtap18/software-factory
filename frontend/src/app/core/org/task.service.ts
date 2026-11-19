@@ -13,13 +13,26 @@ export class TaskService {
   readonly tasks = signal<ApiTask[]>([]);
   readonly loaded = signal(false);
 
+  private readonly watching = new Set<string>();
+
   listForProject(projectId: string): Observable<ApiTask[]> {
     return this.http.get<ApiTask[]>(`${environment.apiBaseUrl}/projects/${projectId}/tasks`).pipe(
       tap((tasks) => {
         this.tasks.set(tasks);
         this.loaded.set(true);
+        // A task someone else started is already running when this viewer
+        // opens the page — watch it live too, not just the task's starter.
+        for (const task of tasks) {
+          if (task.status === 'running') this.watch(projectId, task.id);
+        }
       })
     );
+  }
+
+  private watch(projectId: string, taskId: string): void {
+    if (this.watching.has(taskId)) return;
+    this.watching.add(taskId);
+    void this.streamUntilDone(projectId, taskId).finally(() => this.watching.delete(taskId));
   }
 
   create(projectId: string, payload: CreateTaskPayload): Observable<ApiTask> {
@@ -43,7 +56,7 @@ export class TaskService {
       .pipe(
         tap((task) => {
           this.patchTask(taskId, task);
-          void this.streamUntilDone(projectId, taskId);
+          this.watch(projectId, taskId);
         })
       );
   }

@@ -1,124 +1,102 @@
 <div class="sf-breadcrumbs">
   <a routerLink="/projects">Projects</a> <span>›</span>
-  <a>{{ workflow().project }}</a> <span>›</span>
-  <a routerLink="/workflows">Workflows</a> <span>›</span>
-  <span class="current">{{ workflow().id }}</span>
+  <span class="current">Workflows</span>
 </div>
 
-<div class="sf-page-header">
-  <div class="sf-page-header__title-group">
-    <span class="sf-page-header__icon tone-violet"><sf-icon name="agents/planning-agent" /></span>
+@if (!loaded()) {
+  <div class="sf-empty">Loading…</div>
+} @else if (workflows().length === 0) {
+  <div class="sf-page-header">
     <div>
-      <h1>{{ workflow().id }} — {{ workflow().name }} <span class="sf-badge sf-badge--blue">{{ workflow().status }}</span></h1>
-      <p>{{ workflow().description }}</p>
+      <h1>Workflows</h1>
+      <p>Real multi-step workflows across every project you have access to.</p>
     </div>
   </div>
-  <div class="sf-page-header__actions">
-    <button class="sf-btn" type="button"><sf-icon name="navigation/workflows" /> Rerun</button>
-    <button class="sf-btn" type="button"><sf-icon name="navigation/artifacts" /> View Contract</button>
+  <div class="sf-empty">
+    No workflows yet. Open a <a routerLink="/projects">project</a> and create one from its Workflows tab.
   </div>
-</div>
-
-<div class="sf-tabs">
-  <button type="button" class="sf-tab" [class.active]="tab() === 'workflow'" (click)="tab.set('workflow')"><sf-icon name="navigation/workflows" /> Workflow</button>
-  <button type="button" class="sf-tab" [class.active]="tab() === 'execution'" (click)="tab.set('execution')"><sf-icon name="navigation/artifacts" /> Execution</button>
-  <button type="button" class="sf-tab" [class.active]="tab() === 'tasks'" (click)="tab.set('tasks')"><sf-icon name="navigation/tasks" /> Tasks</button>
-  <button type="button" class="sf-tab" [class.active]="tab() === 'runs'" (click)="tab.set('runs')"><sf-icon name="navigation/agents" /> Agent Runs</button>
-  <button type="button" class="sf-tab" [class.active]="tab() === 'artifacts'" (click)="tab.set('artifacts')"><sf-icon name="navigation/artifacts" /> Artifacts</button>
-  <button type="button" class="sf-tab" [class.active]="tab() === 'logs'" (click)="tab.set('logs')"><sf-icon name="navigation/monitoring" /> Logs</button>
-</div>
-
-<div class="wf-grid">
-  <section class="sf-card wf-dag">
-    <div class="sf-panel-title">
-      <h3>Workflow DAG</h3>
-      <div class="wf-dag__controls">
-        <button class="sf-btn" type="button" style="padding:5px 10px;">Fit to View</button>
-        <button class="sf-btn" type="button" style="padding:5px 10px;">+</button>
-        <button class="sf-btn" type="button" style="padding:5px 10px;">−</button>
+} @else if (selectedWorkflow()) {
+  <div class="sf-page-header">
+    <div class="sf-page-header__title-group">
+      <span class="sf-page-header__icon tone-violet"><sf-icon name="navigation/workflows" /></span>
+      <div>
+        <h1>
+          {{ selectedWorkflow()!.name }}
+          <span class="sf-badge" [class]="'sf-badge--' + statusTone(selectedWorkflow()!.status)">{{ selectedWorkflow()!.status }}</span>
+        </h1>
+        <p>{{ selectedWorkflow()!.project_name }}</p>
       </div>
     </div>
-    <div class="wf-dag__canvas">
-      <svg class="wf-dag__edges" [attr.viewBox]="'0 0 900 320'" preserveAspectRatio="xMinYMin meet">
-        @for (edge of workflow().edges; track edge.from + edge.to) {
-          <path [attr.d]="edgePath(edge.from, edge.to)" fill="none" stroke="#d7dae8" stroke-width="2" />
-        }
-      </svg>
-      <div class="wf-dag__nodes">
-        @for (node of workflow().nodes; track node.id) {
-          <button
-            type="button"
-            class="wf-node"
-            [class]="node.status"
-            [class.selected]="selectedNode()?.id === node.id"
-            [style.left.px]="node.x * 170"
-            [style.top.px]="node.y * 100"
-            (click)="select(node)"
-          >
-            @if (node.icon) {
-              <sf-icon [name]="node.icon" />
-            } @else {
-              <span class="wf-node__dot"></span>
-            }
-            <span>{{ node.label }}</span>
-            @if (node.status === 'completed') { <sf-icon name="status/success" class="wf-node__check" /> }
-            @if (node.status === 'active') { <span class="wf-node__spinner"></span> }
-            @if (node.duration) { <span class="wf-node__meta">✓ {{ node.duration }}</span> }
-            @if (node.progress) { <span class="wf-node__meta">⟳ {{ node.progress }}%</span> }
-          </button>
-        }
-      </div>
-    </div>
-  </section>
-
-  <aside class="sf-card">
-    <div class="sf-panel-title"><h3>Execution Overview</h3><span class="sf-badge sf-badge--blue">{{ workflow().status }}</span></div>
-    <div class="pw-info" style="padding:6px 18px 10px;">
-      <div class="pw-info__row"><sf-icon name="navigation/workflows" /><span class="label">Workflow ID</span><span class="value">{{ workflow().id }}</span></div>
-      <div class="pw-info__row"><sf-icon name="navigation/agents" /><span class="label">Triggered By</span><span class="value">Aditya Jagtap</span></div>
-      <div class="pw-info__row"><sf-icon name="navigation/monitoring" /><span class="label">Started At</span><span class="value">{{ workflow().startedAt }}</span></div>
-      <div class="pw-info__row"><sf-icon name="navigation/monitoring" /><span class="label">Duration</span><span class="value">{{ workflow().duration }}</span></div>
-      <div class="pw-info__row"><sf-icon name="navigation/settings" /><span class="label">Orchestrator</span><span class="value">{{ workflow().orchestrator }}</span></div>
-    </div>
-    <div class="wf-progress-block">
-      <div class="wf-progress-block__head"><span>Progress</span><strong>{{ workflow().progress }}%</strong></div>
-      <div class="sf-progress"><div class="sf-progress__bar" [style.width.%]="workflow().progress"></div></div>
-    </div>
-  </aside>
-</div>
-
-<div class="wf-grid wf-grid--bottom">
-  <section class="sf-card">
-    <div class="sf-panel-title">
-      <h3>Step Details — {{ selectedNode()?.label }}</h3>
-      @if (selectedNode()) { <span class="sf-badge" [class]="selectedNode()!.status === 'active' ? 'sf-badge--blue' : 'sf-badge--green'">{{ selectedNode()!.status === 'active' ? 'Running' : 'Completed' }}</span> }
-    </div>
-    <div class="pw-info" style="padding:10px 18px 18px;">
-      <div class="pw-info__row"><sf-icon name="navigation/agents" /><span class="label">Assigned Agent</span><span class="value">Code Generation Agent</span></div>
-      <div class="pw-info__row"><sf-icon name="navigation/providers" /><span class="label">Model</span><span class="value">Qwen3 14B (Ollama)</span></div>
-      <div class="pw-info__row"><sf-icon name="navigation/artifacts" /><span class="label">Container</span><span class="value">factory-codegen:1.2.0</span></div>
-      <div class="pw-info__row"><sf-icon name="navigation/monitoring" /><span class="label">Elapsed Time</span><span class="value">{{ workflow().duration }}</span></div>
-      <div class="pw-info__row"><sf-icon name="status/running" /><span class="label">Status</span><span class="value link">Running ({{ selectedNode()?.progress || 0 }}%)</span></div>
-    </div>
-  </section>
-
-  <section class="sf-card wf-log">
-    <div class="sf-panel-title"><h3>Live Log (Streaming)</h3></div>
-    <pre class="wf-log__body">@for (line of liveLog; track line) {
-{{ line }}
-}</pre>
-  </section>
-
-  <aside class="sf-card">
-    <div class="sf-panel-title"><h3>Artifacts ({{ artifacts.length }})</h3><a class="view-all" routerLink="/artifacts">View All →</a></div>
-    <div class="wf-artifacts">
-      @for (a of artifacts; track a.name) {
-        <div class="wf-artifacts__item">
-          <sf-icon name="workspace/code-diff" />
-          <span>{{ a.name }}</span>
-          <span class="wf-artifacts__size">{{ a.size }}</span>
-        </div>
+    <div class="sf-page-header__actions">
+      @if (selectedWorkflow()!.status === 'running') {
+        <button class="sf-btn" type="button" (click)="cancel()">Cancel</button>
+      } @else {
+        <button class="sf-btn sf-btn--primary" type="button" [disabled]="busy()" (click)="start()">
+          {{ busy() ? 'Starting…' : (selectedWorkflow()!.status === 'not_started' ? 'Start' : 'Restart') }}
+        </button>
       }
     </div>
-  </aside>
-</div>
+  </div>
+
+  <div class="wf-layout">
+    <aside class="sf-card wf-list">
+      <div class="sf-panel-title">
+        <h3>Workflows ({{ workflows().length }})</h3>
+      </div>
+      <div class="wf-list__items">
+        @for (w of workflows(); track w.id) {
+          <a class="wf-list__item" [class.active]="w.id === selectedWorkflow()!.id" [routerLink]="['/workflows', w.id]">
+            <sf-icon name="navigation/workflows" />
+            <div>
+              <div class="wf-list__title">{{ w.name }}</div>
+              <span class="sf-pill">{{ w.project_name }}</span>
+              <span class="sf-badge" [class]="'sf-badge--' + statusTone(w.status)">{{ w.status }}</span>
+            </div>
+          </a>
+        }
+      </div>
+    </aside>
+
+    <section class="sf-card">
+      <div class="sf-panel-title"><h3>Steps ({{ selectedWorkflow()!.current_step_index }} / {{ selectedWorkflow()!.steps.length }})</h3></div>
+      <div class="wf-progress-block" style="padding:0 18px 14px;">
+        <div class="sf-progress"><div class="sf-progress__bar" [style.width.%]="progressPercent()"></div></div>
+      </div>
+      <table class="sf-table">
+        <thead><tr><th>#</th><th>Step</th><th>Status</th><th>Result</th></tr></thead>
+        <tbody>
+          @for (step of selectedWorkflow()!.steps; track step.id; let i = $index) {
+            <tr>
+              <td>{{ i + 1 }}</td>
+              <td><strong>{{ step.title }}</strong><div class="set-rt-desc">{{ step.description || 'No description' }}</div></td>
+              <td><span class="sf-badge" [class]="'sf-badge--' + statusTone(step.status)">{{ step.status }}</span></td>
+              <td>
+                @if (step.error_message) {
+                  <span class="set-rt-desc">{{ step.error_message }}</span>
+                } @else if (step.output) {
+                  <span class="set-rt-desc">{{ step.output.slice(0, 120) }}{{ step.output.length > 120 ? '…' : '' }}</span>
+                } @else { — }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </section>
+
+    <aside class="tw-sidebar">
+      <section class="sf-card">
+        <div class="sf-panel-title"><h3>Workflow Overview</h3></div>
+        <div class="pw-info" style="padding:6px 18px 14px;">
+          <div class="pw-info__row"><sf-icon name="navigation/projects" /><span class="label">Project</span><span class="value">{{ selectedWorkflow()!.project_name }}</span></div>
+          <div class="pw-info__row"><sf-icon name="navigation/monitoring" /><span class="label">Created</span><span class="value">{{ selectedWorkflow()!.created_at | date:'medium' }}</span></div>
+          @if (selectedWorkflow()!.started_at) {
+            <div class="pw-info__row"><sf-icon name="navigation/monitoring" /><span class="label">Started</span><span class="value">{{ selectedWorkflow()!.started_at | date:'medium' }}</span></div>
+          }
+          @if (selectedWorkflow()!.completed_at) {
+            <div class="pw-info__row"><sf-icon name="navigation/monitoring" /><span class="label">Completed</span><span class="value">{{ selectedWorkflow()!.completed_at | date:'medium' }}</span></div>
+          }
+        </div>
+      </section>
+    </aside>
+  </div>
+}

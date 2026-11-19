@@ -50,6 +50,10 @@ export const routes: Routes = [
         loadComponent: () => import('./features/workflows/workflow-detail.component').then((m) => m.WorkflowDetailComponent)
       },
       {
+        path: 'workflows/:workflowId',
+        loadComponent: () => import('./features/workflows/workflow-detail.component').then((m) => m.WorkflowDetailComponent)
+      },
+      {
         path: 'agents',
         loadComponent: () => import('./features/agents/agents.component').then((m) => m.AgentsComponent)
       },

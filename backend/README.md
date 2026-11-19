@@ -1,4 +1,4 @@
-# Software Factory — Backend (Phases 1–11: Foundation Through a Real Global Task View)
+# Software Factory — Backend (Phases 1–12: Foundation Through a Real Global Workflow View)
 
 FastAPI + PostgreSQL (+ Neo4j) backend implementing real authentication,
 organizations, membership, RBAC, projects, workspaces, coding-agent runtime
@@ -399,6 +399,40 @@ provider API key makes the same code paths report a real "Connected."**
   rendered live in the UI via the existing real SSE stream — not a
   fabricated multi-agent transcript.
 
+### Phase 12 — A real global Workflow view
+- **The global `/workflows` page was the same kind of fabrication Phase
+  11 removed from `/tasks`**: a hardcoded workflow with an invented DAG
+  canvas (draggable nodes at fake x/y coordinates), a fake streaming
+  "Live Log," and a fake artifacts list — none of it backed by the real
+  `Workflow`/`Task` models every other workflow surface (the project
+  workspace's Workflows tab, start/cancel/stream) has used since Phase
+  5. Workflows in this codebase are a real **linear ordered sequence of
+  steps**, not a DAG, so a DAG visualization would misrepresent the
+  real model even if it were wired to real data — this phase replaces
+  it with a real step-sequence view instead.
+- **`GET /workflows/mine`**: every real workflow across every project
+  this user belongs to, reusing Phase 11's `visible_project_ids()`
+  helper, each annotated with its real project name and its real
+  ordered step list (already modeled as real `Task` rows since Phase
+  5).
+- The rebuilt workflow-detail page shows the real step list with each
+  step's real status and real output/error, real progress (`current_step
+  / total steps`), and real timestamps — with working Start/Cancel wired
+  to the same Factory Supervisor pipeline as the project workspace's
+  Workflows tab.
+- **Fixed a route gap found while building this**: `/workflows/:id` had
+  no route registered at all (only the bare `/workflows` did), so
+  clicking into a specific workflow silently fell through to the
+  dashboard. Added the missing route.
+- 3 new backend tests (72/72 total): real cross-project aggregation
+  with real step lists, a genuinely empty list for a user with no
+  access, and a real 401.
+- Verified end-to-end in-browser against the real backend: a user with
+  workflows in two different projects saw both with correct project
+  names; a started workflow with no connection assigned showed its real
+  first step `failed` with the real error, and its later steps
+  honestly `not_started` — never fabricated as having run.
+
 ## What's intentionally not here yet
 
 Temporal/LangGraph-based durable workflow orchestration (this pass's
@@ -413,11 +447,12 @@ execution spec and are not implemented in this pass.
 Several frontend-only pages the original UI scaffold shipped with are
 still backed by static mock data rather than this backend — Agents,
 Prompts, Artifacts, Approvals, Monitoring, Providers, Repository
-Intelligence, Workflow Detail, and Code Review. (Dashboard, the global
-Task view, and the project workspace's Tasks/Workflows/Knowledge tabs
-are real — see Phases 3–11.) Each of those remaining pages implies
-backend features this spec hasn't asked for yet (per-task chat threads,
-file diffs, approval workflows, log aggregation); they're listed here
+Intelligence, and Code Review. (Dashboard, the global Task view, the
+global Workflow view, and the project workspace's Tasks/Workflows/
+Knowledge tabs are all real — see Phases 3–12.) Each of those remaining
+pages implies backend features this spec hasn't asked for yet (per-task
+chat threads, file diffs, approval workflows, log aggregation); they're
+listed here
 rather than quietly left inconsistent with the rest of the app.
 
 ## Running locally

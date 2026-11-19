@@ -3,7 +3,7 @@ import { Injectable, inject, signal } from '@angular/core';
 import { Observable, tap } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { AuthService } from '../auth/auth.service';
-import { ApiWorkflow, CreateWorkflowPayload } from './workflow.models';
+import { ApiWorkflow, CreateWorkflowPayload, MyApiWorkflow } from './workflow.models';
 
 @Injectable({ providedIn: 'root' })
 export class WorkflowService {
@@ -12,8 +12,22 @@ export class WorkflowService {
 
   readonly workflows = signal<ApiWorkflow[]>([]);
   readonly loaded = signal(false);
+  readonly myWorkflows = signal<MyApiWorkflow[]>([]);
+  readonly myWorkflowsLoaded = signal(false);
 
   private readonly watching = new Set<string>();
+
+  listMine(): Observable<MyApiWorkflow[]> {
+    return this.http.get<MyApiWorkflow[]>(`${environment.apiBaseUrl}/workflows/mine`).pipe(
+      tap((workflows) => {
+        this.myWorkflows.set(workflows);
+        this.myWorkflowsLoaded.set(true);
+        for (const workflow of workflows) {
+          if (workflow.status === 'running') this.watch(workflow.project_id, workflow.id);
+        }
+      })
+    );
+  }
 
   listForProject(projectId: string): Observable<ApiWorkflow[]> {
     return this.http.get<ApiWorkflow[]>(`${environment.apiBaseUrl}/projects/${projectId}/workflows`).pipe(
@@ -43,6 +57,7 @@ export class WorkflowService {
 
   private patchWorkflow(workflowId: string, patch: Partial<ApiWorkflow>): void {
     this.workflows.update((list) => list.map((w) => (w.id === workflowId ? { ...w, ...patch } : w)));
+    this.myWorkflows.update((list) => list.map((w) => (w.id === workflowId ? { ...w, ...patch } : w)));
   }
 
   /**
@@ -104,7 +119,9 @@ export class WorkflowService {
   }
 
   private mergeSteps(workflowId: string, streamedSteps: Array<{ id: string; status: string; output: string; error_message: string }>): any {
-    const current = this.workflows().find((w) => w.id === workflowId);
+    const current =
+      this.workflows().find((w) => w.id === workflowId) ??
+      this.myWorkflows().find((w) => w.id === workflowId);
     if (!current) return [];
     return current.steps.map((step) => {
       const update = streamedSteps.find((s) => s.id === step.id);

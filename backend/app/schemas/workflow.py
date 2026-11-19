@@ -32,3 +32,7 @@ class WorkflowResponse(BaseModel):
     steps: list[TaskResponse]
 
     model_config = {"from_attributes": True}
+
+
+class MyWorkflowResponse(WorkflowResponse):
+    project_name: str

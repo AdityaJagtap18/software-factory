@@ -9,12 +9,13 @@ from starlette.responses import StreamingResponse
 from app.api.deps import ProjectContext, get_current_user, require_project_access
 from app.core.database import SessionLocal, get_db
 from app.models.agent_runtime import CodingAgentConnection
-from app.models.project import ProjectRole
+from app.models.project import Project, ProjectRole
 from app.models.task import Task, TaskStatus
 from app.models.user import User
 from app.models.workflow import Workflow, WorkflowStatus
-from app.schemas.workflow import WorkflowCreate, WorkflowResponse
+from app.schemas.workflow import MyWorkflowResponse, WorkflowCreate, WorkflowResponse
 from app.services import audit
+from app.services.access import visible_project_ids
 from app.services.workflow_execution import start_workflow_in_background
 
 _STREAM_POLL_SECONDS = 0.5
@@ -49,6 +50,35 @@ def _to_response(db: DBSession, workflow: Workflow) -> WorkflowResponse:
         created_at=workflow.created_at,
         steps=_steps(db, workflow.id),
     )
+
+
+@router.get("/workflows/mine", response_model=list[MyWorkflowResponse])
+def list_my_workflows(
+    user: User = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+) -> list[MyWorkflowResponse]:
+    """Every real workflow across every project this user actually
+    belongs to, each with its real project name and real step list --
+    the same visibility rule enforced per-project elsewhere, applied
+    across all of them at once."""
+    project_ids = visible_project_ids(db, user)
+    if not project_ids:
+        return []
+
+    projects_by_id = {p.id: p for p in db.query(Project).filter(Project.id.in_(project_ids)).all()}
+    workflows = (
+        db.query(Workflow)
+        .filter(Workflow.project_id.in_(project_ids))
+        .order_by(Workflow.created_at.desc())
+        .all()
+    )
+    return [
+        MyWorkflowResponse(
+            **_to_response(db, wf).model_dump(),
+            project_name=projects_by_id[wf.project_id].name,
+        )
+        for wf in workflows
+    ]
 
 
 @router.get("/projects/{project_id}/workflows", response_model=list[WorkflowResponse])

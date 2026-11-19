@@ -15,6 +15,10 @@ export interface ApiWorkflow {
   steps: ApiTask[];
 }
 
+export interface MyApiWorkflow extends ApiWorkflow {
+  project_name: string;
+}
+
 export interface CreateWorkflowStepPayload {
   title: string;
   description?: string;

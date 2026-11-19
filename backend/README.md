@@ -1,11 +1,13 @@
-# Software Factory — Backend (Phases 1–6: Foundation Through Live Collaboration)
+# Software Factory — Backend (Phases 1–7: Foundation Through the Knowledge Graph)
 
-FastAPI + PostgreSQL backend implementing real authentication, organizations,
-membership, RBAC, projects, workspaces, coding-agent runtime connectivity,
-real-time streaming task execution, the Factory Supervisor's multi-step
-workflow orchestration, and real-time multi-user presence/collaboration —
-the foundation the rest of the Software Factory execution spec
-(Temporal/LangGraph orchestration, knowledge graph, etc.) builds on.
+FastAPI + PostgreSQL (+ Neo4j) backend implementing real authentication,
+organizations, membership, RBAC, projects, workspaces, coding-agent runtime
+connectivity, real-time streaming task execution, the Factory Supervisor's
+multi-step workflow orchestration, real-time multi-user presence/
+collaboration, and a real Neo4j-backed knowledge graph of each project's
+actual work — the foundation the rest of the Software Factory execution
+spec (Temporal/LangGraph orchestration, Docker execution isolation, etc.)
+builds on.
 
 ## What's implemented
 
@@ -201,13 +203,52 @@ provider API key makes the same code paths report a real "Connected."**
   token, no project access, a single viewer seeing themselves join, and a
   second real socket triggering a genuine broadcast to the first.
 
+### Phase 7 — Real Neo4j-backed knowledge graph
+- **This is a graph of what the factory actually did, not a parsed-code
+  graph**: there is no repository-ingestion pipeline yet (`repository_url`
+  is still just a string field), so rather than fabricate "37,892
+  entities" of code analysis that doesn't exist, this phase builds a
+  genuinely real graph from the data this backend already owns —
+  projects, tasks, workflows, coding-agent connections, and the users who
+  created them — with real relationships (`HAS_TASK`, `HAS_WORKFLOW`,
+  `HAS_STEP`, `ASSIGNED_TO`, `CREATED`).
+- **`app/services/knowledge_graph.py`**: `health_check()` makes a real
+  `RETURN 1` call to Neo4j and reports the real driver error if it's
+  unreachable — this is checked before every sync and every graph read,
+  never assumed. `sync_project()` reads a project's real rows from
+  Postgres and `MERGE`s them into Neo4j (idempotent — syncing twice never
+  duplicates nodes or relationships). `get_project_graph()` reads the
+  real graph straight back out via Cypher.
+- **Routes** (`app/api/routes/knowledge.py`): `POST
+  /projects/{id}/knowledge/sync` and `GET /projects/{id}/knowledge/graph`,
+  both behind the same `require_project_access` RBAC check as every other
+  project resource. Either one honestly returns `connected: false` with
+  Neo4j's real error if the graph database isn't reachable — never a
+  fabricated success or a silently-empty-but-"OK" graph.
+- A dedicated `neo4j` service was added to `docker-compose.yml` (host
+  ports 7475/7688, so it doesn't collide with any other local project's
+  Neo4j instance) — this project's own graph database, not a shared one.
+- Verified end-to-end against a real, running Neo4j container: syncing a
+  project with a real task (assigned to a real connection), a real
+  two-step workflow, and their real creator produced exactly 7 real nodes
+  and 11 real relationships (confirmed via the raw sync and graph
+  response bodies), and the project workspace's **Knowledge** tab
+  (previously a static sentence pointing at an unrelated mock explorer)
+  now renders that real graph with a working "Sync now" control. 4 new
+  backend tests (51/51 total) run against this project's actual Neo4j
+  instance, including a real sync-then-query round trip and an
+  idempotency check, and skip honestly (rather than fail) if Neo4j isn't
+  reachable in a given test environment.
+
 ## What's intentionally not here yet
 
 Temporal/LangGraph-based durable workflow orchestration (this pass's
 Factory Supervisor sequences steps via a background thread against the
-real database, not a distributed workflow engine), the Neo4j knowledge
-graph, Docker execution isolation, and coordinating presence across
-multiple backend replicas (this pass's presence registry is single-
+real database, not a distributed workflow engine), parsing real
+repository code into the knowledge graph (no repository-ingestion
+pipeline exists yet — Phase 7's graph covers factory work, not source
+code), Docker execution isolation, and coordinating presence across
+multiple backend replicas (Phase 6's presence registry is single-
 process/in-memory) are later phases of the execution spec and are not
 implemented in this pass.
 

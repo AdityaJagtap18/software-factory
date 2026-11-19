@@ -1,7 +1,16 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import agent_runtimes, auth, organizations, presence, projects, tasks, workflows
+from app.api.routes import (
+    agent_runtimes,
+    auth,
+    knowledge,
+    organizations,
+    presence,
+    projects,
+    tasks,
+    workflows,
+)
 from app.core.config import get_settings
 
 settings = get_settings()
@@ -23,6 +32,7 @@ app.include_router(agent_runtimes.router, prefix="/api/v1")
 app.include_router(tasks.router, prefix="/api/v1")
 app.include_router(workflows.router, prefix="/api/v1")
 app.include_router(presence.router, prefix="/api/v1")
+app.include_router(knowledge.router, prefix="/api/v1")
 
 
 @app.get("/api/v1/health")

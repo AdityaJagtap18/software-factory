@@ -8,6 +8,7 @@ import { TaskService } from '../../core/org/task.service';
 import { AgentRuntimeService } from '../../core/org/agent-runtime.service';
 import { WorkflowService } from '../../core/org/workflow.service';
 import { PresenceService } from '../../core/org/presence.service';
+import { KnowledgeService } from '../../core/org/knowledge.service';
 import { ApiProject } from '../../core/auth/auth.models';
 import { ApiTask } from '../../core/org/task.models';
 import { ApiWorkflow, CreateWorkflowStepPayload } from '../../core/org/workflow.models';
@@ -30,6 +31,7 @@ export class ProjectWorkspaceComponent implements OnDestroy {
   private readonly runtimeService = inject(AgentRuntimeService);
   private readonly workflowService = inject(WorkflowService);
   private readonly presenceService = inject(PresenceService);
+  private readonly knowledgeService = inject(KnowledgeService);
 
   private readonly projectId = toSignal(this.route.paramMap, { initialValue: this.route.snapshot.paramMap });
 
@@ -41,6 +43,8 @@ export class ProjectWorkspaceComponent implements OnDestroy {
   readonly tasksLoaded = this.taskService.loaded;
   readonly connections = this.runtimeService.connections;
   readonly viewers = this.presenceService.viewers;
+  readonly knowledgeGraph = this.knowledgeService.graph;
+  readonly syncingKnowledge = signal(false);
 
   readonly showCreateTask = signal(false);
   readonly newTaskTitle = signal('');
@@ -93,6 +97,7 @@ export class ProjectWorkspaceComponent implements OnDestroy {
           this.runtimeService.listForOrg(project.organization_id).subscribe();
           this.workflowService.listForProject(project.id).subscribe();
           this.presenceService.watch(project.id);
+          this.knowledgeService.fetchGraph(project.id).subscribe();
         },
         error: () => {
           this.notFound.set(true);
@@ -233,6 +238,21 @@ export class ProjectWorkspaceComponent implements OnDestroy {
     const project = this.project();
     if (!project) return;
     this.workflowService.cancel(project.id, workflow.id).subscribe();
+  }
+
+  syncKnowledge() {
+    const project = this.project();
+    if (!project) return;
+    this.syncingKnowledge.set(true);
+    this.knowledgeService.sync(project.id).subscribe({
+      complete: () => this.syncingKnowledge.set(false),
+      error: () => this.syncingKnowledge.set(false)
+    });
+  }
+
+  nodeLabel(nodeId: string): string {
+    const node = this.knowledgeGraph()?.nodes.find((n) => n.id === nodeId);
+    return node?.label ?? nodeId;
   }
 
   ngOnDestroy(): void {

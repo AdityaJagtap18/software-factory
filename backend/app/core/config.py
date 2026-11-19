@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 30
     cors_origins: list[str] = ["http://localhost:4200"]
     credential_encryption_key: str = "dev-credential-key-change-me"
+    neo4j_uri: str = "bolt://localhost:7688"
+    neo4j_user: str = "neo4j"
+    neo4j_password: str = "sfgraphpass123"
 
 
 @lru_cache

@@ -24,6 +24,15 @@ def _clean_tables():
     with engine.begin() as conn:
         for table in reversed(Base.metadata.sorted_tables):
             conn.execute(table.delete())
+    try:
+        from app.services.knowledge_graph import _driver
+
+        with _driver().session() as session:
+            session.run("MATCH (n) DETACH DELETE n")
+    except Exception:
+        # Neo4j isn't reachable in every environment this suite runs in;
+        # the knowledge-graph tests that need it skip honestly instead.
+        pass
 
 
 TestingSessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)

@@ -15,17 +15,39 @@ services:
       timeout: 5s
       retries: 10
 
+  neo4j:
+    image: neo4j:5-community
+    environment:
+      NEO4J_AUTH: neo4j/sfgraphpass123
+    ports:
+      # Host 7475/7688, so this project's own Neo4j doesn't collide with any
+      # other local project's instance on the default 7474/7687.
+      - "7475:7474"
+      - "7688:7687"
+    volumes:
+      - sf_neo4j_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:7474 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
   backend:
     build: ./backend
     environment:
       SF_DATABASE_URL: postgresql+psycopg2://sf:sf@postgres:5432/software_factory
       SF_CORS_ORIGINS: '["http://localhost:4200", "http://localhost:4300"]'
+      SF_NEO4J_URI: bolt://neo4j:7687
+      SF_NEO4J_USER: neo4j
+      SF_NEO4J_PASSWORD: sfgraphpass123
     ports:
       # Host 8020: 8000 is taken by another local project, and 8010 is used
       # by the non-Docker dev instance of this backend during local work.
       - "8020:8000"
     depends_on:
       postgres:
+        condition: service_healthy
+      neo4j:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
@@ -46,3 +68,4 @@ services:
 
 volumes:
   sf_postgres_data:
+  sf_neo4j_data:

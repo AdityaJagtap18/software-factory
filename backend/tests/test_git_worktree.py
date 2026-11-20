@@ -119,7 +119,7 @@ def test_collect_diff_is_empty_when_the_agent_changed_nothing(remote_repo, tmp_p
     _run(["clone", str(remote_repo), str(clone_dir)], tmp_path)
     _run(["checkout", "-b", "sf-task-test"], clone_dir)
 
-    diff = git_worktree.collect_diff(str(clone_dir), "Task execution")
+    diff = git_worktree.collect_diff(str(clone_dir), "main", "Task execution")
 
     assert diff.changed_files == []
     assert diff.diff_text == ""
@@ -134,11 +134,60 @@ def test_collect_diff_captures_a_real_file_change(remote_repo, tmp_path):
 
     (clone_dir / "new_feature.py").write_text("print('real change')\n")
 
-    diff = git_worktree.collect_diff(str(clone_dir), "Add new_feature.py")
+    diff = git_worktree.collect_diff(str(clone_dir), "main", "Add new_feature.py")
 
     assert diff.changed_files == ["new_feature.py"]
     assert "real change" in diff.diff_text
     assert "+print" in diff.diff_text
+
+
+def test_collect_diff_is_cumulative_across_two_real_runs(remote_repo, tmp_path):
+    """A follow-up turn's `collect_diff` call must still show the FIRST
+    turn's changes too -- it diffs against the base branch, not HEAD~1."""
+    clone_dir = tmp_path / "clone"
+    _run(["clone", str(remote_repo), str(clone_dir)], tmp_path)
+    _run(["checkout", "-b", "sf-task-test"], clone_dir)
+    _run(["config", "user.email", "factory@software-factory.local"], clone_dir)
+    _run(["config", "user.name", "Software Factory"], clone_dir)
+
+    (clone_dir / "first.py").write_text("print('first turn')\n")
+    first = git_worktree.collect_diff(str(clone_dir), "main", "First turn")
+    assert first.changed_files == ["first.py"]
+
+    (clone_dir / "second.py").write_text("print('second turn')\n")
+    second = git_worktree.collect_diff(str(clone_dir), "main", "Second turn")
+
+    assert sorted(second.changed_files) == ["first.py", "second.py"]
+    assert "first turn" in second.diff_text
+    assert "second turn" in second.diff_text
+
+
+def test_resume_worktree_reuses_the_existing_directory(monkeypatch, remote_repo, tmp_path):
+    monkeypatch.setattr(
+        GitHubAppAdapter, "get_authenticated_clone_url", lambda self, *a, **k: str(remote_repo)
+    )
+    monkeypatch.setattr(git_worktree, "_worktree_root", lambda: tmp_path / "worktrees")
+
+    task = _fake_task()
+    connection = _fake_connection()
+    first_run = git_worktree.prepare_worktree(task, connection)
+    (Path(first_run.path) / "turn_one.py").write_text("print('turn one')\n")
+    git_worktree.collect_diff(first_run.path, first_run.base_branch, "Turn one")
+
+    resumed = git_worktree.resume_worktree(task, connection)
+
+    assert resumed.path == first_run.path
+    assert resumed.branch_name == first_run.branch_name
+    # The first turn's real file is still there -- this is a reuse, not a
+    # fresh clone that would have wiped it out.
+    assert (Path(resumed.path) / "turn_one.py").exists()
+
+
+def test_resume_worktree_raises_honestly_when_nothing_to_resume(tmp_path, monkeypatch):
+    monkeypatch.setattr(git_worktree, "_worktree_root", lambda: tmp_path / "worktrees")
+
+    with pytest.raises(git_worktree.WorktreeError):
+        git_worktree.resume_worktree(_fake_task(), _fake_connection())
 
 
 def test_push_branch_pushes_the_real_branch_to_the_remote(remote_repo, tmp_path):
@@ -148,7 +197,7 @@ def test_push_branch_pushes_the_real_branch_to_the_remote(remote_repo, tmp_path)
     _run(["config", "user.email", "factory@software-factory.local"], clone_dir)
     _run(["config", "user.name", "Software Factory"], clone_dir)
     (clone_dir / "new_feature.py").write_text("print('pushed')\n")
-    git_worktree.collect_diff(str(clone_dir), "Add new_feature.py")
+    git_worktree.collect_diff(str(clone_dir), "main", "Add new_feature.py")
 
     git_worktree.push_branch(str(clone_dir), "sf-task-push")
 

@@ -38,6 +38,16 @@
       </div>
     </div>
     <div class="sf-page-header__actions">
+      <select
+        class="tcr-task-picker"
+        aria-label="Switch task"
+        [value]="task.id"
+        (change)="selectTask($any($event.target).value)"
+      >
+        @for (t of tasks(); track t.id) {
+          <option [value]="t.id">TSK-{{ t.id.slice(0, 8) }} — {{ t.title }}</option>
+        }
+      </select>
       @if (task.git_pr_url) {
         <a class="sf-btn" [href]="task.git_pr_url" target="_blank" rel="noopener">
           <sf-icon name="navigation/repositories" /> View PR
@@ -105,12 +115,48 @@
             </div>
           </div>
         }
+
+        @if (loadingMessages()) {
+          <p class="tcr-msg__pending">Loading conversation…</p>
+        }
+        @for (m of messages(); track m.id) {
+          <div class="tcr-msg">
+            <span class="tw-message__avatar">{{ messageAvatar(m.role) }}</span>
+            <div class="tcr-msg__body">
+              <div class="tcr-msg__head">
+                <strong>{{ m.role === 'user' ? 'You' : (m.role === 'agent' ? 'Coding Agent' : 'System') }}</strong>
+                <span>{{ m.created_at | date:'short' }}</span>
+              </div>
+              @if (m.role === 'system') {
+                <p class="tcr-msg__error">{{ m.content }}</p>
+              } @else {
+                <pre class="tcr-msg__output">{{ m.content }}</pre>
+              }
+            </div>
+          </div>
+        }
       </div>
-      <div class="tcr-composer">
-        <textarea placeholder="Send a message or add a follow-up instruction…" disabled rows="2"></textarea>
-        <button class="sf-btn sf-btn--primary" type="button" disabled><sf-icon name="navigation/approvals" /></button>
-      </div>
-      <p class="tcr-composer__note">Follow-up conversation isn't available yet — each task currently runs its description as a single instruction.</p>
+      <form class="tcr-composer" (ngSubmit)="sendMessage()">
+        <textarea
+          placeholder="Send a follow-up instruction to continue this task's real changes…"
+          rows="2"
+          [value]="draft()"
+          (input)="draft.set($any($event.target).value)"
+          [disabled]="task.status === 'running' || sendingMessage() || !task.git_branch_name"
+        ></textarea>
+        <button
+          class="sf-btn sf-btn--primary"
+          type="submit"
+          [disabled]="task.status === 'running' || sendingMessage() || !draft().trim() || !task.git_branch_name"
+        >
+          <sf-icon name="navigation/approvals" />
+        </button>
+      </form>
+      @if (!task.git_branch_name) {
+        <p class="tcr-composer__note">Follow-up instructions need a repository workspace — start this task at least once first.</p>
+      } @else if (task.status === 'running') {
+        <p class="tcr-composer__note">Running — you can send the next instruction once this turn finishes.</p>
+      }
     </section>
   }
 

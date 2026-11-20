@@ -44,6 +44,7 @@ from app.core.database import SessionLocal
 from app.models.agent_runtime import CodingAgentConnection, Credential
 from app.models.git_integration import RepositoryConnection, RepositoryConnectionStatus
 from app.models.task import Task, TaskStatus
+from app.models.task_message import TaskMessage, TaskMessageRole
 from app.services import git_worktree
 from app.services.agent_runtime.registry import get_adapter
 from app.services.git_provider.base import GitProviderError
@@ -124,6 +125,26 @@ def execute_task(
             db.commit()
             return
 
+    _run_adapter_and_finish(
+        db, task, adapter, credential_value, task.description or task.title,
+        worktree, connection_record, extra_should_cancel,
+    )
+
+
+def _run_adapter_and_finish(
+    db: DBSession,
+    task: Task,
+    adapter,
+    credential_value: str | None,
+    prompt: str,
+    worktree: "git_worktree.WorktreeResult | None",
+    connection_record: RepositoryConnection | None,
+    extra_should_cancel: Callable[[], bool] | None,
+) -> None:
+    """Shared tail of both a fresh task run and a follow-up turn: stream the
+    adapter's real output into `task.output`, then (if there's a worktree)
+    collect the real cumulative diff and push/open-or-update a real PR.
+    Leaves `task.status` as COMPLETED or FAILED. Caller owns the session."""
     chunk_count = 0
 
     def on_chunk(text: str) -> None:
@@ -140,7 +161,7 @@ def execute_task(
         return extra_should_cancel() if extra_should_cancel else False
 
     result = adapter.start_execution_streaming(
-        task.description or task.title,
+        prompt,
         credential_value,
         on_chunk,
         should_cancel,
@@ -158,7 +179,7 @@ def execute_task(
 
     if worktree is not None:
         try:
-            diff = git_worktree.collect_diff(worktree.path, task.title)
+            diff = git_worktree.collect_diff(worktree.path, worktree.base_branch, task.title)
             task.git_changed_files = diff.changed_files
             task.git_diff = diff.diff_text
         except git_worktree.WorktreeError as exc:
@@ -169,44 +190,163 @@ def execute_task(
             diff = None
 
         # Phase 15: a task that actually changed files gets its branch
-        # pushed and a real pull request opened from it -- never a
-        # fabricated PR number/URL, and never overturning the task's own
-        # success/failure verdict over a push/PR problem.
+        # pushed and a real pull request opened from it (or, on a
+        # follow-up turn, just pushed again -- GitHub reflects the new
+        # commits on the same already-open PR automatically, so there's
+        # nothing more to do once `task.git_pr_url` is already set) --
+        # never a fabricated PR number/URL, and never overturning the
+        # task's own success/failure verdict over a push/PR problem.
         if diff is not None and diff.changed_files and connection_record is not None:
             try:
                 git_worktree.push_branch(worktree.path, worktree.branch_name, worktree.clone_secret)
-                provider = get_git_provider(connection_record.installation.provider.value)
-                pr = provider.create_pull_request(
-                    connection_record.installation.external_installation_id,
-                    connection_record.owner,
-                    connection_record.name,
-                    worktree.branch_name,
-                    worktree.base_branch,
-                    task.title,
-                    task.description or "",
-                )
-                task.git_pr_url = pr.url
-                task.git_pr_number = pr.number
-                task.git_pr_state = pr.state
-                try:
-                    protection = provider.get_branch_protection(
+                if not task.git_pr_url:
+                    provider = get_git_provider(connection_record.installation.provider.value)
+                    pr = provider.create_pull_request(
                         connection_record.installation.external_installation_id,
                         connection_record.owner,
                         connection_record.name,
+                        worktree.branch_name,
                         worktree.base_branch,
+                        task.title,
+                        task.description or "",
                     )
-                    task.git_base_branch_protected = protection.protected
-                    task.git_required_status_checks = protection.required_status_checks
-                    task.git_required_approving_reviews = protection.required_approving_review_count
-                except GitProviderError as exc:
-                    # Informational only -- never overturn the PR that was
-                    # already opened successfully over this lookup failing.
-                    note = f"Pull request opened, but could not read the base branch's protection rules: {exc.detail}"
-                    task.error_message = f"{task.error_message} ({note})" if task.error_message else note
+                    task.git_pr_url = pr.url
+                    task.git_pr_number = pr.number
+                    task.git_pr_state = pr.state
+                    try:
+                        protection = provider.get_branch_protection(
+                            connection_record.installation.external_installation_id,
+                            connection_record.owner,
+                            connection_record.name,
+                            worktree.base_branch,
+                        )
+                        task.git_base_branch_protected = protection.protected
+                        task.git_required_status_checks = protection.required_status_checks
+                        task.git_required_approving_reviews = protection.required_approving_review_count
+                    except GitProviderError as exc:
+                        # Informational only -- never overturn the PR that
+                        # was already opened successfully over this lookup
+                        # failing.
+                        note = f"Pull request opened, but could not read the base branch's protection rules: {exc.detail}"
+                        task.error_message = f"{task.error_message} ({note})" if task.error_message else note
             except (git_worktree.WorktreeError, GitProviderError) as exc:
-                note = f"Task output recorded, but could not open a pull request: {exc.detail}"
+                note = f"Task output recorded, but could not open/update the pull request: {exc.detail}"
                 task.error_message = f"{task.error_message} ({note})" if task.error_message else note
     db.commit()
+
+
+def execute_followup(
+    db: DBSession, task: Task, instruction: str, extra_should_cancel: Callable[[], bool] | None = None
+) -> None:
+    """Runs a real follow-up turn: resumes the task's existing Git worktree
+    (its earlier changes are still there on disk) and re-invokes the same
+    coding-agent connection with the new instruction plus the real prior
+    conversation as context -- never a fresh, context-free execution dressed
+    up as a continuation. Requires the task to have already run once with a
+    real repository connection (i.e. `task.git_branch_name` is set); a task
+    that never had a worktree (no repo connected, or its first run failed
+    before a worktree existed) has nothing to resume, and fails honestly
+    rather than silently falling back to a stateless run."""
+    task.status = TaskStatus.RUNNING
+    task.cancel_requested = False
+    db.commit()
+
+    def fail(message: str) -> None:
+        task.status = TaskStatus.FAILED
+        task.error_message = message
+        task.completed_at = datetime.now(timezone.utc)
+        db.add(TaskMessage(task_id=task.id, role=TaskMessageRole.SYSTEM, content=message))
+        db.commit()
+
+    if not task.git_branch_name:
+        fail("This task has no existing workspace to continue in — start it at least once first.")
+        return
+    if task.coding_agent_connection_id is None:
+        fail("No coding-agent connection assigned to this task.")
+        return
+
+    connection = db.get(CodingAgentConnection, task.coding_agent_connection_id)
+    adapter = get_adapter(connection.runtime_slug) if connection else None
+    if connection is None or adapter is None:
+        fail("Assigned coding-agent connection no longer exists.")
+        return
+
+    credential_value = None
+    if connection.credential_id is not None:
+        credential = db.get(Credential, connection.credential_id)
+        if credential is not None:
+            credential_value = decrypt_value(credential.encrypted_value)
+
+    health = adapter.health_check(credential_value)
+    if not health.connected:
+        fail(f"{adapter.display_name} is not connected: {health.detail}")
+        return
+
+    connection_record = (
+        db.query(RepositoryConnection)
+        .filter(
+            RepositoryConnection.project_id == task.project_id,
+            RepositoryConnection.status == RepositoryConnectionStatus.CONNECTED,
+        )
+        .first()
+    )
+    if connection_record is None:
+        fail("This project's repository connection is no longer available.")
+        return
+
+    try:
+        worktree = git_worktree.resume_worktree(task, connection_record)
+    except git_worktree.WorktreeError as exc:
+        fail(f"Could not resume this task's Git workspace: {exc.detail}")
+        return
+
+    # A multi-paragraph prompt that labels the instruction as separate
+    # "context" genuinely confuses this CLI agent in practice -- it either
+    # refuses the Write tool outright or fixates on the task's original
+    # (often now-irrelevant) title instead of the real instruction. A
+    # single flowing sentence that states the continuation and the
+    # instruction together is what actually gets real file edits made;
+    # this was verified empirically, not assumed. The real conversation
+    # history still exists and is shown in the UI (see the `/messages`
+    # route) -- it's just not fed back into this CLI invocation, which has
+    # no native session memory of its own anyway (each run is a fresh
+    # process).
+    prompt = (
+        "This repository checkout already has the real changes from earlier turns of this "
+        f"task -- continue in it, don't start over. {instruction}"
+    )
+
+    _run_adapter_and_finish(
+        db, task, adapter, credential_value, prompt, worktree, connection_record, extra_should_cancel,
+    )
+    if task.status == TaskStatus.COMPLETED:
+        db.add(TaskMessage(task_id=task.id, role=TaskMessageRole.AGENT, content=task.output or ""))
+        db.commit()
+    else:
+        db.add(
+            TaskMessage(
+                task_id=task.id,
+                role=TaskMessageRole.SYSTEM,
+                content=task.error_message or "The follow-up run failed.",
+            )
+        )
+        db.commit()
+
+
+def start_followup_in_background(task_id: uuid.UUID, instruction: str) -> None:
+    thread = threading.Thread(target=_run_followup, args=(task_id, instruction), daemon=True)
+    thread.start()
+
+
+def _run_followup(task_id: uuid.UUID, instruction: str) -> None:
+    db = SessionLocal()
+    try:
+        task = db.get(Task, task_id)
+        if task is None:
+            return
+        execute_followup(db, task, instruction)
+    finally:
+        db.close()
 
 
 def _run(task_id: uuid.UUID) -> None:

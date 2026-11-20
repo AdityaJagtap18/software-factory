@@ -6,6 +6,17 @@
 .tw-diff__added { color: var(--sf-green-600); }
 .tw-diff__removed { color: var(--sf-red-600); }
 
+.tcr-task-picker {
+  border: 1px solid var(--sf-border-strong);
+  border-radius: var(--sf-radius-sm);
+  background: var(--sf-surface);
+  padding: 8px 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+  max-width: 260px;
+  color: var(--sf-text-secondary);
+}
+
 // ---------------------------------------------------------------------------
 // Conversation tab
 // ---------------------------------------------------------------------------
@@ -81,8 +92,13 @@
     padding: 9px 12px;
     font-family: inherit;
     font-size: 13px;
-    background: var(--sf-surface-muted);
-    color: var(--sf-text-tertiary);
+    background: var(--sf-surface);
+    color: var(--sf-text-primary);
+
+    &:disabled {
+      background: var(--sf-surface-muted);
+      color: var(--sf-text-tertiary);
+    }
   }
 
   &__note {

@@ -4,6 +4,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from app.models.task import TaskPriority, TaskStatus
+from app.models.task_message import TaskMessageRole
 
 
 class TaskCreate(BaseModel):
@@ -58,5 +59,19 @@ class TaskDiffResponse(BaseModel):
     git_base_branch: str
     git_changed_files: list[str]
     git_diff: str
+
+    model_config = {"from_attributes": True}
+
+
+class TaskMessageCreate(BaseModel):
+    content: str = Field(min_length=1, max_length=10_000)
+
+
+class TaskMessageResponse(BaseModel):
+    id: UUID
+    task_id: UUID
+    role: TaskMessageRole
+    content: str
+    created_at: datetime
 
     model_config = {"from_attributes": True}

@@ -5,6 +5,7 @@ from app.models.organization import Organization, OrganizationMember
 from app.models.project import Project, ProjectMember, Workspace
 from app.models.session import Session
 from app.models.task import Task, TaskPriority, TaskStatus
+from app.models.task_message import TaskMessage, TaskMessageRole
 from app.models.user import User
 from app.models.workflow import Workflow, WorkflowStatus
 
@@ -20,6 +21,8 @@ __all__ = [
     "RepositoryConnection",
     "Session",
     "Task",
+    "TaskMessage",
+    "TaskMessageRole",
     "TaskPriority",
     "TaskStatus",
     "User",

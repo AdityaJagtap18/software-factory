@@ -43,3 +43,13 @@ export interface TaskDiff {
   git_changed_files: string[];
   git_diff: string;
 }
+
+export type TaskMessageRole = 'user' | 'agent' | 'system';
+
+export interface TaskMessage {
+  id: string;
+  task_id: string;
+  role: TaskMessageRole;
+  content: string;
+  created_at: string;
+}

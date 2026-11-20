@@ -3,7 +3,7 @@ import { Injectable, inject, signal } from '@angular/core';
 import { Observable, tap } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { AuthService } from '../auth/auth.service';
-import { ApiTask, CreateTaskPayload, MyApiTask, TaskDiff } from './task.models';
+import { ApiTask, CreateTaskPayload, MyApiTask, TaskDiff, TaskMessage } from './task.models';
 
 @Injectable({ providedIn: 'root' })
 export class TaskService {
@@ -84,6 +84,31 @@ export class TaskService {
    * no filesystem changes, never a fabricated one. */
   getDiff(projectId: string, taskId: string): Observable<TaskDiff> {
     return this.http.get<TaskDiff>(`${environment.apiBaseUrl}/projects/${projectId}/tasks/${taskId}/diff`);
+  }
+
+  /** This task's real conversation so far — every row is either something
+   * a real user typed or real adapter output, never a placeholder. */
+  listMessages(projectId: string, taskId: string): Observable<TaskMessage[]> {
+    return this.http.get<TaskMessage[]>(
+      `${environment.apiBaseUrl}/projects/${projectId}/tasks/${taskId}/messages`
+    );
+  }
+
+  /** Sends a real follow-up instruction: the backend stores it and
+   * re-invokes the agent in this task's existing worktree (see
+   * `execute_followup` server-side) — then this watches the real run the
+   * same way `start()` does. */
+  sendMessage(projectId: string, taskId: string, content: string): Observable<TaskMessage> {
+    return this.http
+      .post<TaskMessage>(`${environment.apiBaseUrl}/projects/${projectId}/tasks/${taskId}/messages`, {
+        content
+      })
+      .pipe(
+        tap(() => {
+          this.patchTask(taskId, { status: 'running' } as Partial<ApiTask>);
+          this.watch(projectId, taskId);
+        })
+      );
   }
 
   private async streamUntilDone(projectId: string, taskId: string): Promise<void> {

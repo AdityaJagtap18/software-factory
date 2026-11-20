@@ -11,11 +11,20 @@ from app.core.database import SessionLocal, get_db
 from app.models.agent_runtime import CodingAgentConnection
 from app.models.project import Project, ProjectRole
 from app.models.task import Task, TaskStatus
+from app.models.task_message import TaskMessage, TaskMessageRole
 from app.models.user import User
-from app.schemas.task import MyTaskResponse, TaskCreate, TaskDiffResponse, TaskResponse, TaskUpdate
+from app.schemas.task import (
+    MyTaskResponse,
+    TaskCreate,
+    TaskDiffResponse,
+    TaskMessageCreate,
+    TaskMessageResponse,
+    TaskResponse,
+    TaskUpdate,
+)
 from app.services import audit
 from app.services.access import visible_project_ids
-from app.services.task_execution import start_task_in_background
+from app.services.task_execution import start_followup_in_background, start_task_in_background
 
 _STREAM_POLL_SECONDS = 0.5
 _STREAM_MAX_SECONDS = 600
@@ -222,6 +231,69 @@ def get_task_diff(
     (Phase 14) — empty fields for a task that had no repository connection
     or made no file changes, never a fabricated one."""
     return _get_task_or_404(db, project_id, task_id)
+
+
+@router.get("/projects/{project_id}/tasks/{task_id}/messages", response_model=list[TaskMessageResponse])
+def list_task_messages(
+    project_id: uuid.UUID,
+    task_id: uuid.UUID,
+    ctx: ProjectContext = Depends(require_project_access),
+    db: DBSession = Depends(get_db),
+) -> list[TaskMessageResponse]:
+    """This task's real conversation so far -- every row here was either
+    typed by a real user or produced by a real adapter run; nothing is
+    synthesized just to populate the Conversation tab."""
+    _get_task_or_404(db, project_id, task_id)
+    return (
+        db.query(TaskMessage)
+        .filter(TaskMessage.task_id == task_id)
+        .order_by(TaskMessage.created_at.asc())
+        .all()
+    )
+
+
+@router.post(
+    "/projects/{project_id}/tasks/{task_id}/messages",
+    response_model=TaskMessageResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_task_message(
+    project_id: uuid.UUID,
+    task_id: uuid.UUID,
+    payload: TaskMessageCreate,
+    user: User = Depends(get_current_user),
+    ctx: ProjectContext = Depends(require_project_access),
+    db: DBSession = Depends(get_db),
+) -> TaskMessageResponse:
+    """A real follow-up instruction: stores it, then re-invokes the task's
+    assigned coding-agent connection in its existing Git worktree with this
+    instruction (see `execute_followup`) -- never a cosmetic echo with no
+    real execution behind it."""
+    ctx.require_role(MANAGE_ROLES)
+    task = _get_task_or_404(db, project_id, task_id)
+    if task.status == TaskStatus.RUNNING:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Task is already running")
+
+    message = TaskMessage(
+        task_id=task.id, role=TaskMessageRole.USER, content=payload.content, created_by_user_id=user.id
+    )
+    db.add(message)
+    task.status = TaskStatus.RUNNING
+    db.commit()
+    db.refresh(message)
+
+    start_followup_in_background(task.id, payload.content)
+
+    audit.record(
+        db,
+        action="task.followup",
+        target_type="task",
+        target_id=str(task.id),
+        actor_user_id=user.id,
+        organization_id=ctx.project.organization_id,
+    )
+    db.commit()
+    return message
 
 
 @router.get("/projects/{project_id}/tasks/{task_id}/stream")

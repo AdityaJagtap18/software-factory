@@ -134,20 +134,62 @@ def prepare_worktree(task: Task, connection: RepositoryConnection) -> WorktreeRe
     )
 
 
-def collect_diff(worktree_path: str, commit_message: str) -> DiffResult:
+def resume_worktree(task: Task, connection: RepositoryConnection) -> WorktreeResult:
+    """Reuses the real, already-cloned worktree from a task's first run for
+    a follow-up turn, so the agent continues in a checkout that already
+    contains its own earlier changes rather than starting over. Refreshes
+    `origin`'s URL with a newly-minted credential first, since a GitHub App
+    installation token is short-lived and the one from the original clone
+    may have expired by the time a follow-up arrives. Raises `WorktreeError`
+    if there is no prior worktree to resume -- never fabricates one."""
+    target = _worktree_root() / str(task.id)
+    if not target.exists():
+        raise WorktreeError("This task has no existing workspace to continue in. Start it first.")
+
+    adapter = get_git_provider(connection.installation.provider.value)
+    if adapter is None:
+        raise WorktreeError(f"Unknown git provider '{connection.installation.provider.value}'.")
+    try:
+        clone_url = adapter.get_authenticated_clone_url(
+            connection.installation.external_installation_id, connection.owner, connection.name
+        )
+    except GitProviderError as exc:
+        raise WorktreeError(exc.detail) from exc
+
+    token = clone_url.split("://", 1)[1].split("@", 1)[0] if "@" in clone_url else ""
+    secret = f"{token}@" if token else clone_url
+
+    clone_dir = str(target)
+    _run_git(["remote", "set-url", "origin", clone_url], clone_dir, secret)
+
+    branch_name = task.git_branch_name or f"sf-task-{str(task.id)[:8]}"
+    base_branch = task.git_base_branch or connection.default_branch or "main"
+    return WorktreeResult(
+        path=clone_dir, branch_name=branch_name, base_branch=base_branch, clone_secret=secret
+    )
+
+
+def collect_diff(worktree_path: str, base_branch: str, commit_message: str) -> DiffResult:
     """Stages every real filesystem change the agent made inside
     `worktree_path`, commits it on the task's branch if there is anything
-    to commit, and returns the real diff. An agent run that touched no
-    files returns an empty `DiffResult` -- never a fabricated one."""
+    to commit, and returns the real CUMULATIVE diff against `base_branch`
+    (its `origin/<base_branch>` remote-tracking ref, set by the original
+    clone) -- not just the latest commit. This matters once a task has had
+    more than one real run (a follow-up turn, see `execute_followup`):
+    without diffing against the base, a second run's diff would silently
+    drop the first run's changes. A worktree with no changes at all across
+    every run returns an empty `DiffResult` -- never a fabricated one."""
     _run_git(["add", "-A"], worktree_path)
     status = _run_git(["status", "--porcelain"], worktree_path)
-    if not status.stdout.strip():
-        return DiffResult()
+    if status.stdout.strip():
+        _run_git(["commit", "-m", commit_message or "Task execution"], worktree_path)
 
-    _run_git(["commit", "-m", commit_message or "Task execution"], worktree_path)
-    name_proc = _run_git(["diff", "HEAD~1", "HEAD", "--name-only"], worktree_path)
+    base_ref = f"origin/{base_branch}"
+    name_proc = _run_git(["diff", base_ref, "HEAD", "--name-only"], worktree_path)
     changed_files = [line.strip() for line in name_proc.stdout.splitlines() if line.strip()]
-    diff_proc = _run_git(["diff", "HEAD~1", "HEAD"], worktree_path)
+    if not changed_files:
+        return DiffResult()
+    diff_proc = _run_git(["diff", base_ref, "HEAD"], worktree_path)
     return DiffResult(changed_files=changed_files, diff_text=diff_proc.stdout[:_MAX_DIFF_CHARS])
 
 

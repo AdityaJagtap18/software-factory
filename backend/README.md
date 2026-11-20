@@ -1,4 +1,4 @@
-# Software Factory — Backend (Phases 1–18: Foundation Through Branch Protection Visibility)
+# Software Factory — Backend (Phases 1–19: Foundation Through Real File Edits in Tasks)
 
 FastAPI + PostgreSQL (+ Neo4j) backend implementing real authentication,
 organizations, membership, RBAC, projects, workspaces, coding-agent runtime
@@ -637,6 +637,31 @@ provider API key makes the same code paths report a real "Connected."**
   GitHub App, an unexpected GitHub error raised honestly, a task's PR
   recording the real protection rules end to end, and a protection
   lookup failure reported without overturning the task's own success.
+
+### Phase 19 — Real file edits inside a task's worktree
+- `claude -p` has no TTY to approve a permission prompt when run
+  non-interactively (as every task does), so the CLI defaulted to
+  *denying* file-editing tools — a task could report `completed` with a
+  real CLI response while never actually writing a file. Found by
+  re-running a real task end to end after fixing CLI re-authentication:
+  the task genuinely ran, but explained it couldn't write because
+  permission wasn't granted.
+- Fixed by passing `--permission-mode acceptEdits` to the `claude` CLI
+  invocation (`ClaudeCodeAdapter` in `app/services/agent_runtime/adapters.py`),
+  which auto-approves file reads/writes/edits only — Bash commands are
+  still gated. Scoped to only apply when a real worktree `cwd` bounds
+  where those edits can land (never for a bare prompt with no
+  codebase), and scoped to this adapter only — Codex/Gemini/Qwen's CLIs
+  have their own, different non-interactive flags, not covered here.
+- Verified against a real connected repository: the previously-failing
+  task now genuinely creates the requested file inside its worktree
+  (confirmed via its real diff), and pushing the branch/opening the PR
+  is the next real step that runs — which honestly failed for an
+  unrelated reason (the GitHub App installation's own permissions on
+  that repository), reported as such rather than silently swallowed.
+- 3 new backend tests (116/116 total): the CLI invocation requests
+  `acceptEdits` when a worktree `cwd` is given, omits it with no `cwd`,
+  and the streaming variant requests it too.
 
 ## What's intentionally not here yet
 

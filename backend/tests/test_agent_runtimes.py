@@ -1,5 +1,6 @@
 import pytest
 
+from app.services.agent_runtime import adapters
 from app.services.agent_runtime.adapters import ClaudeCodeAdapter
 from app.services.agent_runtime.base import HealthCheckResult
 
@@ -227,3 +228,77 @@ def test_delete_connection_removes_it_and_its_credential(client, monkeypatch):
     ).json()
     claude_entry = next(e for e in after if e["runtime_slug"] == "claude_code")
     assert claude_entry["is_configured"] is False
+
+
+# ---------------------------------------------------------------------------
+# Phase 19: `claude -p` has no TTY to approve a permission prompt, so it
+# defaults to denying file-editing tools -- a task would otherwise report
+# success without ever writing a file. `--permission-mode acceptEdits` is
+# added, but only when a real worktree `cwd` bounds where edits can land.
+# ---------------------------------------------------------------------------
+
+
+def test_claude_code_cli_execution_requests_accept_edits_inside_a_worktree(monkeypatch):
+    captured = {}
+
+    class _FakeCompletedProcess:
+        returncode = 0
+        stdout = "ok"
+        stderr = ""
+
+    def _fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return _FakeCompletedProcess()
+
+    monkeypatch.setattr(adapters.shutil, "which", lambda binary: f"/usr/bin/{binary}")
+    monkeypatch.setattr(adapters.subprocess, "run", _fake_run)
+
+    result = ClaudeCodeAdapter().start_execution("Add a file", None, cwd="/tmp/some-worktree")
+
+    assert result.succeeded is True
+    assert captured["cmd"] == ["/usr/bin/claude", "-p", "Add a file", "--permission-mode", "acceptEdits"]
+
+
+def test_claude_code_cli_execution_omits_accept_edits_without_a_worktree(monkeypatch):
+    captured = {}
+
+    class _FakeCompletedProcess:
+        returncode = 0
+        stdout = "ok"
+        stderr = ""
+
+    def _fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return _FakeCompletedProcess()
+
+    monkeypatch.setattr(adapters.shutil, "which", lambda binary: f"/usr/bin/{binary}")
+    monkeypatch.setattr(adapters.subprocess, "run", _fake_run)
+
+    result = ClaudeCodeAdapter().start_execution("Just answer this", None, cwd=None)
+
+    assert result.succeeded is True
+    assert captured["cmd"] == ["/usr/bin/claude", "-p", "Just answer this"]
+
+
+def test_claude_code_cli_streaming_execution_requests_accept_edits_inside_a_worktree(monkeypatch):
+    captured = {}
+
+    class _FakePopen:
+        returncode = 0
+        stdout = iter(["real output\n"])
+
+        def __init__(self, cmd, **kwargs):
+            captured["cmd"] = cmd
+
+        def wait(self, timeout=None):
+            return None
+
+    monkeypatch.setattr(adapters.shutil, "which", lambda binary: f"/usr/bin/{binary}")
+    monkeypatch.setattr(adapters.subprocess, "Popen", _FakePopen)
+
+    result = ClaudeCodeAdapter().start_execution_streaming(
+        "Add a file", None, lambda chunk: None, lambda: False, cwd="/tmp/some-worktree"
+    )
+
+    assert result.succeeded is True
+    assert captured["cmd"] == ["/usr/bin/claude", "-p", "Add a file", "--permission-mode", "acceptEdits"]

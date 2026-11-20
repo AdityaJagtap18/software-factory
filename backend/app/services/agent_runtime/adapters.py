@@ -52,7 +52,7 @@ def _detect_cli_version(binary: str, version_flag: str = "--version") -> HealthC
 
 
 def _run_cli_prompt(
-    binary: str, prompt_flag: str, prompt: str, cwd: str | None = None
+    binary: str, prompt_flag: str, prompt: str, cwd: str | None = None, extra_args: list[str] | None = None
 ) -> ExecutionResult:
     """Invoke a locally installed coding-agent CLI non-interactively.
 
@@ -61,6 +61,11 @@ def _run_cli_prompt(
     real failure is reported honestly rather than silently retried with a
     guessed alternative. `cwd`, when given, runs the CLI inside a real Git
     worktree (Phase 14) so any files it edits land there for real.
+
+    `extra_args`, when given, is appended verbatim after the prompt --
+    used for a CLI's own non-interactive permission flag (see
+    `ClaudeCodeAdapter`), scoped by the caller to only apply when a real
+    worktree `cwd` bounds where edits can land.
     """
     path = shutil.which(binary)
     if path is None:
@@ -70,7 +75,7 @@ def _run_cli_prompt(
         )
     try:
         proc = subprocess.run(
-            [path, prompt_flag, prompt],
+            [path, prompt_flag, prompt, *(extra_args or [])],
             capture_output=True,
             text=True,
             timeout=_EXECUTION_TIMEOUT_SECONDS,
@@ -90,7 +95,13 @@ def _run_cli_prompt(
 
 
 def _run_cli_prompt_streaming(
-    binary: str, prompt_flag: str, prompt: str, on_chunk, should_cancel, cwd: str | None = None
+    binary: str,
+    prompt_flag: str,
+    prompt: str,
+    on_chunk,
+    should_cancel,
+    cwd: str | None = None,
+    extra_args: list[str] | None = None,
 ) -> ExecutionResult:
     """Like `_run_cli_prompt`, but reads the real child process's stdout line
     by line as it's produced and can terminate it early on real cancellation.
@@ -103,7 +114,7 @@ def _run_cli_prompt_streaming(
         )
     try:
         proc = subprocess.Popen(
-            [path, prompt_flag, prompt],
+            [path, prompt_flag, prompt, *(extra_args or [])],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -497,6 +508,17 @@ def _probe_gemini_api(api_key: str) -> HealthCheckResult:
     )
 
 
+def _claude_code_permission_args(cwd: str | None) -> list[str]:
+    """Running `claude -p` with no TTY to approve a prompt, the CLI
+    defaults to *denying* file-editing tools rather than guessing --
+    a task would otherwise report success without ever writing a file.
+    `acceptEdits` auto-approves file reads/writes/edits only; it still
+    gates Bash. Only applied when `cwd` bounds the edit to a real,
+    isolated task worktree (Phase 14) -- never for a bare prompt with no
+    codebase, where there'd be no directory to scope it to."""
+    return ["--permission-mode", "acceptEdits"] if cwd else []
+
+
 class ClaudeCodeAdapter(CodingAgentRuntimeAdapter):
     slug = "claude_code"
     display_name = "Claude Code"
@@ -521,14 +543,16 @@ class ClaudeCodeAdapter(CodingAgentRuntimeAdapter):
     def start_execution(self, prompt: str, credential_value: str | None, cwd: str | None = None) -> ExecutionResult:
         if credential_value:
             return _run_anthropic_prompt(credential_value, prompt)
-        return _run_cli_prompt("claude", "-p", prompt, cwd)
+        return _run_cli_prompt("claude", "-p", prompt, cwd, extra_args=_claude_code_permission_args(cwd))
 
     def start_execution_streaming(
         self, prompt, credential_value, on_chunk, should_cancel, cwd: str | None = None
     ) -> ExecutionResult:
         if credential_value:
             return _run_anthropic_prompt_streaming(credential_value, prompt, on_chunk, should_cancel)
-        return _run_cli_prompt_streaming("claude", "-p", prompt, on_chunk, should_cancel, cwd)
+        return _run_cli_prompt_streaming(
+            "claude", "-p", prompt, on_chunk, should_cancel, cwd, extra_args=_claude_code_permission_args(cwd)
+        )
 
 
 class CodexAdapter(CodingAgentRuntimeAdapter):

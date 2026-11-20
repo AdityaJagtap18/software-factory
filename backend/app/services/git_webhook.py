@@ -23,11 +23,11 @@ from app.models.git_integration import (
 )
 from app.models.task import Task
 
-# Event types this phase actually acts on. Branch create/delete and
-# CI/check-status events are received and recorded (never silently
-# dropped) but their deeper handling is later roadmap scope -- recorded
-# here rather than claimed as done. `push` (Phase 13) and `pull_request`
-# (Phase 16) are genuinely handled below.
+# Event types this phase actually acts on. Branch create/delete events
+# are received and recorded (never silently dropped) but their deeper
+# handling is later roadmap scope -- recorded here rather than claimed as
+# done. `push` (Phase 13), `pull_request` (Phase 16), and `check_suite`
+# (Phase 17) are genuinely handled below.
 _METADATA_SYNC_EVENTS = {"push"}
 
 
@@ -77,6 +77,34 @@ def _apply_pull_request_event(
     return f"updated pull request state to '{state}' on {len(tasks)} task(s)"
 
 
+def _apply_check_suite_event(
+    db: DBSession, connections: list[RepositoryConnection], payload: dict
+) -> str:
+    """Phase 17: keeps the originating task's `git_ci_status` in sync with
+    GitHub's own real CI result for its branch -- a real conclusion
+    ("success", "failure", ...) once GitHub's check suite completes, or
+    its real in-progress `status` ("queued"/"in_progress") before that.
+    Matched by the real head branch within the connected project(s) --
+    never run or simulated by this backend itself."""
+    suite = payload.get("check_suite") or {}
+    head_branch = suite.get("head_branch", "")
+    if not head_branch:
+        return "recorded: check_suite event missing a head branch"
+
+    ci_status = suite.get("conclusion") or suite.get("status") or ""
+    project_ids = [c.project_id for c in connections]
+    tasks = (
+        db.query(Task)
+        .filter(Task.project_id.in_(project_ids), Task.git_branch_name == head_branch)
+        .all()
+    )
+    for task in tasks:
+        task.git_ci_status = ci_status
+    if not tasks:
+        return f"recorded: check_suite for branch '{head_branch}' matches no task opened by this backend"
+    return f"updated CI status to '{ci_status}' on {len(tasks)} task(s)"
+
+
 def process_event(
     db: DBSession,
     *,
@@ -123,6 +151,9 @@ def process_event(
         event.processing_result = "recorded: no matching repository connection"
     elif event_type == "pull_request":
         event.processing_result = _apply_pull_request_event(db, connections, payload)
+        event.repository_connection_id = connections[0].id
+    elif event_type == "check_suite":
+        event.processing_result = _apply_check_suite_event(db, connections, payload)
         event.repository_connection_id = connections[0].id
     elif event_type not in _METADATA_SYNC_EVENTS:
         event.processing_result = f"recorded: '{event_type}' event type handling not yet implemented"

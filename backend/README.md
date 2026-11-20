@@ -1,4 +1,4 @@
-# Software Factory — Backend (Phases 1–16: Foundation Through Real PR Lifecycle)
+# Software Factory — Backend (Phases 1–17: Foundation Through Real CI Status)
 
 FastAPI + PostgreSQL (+ Neo4j) backend implementing real authentication,
 organizations, membership, RBAC, projects, workspaces, coding-agent runtime
@@ -595,6 +595,26 @@ provider API key makes the same code paths report a real "Connected."**
   the task over the API), and a `pull_request` event that matches no
   task, recorded honestly rather than silently accepted or errored.
 
+### Phase 17 — Real CI status via GitHub's own check-suite webhook
+- A task's `git_ci_status` is the real, live CI result for its branch —
+  never run or simulated by this backend. It's kept in sync by GitHub's
+  own `check_suite` webhook event (received and recorded since Phase 13,
+  not yet acted on until now): the real in-progress `status`
+  (`queued`/`in_progress`) before GitHub's check suite completes, then
+  its real `conclusion` (`success`/`failure`/...) once it does.
+- Matched by the real head branch within the connected project only —
+  never guessed from timing or task state. A `check_suite` event for a
+  branch this backend didn't create (or for a project it can't match) is
+  recorded honestly as such, never silently dropped or treated as an
+  error.
+- Surfaced as a "CI: <status>" pill in the project workspace's Tasks tab
+  and a "CI" row in the task workspace's Git sidebar card.
+- 3 new backend tests (107/107 total): a completed check suite flipping
+  a matching task's CI status to its real conclusion, an in-progress
+  suite reporting its real `status` rather than a fabricated conclusion,
+  and a check-suite event matching no task recorded honestly rather than
+  silently accepted or errored.
+
 ## What's intentionally not here yet
 
 Temporal/LangGraph-based durable workflow orchestration (this pass's
@@ -602,12 +622,11 @@ Factory Supervisor sequences steps via a background thread against the
 real database, not a distributed workflow engine), cloning a remote git
 repository server-side for ingestion (by design — see Phase 9; ingestion
 only reads a local path the backend host can already see), the rest of
-PR-lifecycle handling (branch protection and CI/check-status events are
-still received and recorded without deeper action — Phase 16 only acts
-on `pull_request` events), and coordinating presence across multiple
-backend replicas (Phase 6's presence registry is single-process/
-in-memory) are later phases of the execution spec and are not
-implemented in this pass.
+PR-lifecycle handling (branch protection rules are still received and
+recorded without deeper action — Phases 16-17 act on `pull_request` and
+`check_suite`), and coordinating presence across multiple backend
+replicas (Phase 6's presence registry is single-process/in-memory) are
+later phases of the execution spec and are not implemented in this pass.
 
 Several frontend-only pages the original UI scaffold shipped with are
 still backed by static mock data rather than this backend — Agents,

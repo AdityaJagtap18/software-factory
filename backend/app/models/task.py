@@ -84,4 +84,10 @@ class Task(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # inferred or guessed locally; empty until Phase 15 actually opens one.
     git_pr_state: Mapped[str] = mapped_column(String(20), default="", nullable=False)
 
+    # Phase 17: the real CI result for this task's branch, kept in sync by
+    # GitHub's own `check_suite` webhook ("queued", "in_progress", or a
+    # real conclusion like "success"/"failure") -- never run or simulated
+    # by this backend itself, and empty until GitHub reports one.
+    git_ci_status: Mapped[str] = mapped_column(String(20), default="", nullable=False)
+
     project: Mapped["Project"] = relationship()

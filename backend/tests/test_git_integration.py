@@ -560,6 +560,180 @@ def test_webhook_pull_request_event_with_no_matching_task_is_recorded_not_an_err
     assert "matches no task" in r.json()["processing_result"]
 
 
+def test_webhook_check_suite_event_updates_the_matching_tasks_ci_status(client, monkeypatch):
+    """Phase 17: GitHub's own `check_suite` webhook is the only source of
+    truth for a task's real CI result, matched by its real head branch
+    within the connected project -- never run or simulated locally."""
+    monkeypatch.setattr(
+        GitHubAppAdapter,
+        "get_repository",
+        lambda self, installation_id, owner, name: RepositorySummary(
+            owner=owner, name=name, full_name=f"{owner}/{name}", default_branch="main", private=True
+        ),
+    )
+    monkeypatch.setattr(
+        GitHubAppAdapter,
+        "get_branch_head_commit",
+        lambda self, installation_id, owner, name, branch: CommitSummary(sha="abc123"),
+    )
+    alice = _register_and_login(client, "alice@example.com", "Alice")
+    org, project = _org_and_project(client, alice)
+    installation = client.post(
+        f"/api/v1/organizations/{org['id']}/git-installations",
+        json={"external_installation_id": "1"},
+        headers=alice,
+    ).json()
+    client.post(
+        f"/api/v1/projects/{project['id']}/repository-connections",
+        json={"git_installation_id": installation["id"], "owner": "acme", "name": "widgets"},
+        headers=alice,
+    )
+
+    task = client.post(
+        f"/api/v1/projects/{project['id']}/tasks", json={"title": "Add a feature"}, headers=alice
+    ).json()
+
+    import uuid as uuid_module
+
+    from app.core.database import SessionLocal
+    from app.models.task import Task
+
+    db = SessionLocal()
+    db_task = db.get(Task, uuid_module.UUID(task["id"]))
+    db_task.git_branch_name = "sf-task-abc12345"
+    db.commit()
+    db.close()
+
+    secret = "webhook-secret"
+    monkeypatch.setattr(git_webhook, "get_settings", lambda: Settings(github_webhook_secret=secret))
+
+    body = json.dumps(
+        {
+            "action": "completed",
+            "repository": {"full_name": "acme/widgets"},
+            "check_suite": {"head_branch": "sf-task-abc12345", "status": "completed", "conclusion": "success"},
+        }
+    ).encode()
+    headers = {
+        "x-hub-signature-256": _sign(secret, body),
+        "x-github-event": "check_suite",
+        "x-github-delivery": "delivery-ci-success",
+        "content-type": "application/json",
+    }
+    r = client.post("/api/v1/webhooks/github", data=body, headers=headers)
+    assert r.status_code == 200, r.text
+    assert "updated CI status to 'success'" in r.json()["processing_result"]
+
+    r2 = client.get(f"/api/v1/projects/{project['id']}/tasks/{task['id']}", headers=alice)
+    assert r2.json()["git_ci_status"] == "success"
+
+
+def test_webhook_check_suite_in_progress_reports_its_real_status_not_a_conclusion(client, monkeypatch):
+    monkeypatch.setattr(
+        GitHubAppAdapter,
+        "get_repository",
+        lambda self, installation_id, owner, name: RepositorySummary(
+            owner=owner, name=name, full_name=f"{owner}/{name}", default_branch="main", private=True
+        ),
+    )
+    monkeypatch.setattr(
+        GitHubAppAdapter,
+        "get_branch_head_commit",
+        lambda self, installation_id, owner, name, branch: CommitSummary(sha="abc123"),
+    )
+    alice = _register_and_login(client, "alice@example.com", "Alice")
+    org, project = _org_and_project(client, alice)
+    installation = client.post(
+        f"/api/v1/organizations/{org['id']}/git-installations",
+        json={"external_installation_id": "1"},
+        headers=alice,
+    ).json()
+    client.post(
+        f"/api/v1/projects/{project['id']}/repository-connections",
+        json={"git_installation_id": installation["id"], "owner": "acme", "name": "widgets"},
+        headers=alice,
+    )
+
+    task = client.post(
+        f"/api/v1/projects/{project['id']}/tasks", json={"title": "Add a feature"}, headers=alice
+    ).json()
+
+    import uuid as uuid_module
+
+    from app.core.database import SessionLocal
+    from app.models.task import Task
+
+    db = SessionLocal()
+    db_task = db.get(Task, uuid_module.UUID(task["id"]))
+    db_task.git_branch_name = "sf-task-def67890"
+    db.commit()
+    db.close()
+
+    secret = "webhook-secret"
+    monkeypatch.setattr(git_webhook, "get_settings", lambda: Settings(github_webhook_secret=secret))
+    body = json.dumps(
+        {
+            "action": "in_progress",
+            "repository": {"full_name": "acme/widgets"},
+            "check_suite": {"head_branch": "sf-task-def67890", "status": "in_progress", "conclusion": None},
+        }
+    ).encode()
+    headers = {
+        "x-hub-signature-256": _sign(secret, body),
+        "x-github-event": "check_suite",
+        "x-github-delivery": "delivery-ci-in-progress",
+        "content-type": "application/json",
+    }
+    r = client.post("/api/v1/webhooks/github", data=body, headers=headers)
+    assert r.status_code == 200
+    assert "updated CI status to 'in_progress'" in r.json()["processing_result"]
+
+
+def test_webhook_check_suite_with_no_matching_task_is_recorded_not_an_error(client, monkeypatch):
+    monkeypatch.setattr(
+        GitHubAppAdapter,
+        "get_repository",
+        lambda self, installation_id, owner, name: RepositorySummary(
+            owner=owner, name=name, full_name=f"{owner}/{name}", default_branch="main", private=True
+        ),
+    )
+    monkeypatch.setattr(
+        GitHubAppAdapter,
+        "get_branch_head_commit",
+        lambda self, installation_id, owner, name, branch: CommitSummary(sha="abc123"),
+    )
+    alice = _register_and_login(client, "alice@example.com", "Alice")
+    org, project = _org_and_project(client, alice)
+    installation = client.post(
+        f"/api/v1/organizations/{org['id']}/git-installations",
+        json={"external_installation_id": "1"},
+        headers=alice,
+    ).json()
+    client.post(
+        f"/api/v1/projects/{project['id']}/repository-connections",
+        json={"git_installation_id": installation["id"], "owner": "acme", "name": "widgets"},
+        headers=alice,
+    )
+
+    secret = "webhook-secret"
+    monkeypatch.setattr(git_webhook, "get_settings", lambda: Settings(github_webhook_secret=secret))
+    body = json.dumps(
+        {
+            "repository": {"full_name": "acme/widgets"},
+            "check_suite": {"head_branch": "some-other-branch", "status": "completed", "conclusion": "failure"},
+        }
+    ).encode()
+    headers = {
+        "x-hub-signature-256": _sign(secret, body),
+        "x-github-event": "check_suite",
+        "x-github-delivery": "delivery-ci-no-match",
+        "content-type": "application/json",
+    }
+    r = client.post("/api/v1/webhooks/github", data=body, headers=headers)
+    assert r.status_code == 200
+    assert "matches no task" in r.json()["processing_result"]
+
+
 def test_webhook_requires_delivery_id(client):
     r = client.post(
         "/api/v1/webhooks/github",

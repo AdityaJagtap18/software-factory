@@ -41,6 +41,7 @@ class TaskResponse(BaseModel):
     git_pr_url: str = ""
     git_pr_number: int = 0
     git_pr_state: str = ""
+    git_ci_status: str = ""
 
     model_config = {"from_attributes": True}
 

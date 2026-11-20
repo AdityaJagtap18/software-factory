@@ -20,6 +20,7 @@ export interface ApiTask {
   git_pr_url: string;
   git_pr_number: number;
   git_pr_state: string;
+  git_ci_status: string;
 }
 
 export interface MyApiTask extends ApiTask {

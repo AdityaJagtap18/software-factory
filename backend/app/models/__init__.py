@@ -1,5 +1,6 @@
 from app.models.agent_runtime import CodingAgentConnection, Credential
 from app.models.audit import AuditLog
+from app.models.git_integration import GitInstallation, RepositoryConnection, WebhookEvent
 from app.models.organization import Organization, OrganizationMember
 from app.models.project import Project, ProjectMember, Workspace
 from app.models.session import Session
@@ -11,14 +12,17 @@ __all__ = [
     "AuditLog",
     "CodingAgentConnection",
     "Credential",
+    "GitInstallation",
     "Organization",
     "OrganizationMember",
     "Project",
     "ProjectMember",
+    "RepositoryConnection",
     "Session",
     "Task",
     "TaskPriority",
     "TaskStatus",
     "User",
+    "WebhookEvent",
     "Workspace",
 ]

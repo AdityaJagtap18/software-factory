@@ -5,6 +5,7 @@ from app.api.routes import (
     agent_runtimes,
     auth,
     dashboard,
+    git_integration,
     knowledge,
     organizations,
     presence,
@@ -35,6 +36,7 @@ app.include_router(workflows.router, prefix="/api/v1")
 app.include_router(presence.router, prefix="/api/v1")
 app.include_router(knowledge.router, prefix="/api/v1")
 app.include_router(dashboard.router, prefix="/api/v1")
+app.include_router(git_integration.router, prefix="/api/v1")
 
 
 @app.get("/api/v1/health")

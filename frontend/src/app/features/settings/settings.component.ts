@@ -5,6 +5,8 @@ import { MockDataService } from '../../core/mock-data.service';
 import { OrganizationService } from '../../core/org/organization.service';
 import { AgentRuntimeService } from '../../core/org/agent-runtime.service';
 import { AgentConnection, ConnectionMode } from '../../core/org/agent-runtime.models';
+import { GitIntegrationService } from '../../core/org/git-integration.service';
+import { GitInstallation } from '../../core/org/git-integration.models';
 
 type TopTab = 'general' | 'agents' | 'models' | 'integrations' | 'execution' | 'workflows' | 'security' | 'governance' | 'preferences';
 
@@ -20,9 +22,19 @@ export class SettingsComponent implements OnInit {
   private readonly data = inject(MockDataService);
   private readonly orgService = inject(OrganizationService);
   private readonly runtimeService = inject(AgentRuntimeService);
+  private readonly gitService = inject(GitIntegrationService);
 
   readonly connections = this.runtimeService.connections;
   readonly connectionsLoaded = this.runtimeService.loaded;
+
+  readonly gitInstallations = this.gitService.installations;
+  readonly gitInstallationsLoaded = this.gitService.installationsLoaded;
+  readonly showConnectInstallation = signal(false);
+  readonly newInstallationId = signal('');
+  readonly newInstallationAccount = signal('');
+  readonly connectingInstallation = signal(false);
+  readonly installationError = signal('');
+  readonly recheckingInstallationId = signal<string | null>(null);
 
   topTab = signal<TopTab>('integrations');
 
@@ -67,6 +79,7 @@ export class SettingsComponent implements OnInit {
       const orgId = this.orgService.activeOrgId();
       if (orgId) {
         this.runtimeService.listForOrg(orgId).subscribe();
+        this.gitService.listInstallations(orgId).subscribe();
       }
     });
   }
@@ -151,5 +164,70 @@ export class SettingsComponent implements OnInit {
     const orgId = this.orgService.activeOrgId();
     if (!orgId || !entry.id) return;
     this.runtimeService.disconnect(orgId, entry.id, entry.runtime_slug).subscribe();
+  }
+
+  gitStatusTone(status: string): 'green' | 'gray' | 'amber' | 'red' {
+    if (status === 'connected') return 'green';
+    if (status === 'not_connected') return 'amber';
+    if (status === 'revoked') return 'red';
+    return 'gray';
+  }
+
+  gitStatusLabel(status: string): string {
+    switch (status) {
+      case 'connected': return 'Connected';
+      case 'not_connected': return 'Not connected';
+      case 'revoked': return 'Revoked';
+      default: return status;
+    }
+  }
+
+  openConnectInstallation() {
+    this.newInstallationId.set('');
+    this.newInstallationAccount.set('');
+    this.installationError.set('');
+    this.showConnectInstallation.set(true);
+  }
+
+  closeConnectInstallation() {
+    this.showConnectInstallation.set(false);
+  }
+
+  submitConnectInstallation() {
+    const orgId = this.orgService.activeOrgId();
+    const externalId = this.newInstallationId().trim();
+    if (!orgId || !externalId) return;
+    this.connectingInstallation.set(true);
+    this.installationError.set('');
+    this.gitService
+      .createInstallation(orgId, {
+        external_installation_id: externalId,
+        account_login: this.newInstallationAccount().trim()
+      })
+      .subscribe({
+        next: () => {
+          this.connectingInstallation.set(false);
+          this.showConnectInstallation.set(false);
+        },
+        error: (err) => {
+          this.connectingInstallation.set(false);
+          this.installationError.set(err?.error?.detail ?? 'Could not record this installation.');
+        }
+      });
+  }
+
+  recheckInstallation(installation: GitInstallation) {
+    const orgId = this.orgService.activeOrgId();
+    if (!orgId) return;
+    this.recheckingInstallationId.set(installation.id);
+    this.gitService.recheckInstallation(orgId, installation.id).subscribe({
+      complete: () => this.recheckingInstallationId.set(null)
+    });
+  }
+
+  revokeInstallation(installation: GitInstallation) {
+    const orgId = this.orgService.activeOrgId();
+    if (!orgId) return;
+    this.gitService.revokeInstallation(orgId, installation.id).subscribe();
   }
 }

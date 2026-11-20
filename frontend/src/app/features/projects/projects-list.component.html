@@ -53,9 +53,48 @@
 
 @if (showCreate()) {
   <div class="org-modal__backdrop" (click)="closeCreate()">
-    <div class="org-modal" (click)="$event.stopPropagation()">
+    <div class="org-modal org-modal--wide" (click)="$event.stopPropagation()">
       <h3>New project</h3>
       <p>Projects group tasks, workflows, agents and knowledge for one codebase.</p>
+
+      @if (gitInstallations().length > 0) {
+        <label for="projInstallation">GitHub App installation</label>
+        <select id="projInstallation" [value]="createInstallationId()" (change)="onCreateInstallationChange($any($event.target).value)">
+          @for (i of gitInstallations(); track i.id) {
+            <option [value]="i.id">{{ i.account_login || i.external_installation_id }}</option>
+          }
+        </select>
+
+        <label for="projRepoSelect">Repository <span class="org-modal__count">{{ createRepositories().length }} available</span></label>
+        @if (loadingCreateRepositories()) {
+          <p class="set-note" style="padding-left:0;">Loading repositories from GitHub…</p>
+        } @else {
+          @if (createRepositories().length > 8) {
+            <input
+              type="text"
+              class="org-modal__filter"
+              placeholder="Filter repositories…"
+              [value]="repoFilterTerm()"
+              (input)="repoFilterTerm.set($any($event.target).value)"
+            />
+          }
+          <select id="projRepoSelect" size="6" [value]="selectedRepoFullName()" (change)="onSelectRepo($any($event.target).value)">
+            @for (r of filteredCreateRepositories(); track r.full_name) {
+              <option [value]="r.full_name">{{ r.full_name }}{{ r.private ? ' 🔒' : '' }}</option>
+            } @empty {
+              <option disabled>No repositories match "{{ repoFilterTerm() }}"</option>
+            }
+          </select>
+        }
+        @if (createRepoError()) {
+          <p class="set-note" style="color: var(--sf-red-600); padding-left:0;">{{ createRepoError() }}</p>
+        }
+      } @else {
+        <p class="set-note" style="padding-left:0;">
+          No GitHub App installation connected yet — connect one under Settings → Tools &amp; Integrations to
+          pick a repository here. You can still create a project with a plain repository URL below.
+        </p>
+      }
 
       <label for="projName">Project name</label>
       <input id="projName" type="text" placeholder="e.g. Invoice Automation Platform" [value]="newProjectName()" (input)="newProjectName.set($any($event.target).value)" />
@@ -63,8 +102,10 @@
       <label for="projDesc">Description</label>
       <input id="projDesc" type="text" placeholder="Optional" [value]="newProjectDescription()" (input)="newProjectDescription.set($any($event.target).value)" />
 
-      <label for="projRepo">Repository URL</label>
-      <input id="projRepo" type="text" placeholder="Optional, e.g. github.com/org/repo" [value]="newProjectRepo()" (input)="newProjectRepo.set($any($event.target).value)" />
+      @if (gitInstallations().length === 0) {
+        <label for="projRepo">Repository URL</label>
+        <input id="projRepo" type="text" placeholder="Optional, e.g. github.com/org/repo" [value]="newProjectRepo()" (input)="newProjectRepo.set($any($event.target).value)" />
+      }
 
       <div class="org-modal__actions">
         <button type="button" class="sf-btn" (click)="closeCreate()">Cancel</button>

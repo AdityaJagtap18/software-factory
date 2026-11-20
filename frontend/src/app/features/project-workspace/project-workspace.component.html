@@ -401,12 +401,98 @@
     </section>
   }
 
-  @if (activeTab() === 'artifacts' || activeTab() === 'activity' || activeTab() === 'settings') {
+  @if (activeTab() === 'settings') {
+    <section class="sf-card">
+      <div class="sf-panel-title">
+        <h3><sf-icon name="navigation/workflows" /> Repository Connections</h3>
+        <button class="sf-btn sf-btn--primary" type="button" style="padding:5px 10px;" [disabled]="gitInstallations().length === 0" (click)="openConnectRepository()">
+          Connect repository
+        </button>
+      </div>
+      <p class="set-note">
+        Connects one real, discovered GitHub repository to this project, using a GitHub App installation
+        connected under this organization's Settings → Tools &amp; Integrations. Metadata here (default
+        branch, latest observed commit) is kept current by GitHub's real webhook deliveries and by the
+        manual "Sync now" action — never fabricated.
+      </p>
+      @if (gitInstallations().length === 0) {
+        <div class="sf-empty">No GitHub App installation connected for this organization yet. Connect one from Settings → Tools &amp; Integrations first.</div>
+      }
+      @if (!repositoryConnectionsLoaded()) {
+        <div class="sf-empty">Loading repository connections…</div>
+      } @else if (repositoryConnections().length === 0) {
+        <div class="sf-empty">No repository connected to this project yet.</div>
+      } @else {
+        <table class="sf-table">
+          <thead><tr><th>Repository</th><th>Default Branch</th><th>Status</th><th>Last Commit</th><th>Last Synced</th><th></th></tr></thead>
+          <tbody>
+            @for (c of repositoryConnections(); track c.id) {
+              <tr>
+                <td><strong>{{ c.full_name }}</strong></td>
+                <td>{{ c.default_branch || '—' }}</td>
+                <td>
+                  <span class="sf-badge" [class]="'sf-badge--' + repoStatusTone(c.status)">{{ repoStatusLabel(c.status) }}</span>
+                  @if (c.last_error) { <div class="set-rt-desc">{{ c.last_error }}</div> }
+                </td>
+                <td>{{ c.last_observed_commit_sha ? (c.last_observed_commit_sha.slice(0, 7)) : '—' }}</td>
+                <td>{{ c.last_successful_sync_at ? (c.last_successful_sync_at | date: 'short') : '—' }}</td>
+                <td>
+                  <button class="sf-btn" type="button" style="padding:5px 10px;" [disabled]="syncingConnectionId() === c.id" (click)="syncRepositoryConnection(c.id)">
+                    {{ syncingConnectionId() === c.id ? 'Syncing…' : 'Sync now' }}
+                  </button>
+                  <button class="sf-btn" type="button" style="padding:5px 10px;" (click)="disconnectRepositoryConnection(c.id)">Disconnect</button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
+    </section>
+
+    @if (showConnectRepository()) {
+      <div class="org-modal__backdrop" (click)="closeConnectRepository()">
+        <div class="org-modal" (click)="$event.stopPropagation()">
+          <h3>Connect a repository</h3>
+
+          <label for="repoInstallation">GitHub App installation</label>
+          <select id="repoInstallation" [value]="connectRepoInstallationId()" (change)="onConnectRepoInstallationChange($any($event.target).value)">
+            @for (i of gitInstallations(); track i.id) {
+              <option [value]="i.id">{{ i.account_login || i.external_installation_id }}</option>
+            }
+          </select>
+
+          <label for="repoSelect">Repository</label>
+          @if (loadingRepositories()) {
+            <p class="set-note" style="padding-left:0;">Loading repositories from GitHub…</p>
+          } @else {
+            <select id="repoSelect" [value]="selectedRepositoryFullName()" (change)="selectedRepositoryFullName.set($any($event.target).value)">
+              <option value="">Select a repository…</option>
+              @for (r of availableRepositories(); track r.full_name) {
+                <option [value]="r.full_name">{{ r.full_name }}</option>
+              }
+            </select>
+          }
+
+          @if (repoConnectError()) {
+            <p class="set-note" style="color: var(--sf-red-600); padding-left:0;">{{ repoConnectError() }}</p>
+          }
+
+          <div class="org-modal__actions">
+            <button type="button" class="sf-btn" (click)="closeConnectRepository()">Cancel</button>
+            <button type="button" class="sf-btn sf-btn--primary" [disabled]="connectingRepository() || !selectedRepositoryFullName()" (click)="submitConnectRepository()">
+              {{ connectingRepository() ? 'Connecting…' : 'Connect' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    }
+  }
+
+  @if (activeTab() === 'artifacts' || activeTab() === 'activity') {
     <section class="sf-card">
       <div class="sf-empty">
         {{ activeTab() === 'artifacts' ? 'Artifacts generated by this project will appear here once the backend artifact store is connected.' : '' }}
         {{ activeTab() === 'activity' ? 'Full project activity timeline — see the audit log once the backend exposes it here.' : '' }}
-        {{ activeTab() === 'settings' ? 'Project-level settings (technology, provider policy, approval rules) are configured from the global Settings page.' : '' }}
       </div>
     </section>
   }

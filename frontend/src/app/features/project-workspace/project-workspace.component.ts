@@ -1,3 +1,4 @@
+import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, OnDestroy, computed, effect, inject, signal } from '@angular/core';
 import { RouterLink, ActivatedRoute } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
@@ -9,6 +10,8 @@ import { AgentRuntimeService } from '../../core/org/agent-runtime.service';
 import { WorkflowService } from '../../core/org/workflow.service';
 import { PresenceService } from '../../core/org/presence.service';
 import { KnowledgeService } from '../../core/org/knowledge.service';
+import { GitIntegrationService } from '../../core/org/git-integration.service';
+import { RepositorySummary } from '../../core/org/git-integration.models';
 import { ApiProject } from '../../core/auth/auth.models';
 import { ApiTask } from '../../core/org/task.models';
 import { ApiWorkflow, CreateWorkflowStepPayload } from '../../core/org/workflow.models';
@@ -18,7 +21,7 @@ type TabId = 'overview' | 'tasks' | 'workflows' | 'agents' | 'knowledge' | 'arti
 @Component({
   selector: 'sf-project-workspace',
   standalone: true,
-  imports: [RouterLink, IconComponent],
+  imports: [RouterLink, IconComponent, DatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './project-workspace.component.html',
   styleUrl: './project-workspace.component.scss'
@@ -32,6 +35,7 @@ export class ProjectWorkspaceComponent implements OnDestroy {
   private readonly workflowService = inject(WorkflowService);
   private readonly presenceService = inject(PresenceService);
   private readonly knowledgeService = inject(KnowledgeService);
+  private readonly gitService = inject(GitIntegrationService);
 
   private readonly projectId = toSignal(this.route.paramMap, { initialValue: this.route.snapshot.paramMap });
 
@@ -49,6 +53,18 @@ export class ProjectWorkspaceComponent implements OnDestroy {
   readonly ingestPath = signal('');
   readonly ingestingRepository = signal(false);
   readonly ingestError = signal('');
+
+  readonly gitInstallations = this.gitService.installations;
+  readonly repositoryConnections = this.gitService.repositoryConnections;
+  readonly repositoryConnectionsLoaded = this.gitService.repositoryConnectionsLoaded;
+  readonly showConnectRepository = signal(false);
+  readonly connectRepoInstallationId = signal('');
+  readonly availableRepositories = signal<RepositorySummary[]>([]);
+  readonly loadingRepositories = signal(false);
+  readonly selectedRepositoryFullName = signal('');
+  readonly connectingRepository = signal(false);
+  readonly repoConnectError = signal('');
+  readonly syncingConnectionId = signal<string | null>(null);
 
   readonly showCreateTask = signal(false);
   readonly newTaskTitle = signal('');
@@ -103,6 +119,8 @@ export class ProjectWorkspaceComponent implements OnDestroy {
           this.presenceService.watch(project.id);
           this.knowledgeService.fetchGraph(project.id).subscribe();
           this.knowledgeService.fetchCodeGraph(project.id).subscribe();
+          this.gitService.listInstallations(project.organization_id).subscribe();
+          this.gitService.listRepositoryConnections(project.id).subscribe();
         },
         error: () => {
           this.notFound.set(true);
@@ -276,6 +294,101 @@ export class ProjectWorkspaceComponent implements OnDestroy {
         this.ingestingRepository.set(false);
       }
     });
+  }
+
+  repoStatusTone(status: string): 'green' | 'amber' | 'red' | 'gray' {
+    if (status === 'connected') return 'green';
+    if (status === 'not_connected') return 'amber';
+    if (status === 'error') return 'red';
+    return 'gray';
+  }
+
+  repoStatusLabel(status: string): string {
+    switch (status) {
+      case 'connected': return 'Connected';
+      case 'not_connected': return 'Not connected';
+      case 'error': return 'Error';
+      default: return status;
+    }
+  }
+
+  openConnectRepository() {
+    this.connectRepoInstallationId.set(this.gitInstallations()[0]?.id ?? '');
+    this.availableRepositories.set([]);
+    this.selectedRepositoryFullName.set('');
+    this.repoConnectError.set('');
+    this.showConnectRepository.set(true);
+    if (this.connectRepoInstallationId()) this.loadRepositoriesForInstallation();
+  }
+
+  closeConnectRepository() {
+    this.showConnectRepository.set(false);
+  }
+
+  onConnectRepoInstallationChange(installationId: string) {
+    this.connectRepoInstallationId.set(installationId);
+    this.selectedRepositoryFullName.set('');
+    this.loadRepositoriesForInstallation();
+  }
+
+  private loadRepositoriesForInstallation() {
+    const project = this.project();
+    const installationId = this.connectRepoInstallationId();
+    if (!project || !installationId) return;
+    this.loadingRepositories.set(true);
+    this.repoConnectError.set('');
+    this.gitService.listInstallationRepositories(project.organization_id, installationId).subscribe({
+      next: (repos) => {
+        this.availableRepositories.set(repos);
+        this.loadingRepositories.set(false);
+      },
+      error: (err) => {
+        this.availableRepositories.set([]);
+        this.loadingRepositories.set(false);
+        this.repoConnectError.set(err?.error?.detail ?? 'Could not list repositories for this installation.');
+      }
+    });
+  }
+
+  submitConnectRepository() {
+    const project = this.project();
+    const installationId = this.connectRepoInstallationId();
+    const repo = this.availableRepositories().find((r) => r.full_name === this.selectedRepositoryFullName());
+    if (!project || !installationId || !repo) return;
+    this.connectingRepository.set(true);
+    this.repoConnectError.set('');
+    this.gitService
+      .createRepositoryConnection(project.id, {
+        git_installation_id: installationId,
+        owner: repo.owner,
+        name: repo.name
+      })
+      .subscribe({
+        next: () => {
+          this.connectingRepository.set(false);
+          this.showConnectRepository.set(false);
+        },
+        error: (err) => {
+          this.connectingRepository.set(false);
+          this.repoConnectError.set(err?.error?.detail ?? 'Could not connect this repository.');
+        }
+      });
+  }
+
+  syncRepositoryConnection(connectionId: string) {
+    const project = this.project();
+    if (!project) return;
+    this.syncingConnectionId.set(connectionId);
+    this.gitService.syncRepositoryConnection(project.id, connectionId).subscribe({
+      complete: () => this.syncingConnectionId.set(null),
+      error: () => this.syncingConnectionId.set(null)
+    });
+  }
+
+  disconnectRepositoryConnection(connectionId: string) {
+    const project = this.project();
+    if (!project) return;
+    this.gitService.deleteRepositoryConnection(project.id, connectionId).subscribe();
   }
 
   ngOnDestroy(): void {

@@ -95,15 +95,16 @@ def test_viewer_cannot_create_workflow(client):
 
 
 def test_workflow_step_on_this_machine_fails_honestly_without_mocking(client):
-    """No claude/codex/gemini CLI is installed here and no API key is
-    configured, so a workflow step against a real (non-mocked)
-    local-runtime connection must fail with the real reason, and the
-    workflow must stop there — never a fabricated success."""
+    """No `codex` CLI is installed here and no API key is configured, so a
+    workflow step against a real (non-mocked) local-runtime connection
+    must fail with the real reason, and the workflow must stop there —
+    never a fabricated success. (Not `claude_code`: this dev machine has
+    the real Claude Code CLI installed for live testing.)"""
     alice = _register_and_login(client, "alice@example.com", "Alice")
     org, project = _project(client, alice)
     connection = client.post(
         f"/api/v1/organizations/{org['id']}/coding-agent-connections",
-        json={"runtime_slug": "claude_code", "connection_mode": "local_runtime"},
+        json={"runtime_slug": "codex", "connection_mode": "local_runtime"},
         headers=alice,
     ).json()
     workflow = client.post(

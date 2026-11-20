@@ -564,17 +564,76 @@ td.link {
     font-weight: 600;
   }
 
-  input {
+  input,
+  select {
     width: 100%;
     border: 1px solid var(--sf-border-strong);
     border-radius: var(--sf-radius-sm);
     padding: 10px 12px;
     font-size: 13.5px;
+    font-family: inherit;
+    color: var(--sf-text-primary);
+    background: var(--sf-surface);
     outline: none;
+    transition: border-color 0.12s ease, box-shadow 0.12s ease;
+
+    &:hover {
+      border-color: var(--sf-text-secondary);
+    }
 
     &:focus {
       border-color: var(--sf-violet-600);
+      box-shadow: 0 0 0 3px rgba(116, 103, 255, 0.15);
     }
+
+    &:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+  }
+
+  select:not([size]),
+  select[size="1"] {
+    appearance: none;
+    -webkit-appearance: none;
+    padding-right: 36px;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%235b6474' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    cursor: pointer;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  select[size]:not([size="1"]) {
+    cursor: pointer;
+    padding: 6px;
+
+    option {
+      padding: 7px 10px;
+      border-radius: var(--sf-radius-sm);
+
+      &:checked {
+        background: var(--sf-violet-600);
+        color: #fff;
+      }
+    }
+  }
+
+  &__filter {
+    margin-bottom: 8px;
+  }
+
+  &__count {
+    float: right;
+    font-weight: 500;
+    color: var(--sf-text-secondary);
+    text-transform: none;
+  }
+
+  &--wide {
+    width: 540px;
   }
 
   &__actions {

@@ -93,14 +93,16 @@ def test_starting_task_with_no_connection_fails_honestly(client):
 
 
 def test_starting_task_on_this_machine_fails_honestly_without_mocking(client):
-    """No claude/codex/gemini CLI is installed here and no API key is
-    configured, so starting a task against a real (non-mocked) local-runtime
-    connection must fail with the real reason — never a simulated success."""
+    """No `codex` CLI is installed here and no API key is configured, so
+    starting a task against a real (non-mocked) local-runtime connection
+    must fail with the real reason — never a simulated success. (Not
+    `claude_code`: this dev machine has the real Claude Code CLI installed
+    for live testing.)"""
     alice = _register_and_login(client, "alice@example.com", "Alice")
     org, project = _project(client, alice)
     connection = client.post(
         f"/api/v1/organizations/{org['id']}/coding-agent-connections",
-        json={"runtime_slug": "claude_code", "connection_mode": "local_runtime"},
+        json={"runtime_slug": "codex", "connection_mode": "local_runtime"},
         headers=alice,
     ).json()
     task = client.post(

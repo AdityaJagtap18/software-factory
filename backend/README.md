@@ -433,16 +433,76 @@ provider API key makes the same code paths report a real "Connected."**
   first step `failed` with the real error, and its later steps
   honestly `not_started` — never fabricated as having run.
 
+### Phase 13 — Git connectivity & synchronization
+- **A provider-independent `GitProviderAdapter` interface**, mirroring
+  the `CodingAgentRuntimeAdapter` pattern from Phase 2 exactly, so
+  adding GitLab/Bitbucket later never requires touching routes or
+  orchestration code. `GitHubAppAdapter` is the only implementation so
+  far, authenticating as a real GitHub App: a real RS256 JWT signed with
+  the platform's App private key, exchanged for a real short-lived
+  installation access token via GitHub's `/app/installations/{id}/access_tokens`
+  API — never a long-lived personal access token.
+- **Honest failure, identical to Phase 2's pattern**: if
+  `SF_GITHUB_APP_ID`/`SF_GITHUB_APP_PRIVATE_KEY` aren't configured on
+  this backend, every installation, health check, and repository
+  discovery call honestly reports "not connected" / a real
+  `GitProviderError` with the actual reason — never a simulated
+  success.
+- **New models**: `GitInstallation` (one real GitHub App installation
+  per organization), `RepositoryConnection` (one real repository mapped
+  to a project, created only from installations the project's own
+  organization owns), and `WebhookEvent` (every inbound webhook
+  delivery, signature-verified and idempotency-checked before being
+  trusted).
+- **Real webhook receiver** at `POST /api/v1/webhooks/github`: verifies
+  `X-Hub-Signature-256` with `hmac.compare_digest` against
+  `SF_GITHUB_WEBHOOK_SECRET` (an unverifiable signature is rejected
+  with 401 and recorded, never processed), and is idempotent on
+  `(provider, provider_delivery_id)` — a redelivered event is recognized
+  and returned without reprocessing. `push` events sync the matching
+  repository connection's real latest commit SHA; other event types are
+  still recorded, honestly tagged "not yet implemented" rather than
+  silently dropped or faked as handled — their deeper handling (PR
+  lifecycle, CI status, branch protection) is later roadmap scope.
+- **Manual "Sync now"** (`POST /projects/{id}/repository-connections/{id}/sync`)
+  reruns the same real sync logic a webhook triggers, the recovery path
+  the spec requires for when a webhook delivery is missed.
+- RBAC: creating/revoking an org's GitHub App installation requires org
+  admin; connecting a repository to a project requires project admin;
+  an installation can only back a repository connection for a project
+  in the installation's own organization (cross-org use is a 404, not a
+  silent success).
+- Frontend: a real "Git Installations" panel under Settings → Tools &
+  Integrations (org-scoped, mirrors the Coding Agent Connections panel),
+  and a real "Repository Connections" panel under each project's
+  Settings tab — connecting a repository lists the installation's
+  actually-discovered GitHub repositories, never a typed-in guess.
+- 14 new backend tests (86/86 total): a genuine RS256 JWT round-trip
+  against a throwaway keypair, real HMAC signature verification (valid/
+  tampered/wrong-secret/missing), the honest not-configured path
+  through the real API (no GitHub App configured on this dev machine),
+  RBAC and cross-org isolation, repository-connection creation and
+  manual-sync recovery (network edge stubbed, decision logic real),
+  and webhook idempotency/signature-rejection/push-sync.
+- Verified end-to-end in-browser against the real backend: connecting
+  an installation with no GitHub App configured showed the real
+  "GitHub App not configured on this backend" error inline, both in the
+  org-level installation list and when attempting to list a project's
+  connectable repositories — never a fabricated repository list.
+
 ## What's intentionally not here yet
 
 Temporal/LangGraph-based durable workflow orchestration (this pass's
 Factory Supervisor sequences steps via a background thread against the
 real database, not a distributed workflow engine), cloning a remote git
 repository server-side for ingestion (by design — see Phase 9; ingestion
-only reads a local path the backend host can already see), and
-coordinating presence across multiple backend replicas (Phase 6's
-presence registry is single-process/in-memory) are later phases of the
-execution spec and are not implemented in this pass.
+only reads a local path the backend host can already see), task-specific
+git worktrees/execution and full PR-lifecycle handling (branch
+protection, CI status, review state — Phase 13 records non-`push`
+webhook events but doesn't yet act on them), and coordinating presence
+across multiple backend replicas (Phase 6's presence registry is
+single-process/in-memory) are later phases of the execution spec and are
+not implemented in this pass.
 
 Several frontend-only pages the original UI scaffold shipped with are
 still backed by static mock data rather than this backend — Agents,

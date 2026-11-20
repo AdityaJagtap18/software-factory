@@ -4,6 +4,7 @@ from app.services.agent_runtime.adapters import (
     CustomAdapter,
     DockerSandboxAdapter,
     GeminiCliAdapter,
+    QwenAdapter,
 )
 from app.services.agent_runtime.base import CodingAgentRuntimeAdapter
 
@@ -13,6 +14,7 @@ _ADAPTERS: dict[str, CodingAgentRuntimeAdapter] = {
         ClaudeCodeAdapter(),
         CodexAdapter(),
         GeminiCliAdapter(),
+        QwenAdapter(),
         DockerSandboxAdapter(),
         CustomAdapter(),
     )

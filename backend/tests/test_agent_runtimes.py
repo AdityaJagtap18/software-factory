@@ -1,3 +1,5 @@
+import pytest
+
 from app.services.agent_runtime.adapters import ClaudeCodeAdapter
 from app.services.agent_runtime.base import HealthCheckResult
 
@@ -16,7 +18,7 @@ def test_runtime_catalog_lists_known_adapters(client):
     r = client.get("/api/v1/coding-agent-runtimes")
     assert r.status_code == 200
     slugs = {entry["slug"] for entry in r.json()}
-    assert slugs == {"claude_code", "codex", "gemini_cli", "docker_sandbox", "custom"}
+    assert slugs == {"claude_code", "codex", "gemini_cli", "qwen", "docker_sandbox", "custom"}
 
 
 def test_connections_default_to_not_configured(client):
@@ -26,7 +28,7 @@ def test_connections_default_to_not_configured(client):
     r = client.get(f"/api/v1/organizations/{org['id']}/coding-agent-connections", headers=alice)
     assert r.status_code == 200
     body = r.json()
-    assert len(body) == 5
+    assert len(body) == 6
     for entry in body:
         assert entry["status"] == "not_configured"
         assert entry["is_configured"] is False
@@ -52,9 +54,38 @@ def test_non_admin_cannot_create_connection(client):
 
 
 def test_local_runtime_connection_honestly_reports_not_connected_when_cli_missing(client):
-    """This machine has no `claude` CLI on PATH, so a real (non-mocked) health
+    """This machine has no `codex` CLI on PATH, so a real (non-mocked) health
     check for local_runtime mode must honestly report not_connected — never a
-    simulated success."""
+    simulated success. (Not `claude_code`: this dev machine has the real
+    Claude Code CLI installed, so that one genuinely connects — see
+    `test_local_runtime_connection_honestly_reports_connected_when_cli_present`.)"""
+    alice = _register_and_login(client, "alice@example.com", "Alice")
+    org = client.post("/api/v1/organizations", json={"name": "Acme"}, headers=alice).json()
+
+    r = client.post(
+        f"/api/v1/organizations/{org['id']}/coding-agent-connections",
+        json={"runtime_slug": "codex", "connection_mode": "local_runtime"},
+        headers=alice,
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["status"] == "not_connected"
+    assert body["detected_version"] == ""
+    assert "not found" in body["last_error"].lower() or "codex" in body["last_error"].lower()
+
+
+def test_local_runtime_connection_honestly_reports_connected_when_cli_present(client):
+    """Where the real Claude Code CLI is installed (`npm install -g
+    @anthropic-ai/claude-code`), a real (non-mocked) health check for
+    local_runtime mode must honestly report connected with a real detected
+    version — never fabricated, but also never falsely reported as missing
+    when it's genuinely there. Skipped on a machine without the CLI, since
+    that's this test's entire precondition, not something to fake."""
+    import shutil
+
+    if shutil.which("claude") is None:
+        pytest.skip("claude CLI not installed on this machine")
+
     alice = _register_and_login(client, "alice@example.com", "Alice")
     org = client.post("/api/v1/organizations", json={"name": "Acme"}, headers=alice).json()
 
@@ -65,9 +96,8 @@ def test_local_runtime_connection_honestly_reports_not_connected_when_cli_missin
     )
     assert r.status_code == 201, r.text
     body = r.json()
-    assert body["status"] == "not_connected"
-    assert body["detected_version"] == ""
-    assert "not found" in body["last_error"].lower() or "claude" in body["last_error"].lower()
+    assert body["status"] == "connected"
+    assert body["detected_version"] != ""
 
 
 def test_duplicate_connection_for_same_runtime_conflicts(client):

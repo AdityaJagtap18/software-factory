@@ -71,6 +71,78 @@
   </section>
 
   <section class="sf-card" style="margin-top:16px;">
+    <div class="sf-panel-title">
+      <h3><sf-icon name="navigation/workflows" /> Git Installations</h3>
+      <button class="sf-btn sf-btn--primary" type="button" style="padding:5px 10px;" (click)="openConnectInstallation()">Connect GitHub App</button>
+    </div>
+    <p class="set-note">
+      A GitHub App installation, recorded here after it's actually installed on GitHub. Status reflects a
+      real backend call to GitHub's API using this platform's App credentials — if this backend has no
+      GitHub App configured (<code>SF_GITHUB_APP_ID</code> / <code>SF_GITHUB_APP_PRIVATE_KEY</code>), every
+      installation honestly reports "Not connected" rather than a simulated success.
+    </p>
+    @if (!gitInstallationsLoaded()) {
+      <div class="sf-empty">Loading installations…</div>
+    } @else if (gitInstallations().length === 0) {
+      <div class="sf-empty">No GitHub App installations recorded yet.</div>
+    } @else {
+      <table class="sf-table">
+        <thead><tr><th>Account</th><th>Installation ID</th><th>Status</th><th>Last Health Check</th><th></th></tr></thead>
+        <tbody>
+          @for (i of gitInstallations(); track i.id) {
+            <tr>
+              <td><strong>{{ i.account_login || '—' }}</strong></td>
+              <td>{{ i.external_installation_id }}</td>
+              <td>
+                <span class="sf-badge" [class]="'sf-badge--' + gitStatusTone(i.status)">{{ gitStatusLabel(i.status) }}</span>
+                @if (i.last_error) { <div class="set-rt-desc">{{ i.last_error }}</div> }
+              </td>
+              <td>{{ i.last_health_check_at ? (i.last_health_check_at | date: 'short') : '—' }}</td>
+              <td>
+                <button class="sf-btn" type="button" style="padding:5px 10px;" [disabled]="recheckingInstallationId() === i.id" (click)="recheckInstallation(i)">
+                  {{ recheckingInstallationId() === i.id ? 'Checking…' : 'Recheck' }}
+                </button>
+                <button class="sf-btn" type="button" style="padding:5px 10px;" (click)="revokeInstallation(i)">Revoke</button>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    }
+  </section>
+
+  @if (showConnectInstallation()) {
+    <div class="org-modal__backdrop" (click)="closeConnectInstallation()">
+      <div class="org-modal" (click)="$event.stopPropagation()">
+        <h3>Connect a GitHub App installation</h3>
+        <p class="set-note" style="padding-left:0;">
+          Install the GitHub App on your GitHub account or organization first, then paste the installation id
+          GitHub hands back (visible in the installation URL or GitHub's own App settings page).
+        </p>
+
+        <label for="instId">Installation ID</label>
+        <input id="instId" type="text" placeholder="e.g. 12345678"
+               [value]="newInstallationId()" (input)="newInstallationId.set($any($event.target).value)" />
+
+        <label for="instAccount">Account login (optional)</label>
+        <input id="instAccount" type="text" placeholder="e.g. acme-corp"
+               [value]="newInstallationAccount()" (input)="newInstallationAccount.set($any($event.target).value)" />
+
+        @if (installationError()) {
+          <p class="set-note" style="color: var(--sf-red-600); padding-left:0;">{{ installationError() }}</p>
+        }
+
+        <div class="org-modal__actions">
+          <button type="button" class="sf-btn" (click)="closeConnectInstallation()">Cancel</button>
+          <button type="button" class="sf-btn sf-btn--primary" [disabled]="connectingInstallation() || !newInstallationId().trim()" (click)="submitConnectInstallation()">
+            {{ connectingInstallation() ? 'Connecting…' : 'Connect' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <section class="sf-card" style="margin-top:16px;">
     <div class="sf-panel-title"><h3>Runtime Capabilities</h3></div>
     <p class="set-note">
       Capability validation states are honest metadata, not a claim of guaranteed behavior: only

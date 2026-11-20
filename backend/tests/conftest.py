@@ -1,9 +1,18 @@
 import os
 
+# Deliberately a DIFFERENT database than the dev default
+# (postgresql+psycopg2://sf:sf@localhost:5433/software_factory) -- this
+# suite truncates every table after every test, so running it against the
+# same database a developer is using in the app would silently wipe their
+# real accounts/projects/connections. Set SF_TEST_DATABASE_URL to override.
 os.environ.setdefault(
-    "SF_DATABASE_URL", "postgresql+psycopg2://sf:sf@localhost:5433/software_factory"
+    "SF_DATABASE_URL",
+    os.environ.get(
+        "SF_TEST_DATABASE_URL", "postgresql+psycopg2://sf:sf@localhost:5433/software_factory_test"
+    ),
 )
 
+import psycopg2
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import sessionmaker
@@ -12,8 +21,29 @@ from app.core.database import Base, engine, get_db
 from app.main import app
 
 
+def _ensure_database_exists() -> None:
+    url = os.environ["SF_DATABASE_URL"]
+    # postgresql+psycopg2://user:pass@host:port/dbname
+    without_scheme = url.split("://", 1)[1]
+    creds_host, dbname = without_scheme.rsplit("/", 1)
+    creds, host = creds_host.split("@", 1)
+    user, password = creds.split(":", 1)
+    hostname, port = host.split(":", 1)
+
+    conn = psycopg2.connect(dbname="postgres", user=user, password=password, host=hostname, port=port)
+    conn.autocommit = True
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (dbname,))
+            if cur.fetchone() is None:
+                cur.execute(f'CREATE DATABASE "{dbname}"')
+    finally:
+        conn.close()
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _setup_database():
+    _ensure_database_exists()
     Base.metadata.create_all(bind=engine)
     yield
 

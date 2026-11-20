@@ -34,7 +34,7 @@ def _detect_cli_version(binary: str, version_flag: str = "--version") -> HealthC
         )
     try:
         proc = subprocess.run(
-            [binary, version_flag],
+            [path, version_flag],
             capture_output=True,
             text=True,
             timeout=_PROBE_TIMEOUT_SECONDS,
@@ -67,7 +67,7 @@ def _run_cli_prompt(binary: str, prompt_flag: str, prompt: str) -> ExecutionResu
         )
     try:
         proc = subprocess.run(
-            [binary, prompt_flag, prompt],
+            [path, prompt_flag, prompt],
             capture_output=True,
             text=True,
             timeout=_EXECUTION_TIMEOUT_SECONDS,
@@ -99,7 +99,7 @@ def _run_cli_prompt_streaming(
         )
     try:
         proc = subprocess.Popen(
-            [binary, prompt_flag, prompt],
+            [path, prompt_flag, prompt],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -385,6 +385,97 @@ def _probe_openai_api(api_key: str) -> HealthCheckResult:
     )
 
 
+_DASHSCOPE_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+_QWEN_MODEL = "qwen-plus"
+
+
+def _run_qwen_prompt(api_key: str, prompt: str) -> ExecutionResult:
+    try:
+        resp = httpx.post(
+            f"{_DASHSCOPE_BASE_URL}/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "content-type": "application/json"},
+            json={"model": _QWEN_MODEL, "messages": [{"role": "user", "content": prompt}]},
+            timeout=_EXECUTION_TIMEOUT_SECONDS,
+        )
+    except httpx.HTTPError as exc:
+        return ExecutionResult(succeeded=False, error=f"Could not reach DashScope (Qwen) API: {exc}")
+    if resp.status_code != 200:
+        return ExecutionResult(
+            succeeded=False, error=f"DashScope (Qwen) API returned HTTP {resp.status_code}: {resp.text[:500]}"
+        )
+    data = resp.json()
+    try:
+        text = data["choices"][0]["message"]["content"]
+    except (KeyError, IndexError):
+        text = ""
+    return ExecutionResult(succeeded=True, output=text[:_MAX_OUTPUT_CHARS])
+
+
+def _run_qwen_prompt_streaming(api_key: str, prompt: str, on_chunk, should_cancel) -> ExecutionResult:
+    """Real DashScope SSE streaming via its OpenAI-compatible endpoint --
+    each delta is a genuine token chunk from the provider."""
+    collected: list[str] = []
+    try:
+        with httpx.stream(
+            "POST",
+            f"{_DASHSCOPE_BASE_URL}/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "content-type": "application/json"},
+            json={
+                "model": _QWEN_MODEL,
+                "messages": [{"role": "user", "content": prompt}],
+                "stream": True,
+            },
+            timeout=_EXECUTION_TIMEOUT_SECONDS,
+        ) as resp:
+            if resp.status_code != 200:
+                resp.read()
+                return ExecutionResult(
+                    succeeded=False,
+                    error=f"DashScope (Qwen) API returned HTTP {resp.status_code}: {resp.text[:500]}",
+                )
+            import json as _json
+
+            for line in resp.iter_lines():
+                if should_cancel():
+                    return ExecutionResult(
+                        succeeded=False, output="".join(collected), error="Cancelled by user."
+                    )
+                if not line.startswith("data: "):
+                    continue
+                payload = line[len("data: ") :]
+                if payload == "[DONE]":
+                    break
+                try:
+                    event = _json.loads(payload)
+                    text = event["choices"][0]["delta"].get("content") or ""
+                except (ValueError, KeyError, IndexError):
+                    continue
+                if text:
+                    collected.append(text)
+                    on_chunk(text)
+    except httpx.HTTPError as exc:
+        return ExecutionResult(
+            succeeded=False, output="".join(collected), error=f"Could not reach DashScope (Qwen) API: {exc}"
+        )
+    return ExecutionResult(succeeded=True, output="".join(collected)[:_MAX_OUTPUT_CHARS])
+
+
+def _probe_qwen_api(api_key: str) -> HealthCheckResult:
+    try:
+        resp = httpx.get(
+            f"{_DASHSCOPE_BASE_URL}/models",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=_PROBE_TIMEOUT_SECONDS,
+        )
+    except httpx.HTTPError as exc:
+        return HealthCheckResult(connected=False, detail=f"Could not reach DashScope (Qwen) API: {exc}")
+    if resp.status_code == 200:
+        return HealthCheckResult(connected=True, detail="DashScope (Qwen) API key verified.")
+    return HealthCheckResult(
+        connected=False, detail=f"DashScope (Qwen) API rejected the key (HTTP {resp.status_code})."
+    )
+
+
 def _probe_gemini_api(api_key: str) -> HealthCheckResult:
     try:
         resp = httpx.get(
@@ -494,6 +585,37 @@ class GeminiCliAdapter(CodingAgentRuntimeAdapter):
         if credential_value:
             return _run_gemini_prompt_streaming(credential_value, prompt, on_chunk, should_cancel)
         return _run_cli_prompt_streaming("gemini", "-p", prompt, on_chunk, should_cancel)
+
+
+class QwenAdapter(CodingAgentRuntimeAdapter):
+    slug = "qwen"
+    display_name = "Qwen"
+    description = "Alibaba Qwen coding-agent runtime via Qwen Code CLI / DashScope API"
+    icon = "agents/coding-agent"
+    supported_connection_modes = ("local_runtime", "factory_managed")
+    auth_method = "Official CLI authentication, or a DashScope API key"
+
+    def capabilities(self) -> list[Capability]:
+        return [
+            Capability("Start session", CapabilityState.DECLARED),
+            Capability("Stream events", CapabilityState.TESTED),
+            Capability("CLI detection", CapabilityState.VERIFIED),
+        ]
+
+    def health_check(self, credential_value: str | None) -> HealthCheckResult:
+        if credential_value:
+            return _probe_qwen_api(credential_value)
+        return _detect_cli_version("qwen")
+
+    def start_execution(self, prompt: str, credential_value: str | None) -> ExecutionResult:
+        if credential_value:
+            return _run_qwen_prompt(credential_value, prompt)
+        return _run_cli_prompt("qwen", "-p", prompt)
+
+    def start_execution_streaming(self, prompt, credential_value, on_chunk, should_cancel) -> ExecutionResult:
+        if credential_value:
+            return _run_qwen_prompt_streaming(credential_value, prompt, on_chunk, should_cancel)
+        return _run_cli_prompt_streaming("qwen", "-p", prompt, on_chunk, should_cancel)
 
 
 _SANDBOX_IMAGE = "python:3.11-slim"

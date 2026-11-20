@@ -1,4 +1,4 @@
-# Software Factory — Backend (Phases 1–17: Foundation Through Real CI Status)
+# Software Factory — Backend (Phases 1–18: Foundation Through Branch Protection Visibility)
 
 FastAPI + PostgreSQL (+ Neo4j) backend implementing real authentication,
 organizations, membership, RBAC, projects, workspaces, coding-agent runtime
@@ -615,18 +615,42 @@ provider API key makes the same code paths report a real "Connected."**
   and a check-suite event matching no task recorded honestly rather than
   silently accepted or errored.
 
+### Phase 18 — Branch protection rules, surfaced (not enforced)
+- Right after a task's pull request is opened, this backend asks GitHub
+  for the base branch's real branch protection rules via a new
+  `get_branch_protection` method on the Git Provider Interface
+  (`GET /repos/{owner}/{name}/branches/{branch}/protection`) and records
+  them on the task: whether the branch is protected at all, the real
+  required status check contexts, and the real required approving
+  review count. An unprotected branch (`404` from GitHub) is a real,
+  successful result, not an error.
+- Informational only — this backend never enforces or bypasses these
+  rules itself; GitHub's own merge button is what actually requires
+  them. A lookup failure never overturns the PR that was already opened
+  successfully; it's appended to the task's `error_message` honestly.
+- Surfaced as a "protected" pill (with required checks/reviews as a
+  tooltip) next to the PR link in the project workspace's Tasks tab, and
+  a "Branch protection" row in the task workspace's Git sidebar card.
+- 7 new backend tests (113/113 total): an unprotected branch reported
+  honestly, a protected branch's real required checks/review count
+  parsed correctly, the adapter failing honestly without a configured
+  GitHub App, an unexpected GitHub error raised honestly, a task's PR
+  recording the real protection rules end to end, and a protection
+  lookup failure reported without overturning the task's own success.
+
 ## What's intentionally not here yet
 
 Temporal/LangGraph-based durable workflow orchestration (this pass's
 Factory Supervisor sequences steps via a background thread against the
 real database, not a distributed workflow engine), cloning a remote git
 repository server-side for ingestion (by design — see Phase 9; ingestion
-only reads a local path the backend host can already see), the rest of
-PR-lifecycle handling (branch protection rules are still received and
-recorded without deeper action — Phases 16-17 act on `pull_request` and
-`check_suite`), and coordinating presence across multiple backend
-replicas (Phase 6's presence registry is single-process/in-memory) are
-later phases of the execution spec and are not implemented in this pass.
+only reads a local path the backend host can already see), actually
+enforcing branch protection rules (Phase 18 reads and surfaces them;
+GitHub's own merge button is what enforces them, by design — this
+backend doesn't merge PRs), and coordinating presence across multiple
+backend replicas (Phase 6's presence registry is single-process/
+in-memory) are later phases of the execution spec and are not
+implemented in this pass.
 
 Several frontend-only pages the original UI scaffold shipped with are
 still backed by static mock data rather than this backend — Agents,

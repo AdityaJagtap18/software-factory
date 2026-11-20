@@ -21,6 +21,9 @@ export interface ApiTask {
   git_pr_number: number;
   git_pr_state: string;
   git_ci_status: string;
+  git_base_branch_protected: boolean;
+  git_required_status_checks: string[];
+  git_required_approving_reviews: number;
 }
 
 export interface MyApiTask extends ApiTask {

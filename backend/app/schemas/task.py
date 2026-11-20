@@ -42,6 +42,9 @@ class TaskResponse(BaseModel):
     git_pr_number: int = 0
     git_pr_state: str = ""
     git_ci_status: str = ""
+    git_base_branch_protected: bool = False
+    git_required_status_checks: list[str] = []
+    git_required_approving_reviews: int = 0
 
     model_config = {"from_attributes": True}
 

@@ -19,6 +19,7 @@ import jwt
 
 from app.core.config import get_settings
 from app.services.git_provider.base import (
+    BranchProtectionSummary,
     CommitSummary,
     GitHealthCheckResult,
     GitProviderAdapter,
@@ -240,3 +241,38 @@ class GitHubAppAdapter(GitProviderAdapter):
             )
         data = resp.json()
         return PullRequestSummary(number=data.get("number", 0), url=data.get("html_url", ""))
+
+    def get_branch_protection(
+        self, external_installation_id: str, owner: str, name: str, branch: str
+    ) -> BranchProtectionSummary:
+        if not _app_configured():
+            raise GitProviderError(_not_configured_detail())
+        settings = get_settings()
+        token = _mint_installation_token(external_installation_id)
+        try:
+            resp = httpx.get(
+                f"{settings.github_api_base_url}/repos/{owner}/{name}/branches/{branch}/protection",
+                headers={"Authorization": f"Bearer {token}", **_API_VERSION_HEADERS},
+                timeout=_PROBE_TIMEOUT_SECONDS,
+            )
+        except httpx.HTTPError as exc:
+            raise GitProviderError(f"Could not reach GitHub: {exc}") from exc
+        if resp.status_code == 404:
+            # GitHub's real, successful answer for an unprotected branch --
+            # not an error.
+            return BranchProtectionSummary(protected=False)
+        if resp.status_code != 200:
+            raise GitProviderError(
+                f"GitHub rejected the branch protection lookup for '{owner}/{name}@{branch}' "
+                f"(HTTP {resp.status_code}): {resp.text[:300]}"
+            )
+        data = resp.json()
+        contexts = ((data.get("required_status_checks") or {}).get("contexts")) or []
+        review_count = (
+            (data.get("required_pull_request_reviews") or {}).get("required_approving_review_count")
+        ) or 0
+        return BranchProtectionSummary(
+            protected=True,
+            required_status_checks=list(contexts),
+            required_approving_review_count=review_count,
+        )

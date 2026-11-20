@@ -84,6 +84,13 @@
             }
             @if (selectedTask()!.git_pr_url) {
               <div class="pw-info__row"><sf-icon name="workspace/code-diff" /><span class="label">Pull request</span><a [href]="selectedTask()!.git_pr_url" target="_blank" rel="noopener" class="value">#{{ selectedTask()!.git_pr_number }}</a> <span class="sf-pill">{{ selectedTask()!.git_pr_state }}</span></div>
+              @if (selectedTask()!.git_base_branch_protected) {
+                <div class="pw-info__row"><sf-icon name="workspace/code-diff" /><span class="label">Branch protection</span>
+                  <span class="value">
+                    {{ selectedTask()!.git_required_approving_reviews }} review(s)@if (selectedTask()!.git_required_status_checks.length > 0) {, checks: {{ selectedTask()!.git_required_status_checks.join(', ') }}} required to merge
+                  </span>
+                </div>
+              }
             }
           </div>
           @if (selectedTask()!.git_changed_files.length > 0) {

@@ -25,6 +25,11 @@ Phase 16: the PR's state recorded here (`git_pr_state`) is only the
 initial "open" -- it is kept in sync with the PR's real lifecycle
 (merged/closed) by GitHub's own `pull_request` webhook, handled in
 `app/services/git_webhook.py`, never inferred or polled from here.
+
+Phase 18: right after opening the PR, this backend asks GitHub for the
+base branch's real branch protection rules and records them for display
+-- informational only. This backend never enforces or bypasses them;
+GitHub's own merge button is what actually requires them.
 """
 
 import threading
@@ -183,6 +188,21 @@ def execute_task(
                 task.git_pr_url = pr.url
                 task.git_pr_number = pr.number
                 task.git_pr_state = pr.state
+                try:
+                    protection = provider.get_branch_protection(
+                        connection_record.installation.external_installation_id,
+                        connection_record.owner,
+                        connection_record.name,
+                        worktree.base_branch,
+                    )
+                    task.git_base_branch_protected = protection.protected
+                    task.git_required_status_checks = protection.required_status_checks
+                    task.git_required_approving_reviews = protection.required_approving_review_count
+                except GitProviderError as exc:
+                    # Informational only -- never overturn the PR that was
+                    # already opened successfully over this lookup failing.
+                    note = f"Pull request opened, but could not read the base branch's protection rules: {exc.detail}"
+                    task.error_message = f"{task.error_message} ({note})" if task.error_message else note
             except (git_worktree.WorktreeError, GitProviderError) as exc:
                 note = f"Task output recorded, but could not open a pull request: {exc.detail}"
                 task.error_message = f"{task.error_message} ({note})" if task.error_message else note

@@ -90,4 +90,13 @@ class Task(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # by this backend itself, and empty until GitHub reports one.
     git_ci_status: Mapped[str] = mapped_column(String(20), default="", nullable=False)
 
+    # Phase 18: the base branch's real branch protection rules, as GitHub
+    # itself reports them at the moment the pull request is opened --
+    # informational only (this backend never enforces or bypasses them;
+    # GitHub's own merge button does that). Stays empty/false when there's
+    # no PR, or the lookup itself failed (see `task_execution.py`).
+    git_base_branch_protected: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    git_required_status_checks: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    git_required_approving_reviews: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
     project: Mapped["Project"] = relationship()

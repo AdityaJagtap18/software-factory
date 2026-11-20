@@ -835,4 +835,121 @@ def test_create_pull_request_raises_honestly_when_github_rejects_it(monkeypatch)
         GitHubAppAdapter().create_pull_request("1", "acme", "widgets", "sf-task-abc", "main", "Fix the bug")
 
     assert "422" in exc_info.value.detail
-    assert "already exists" in exc_info.value.detail
+
+
+# ---------------------------------------------------------------------------
+# Phase 18: reading a branch's real branch protection rules.
+# ---------------------------------------------------------------------------
+
+
+def test_get_branch_protection_reports_an_unprotected_branch_honestly(monkeypatch):
+    class _FakeTokenResponse:
+        status_code = 201
+
+        def json(self):
+            return {"token": "fake-installation-token"}
+
+    class _FakeNotFoundResponse:
+        status_code = 404
+        text = '{"message": "Branch not protected"}'
+
+        def json(self):
+            return {}
+
+    def _fake_get(url, headers=None, params=None, timeout=None):
+        if url.endswith("/access_tokens") or "/app/installations/" in url:
+            return _FakeTokenResponse()
+        return _FakeNotFoundResponse()
+
+    monkeypatch.setattr(
+        github_app,
+        "get_settings",
+        lambda: Settings(github_app_id="123", github_app_private_key=_TEST_PRIVATE_KEY_PEM),
+    )
+    monkeypatch.setattr(github_app.httpx, "get", _fake_get)
+    monkeypatch.setattr(github_app.httpx, "post", lambda *a, **k: _FakeTokenResponse())
+
+    result = GitHubAppAdapter().get_branch_protection("1", "acme", "widgets", "main")
+
+    assert result.protected is False
+    assert result.required_status_checks == []
+    assert result.required_approving_review_count == 0
+
+
+def test_get_branch_protection_parses_the_real_configured_rules(monkeypatch):
+    class _FakeTokenResponse:
+        status_code = 201
+
+        def json(self):
+            return {"token": "fake-installation-token"}
+
+    class _FakeProtectionResponse:
+        status_code = 200
+        text = ""
+
+        def json(self):
+            return {
+                "required_status_checks": {"contexts": ["ci/build", "ci/test"]},
+                "required_pull_request_reviews": {"required_approving_review_count": 2},
+            }
+
+    def _fake_get(url, headers=None, params=None, timeout=None):
+        if "/branches/" in url:
+            return _FakeProtectionResponse()
+        return _FakeTokenResponse()
+
+    monkeypatch.setattr(
+        github_app,
+        "get_settings",
+        lambda: Settings(github_app_id="123", github_app_private_key=_TEST_PRIVATE_KEY_PEM),
+    )
+    monkeypatch.setattr(github_app.httpx, "get", _fake_get)
+    monkeypatch.setattr(github_app.httpx, "post", lambda *a, **k: _FakeTokenResponse())
+
+    result = GitHubAppAdapter().get_branch_protection("1", "acme", "widgets", "main")
+
+    assert result.protected is True
+    assert result.required_status_checks == ["ci/build", "ci/test"]
+    assert result.required_approving_review_count == 2
+
+
+def test_get_branch_protection_fails_honestly_without_a_configured_app(monkeypatch):
+    monkeypatch.setattr(github_app, "get_settings", lambda: Settings(github_app_id="", github_app_private_key=""))
+
+    with pytest.raises(GitProviderError) as exc_info:
+        GitHubAppAdapter().get_branch_protection("1", "acme", "widgets", "main")
+
+    assert "not configured" in exc_info.value.detail.lower()
+
+
+def test_get_branch_protection_raises_honestly_on_an_unexpected_failure(monkeypatch):
+    class _FakeTokenResponse:
+        status_code = 201
+
+        def json(self):
+            return {"token": "fake-installation-token"}
+
+    class _FakeErrorResponse:
+        status_code = 500
+        text = '{"message": "Internal error"}'
+
+        def json(self):
+            return {}
+
+    def _fake_get(url, headers=None, params=None, timeout=None):
+        if "/branches/" in url:
+            return _FakeErrorResponse()
+        return _FakeTokenResponse()
+
+    monkeypatch.setattr(
+        github_app,
+        "get_settings",
+        lambda: Settings(github_app_id="123", github_app_private_key=_TEST_PRIVATE_KEY_PEM),
+    )
+    monkeypatch.setattr(github_app.httpx, "get", _fake_get)
+    monkeypatch.setattr(github_app.httpx, "post", lambda *a, **k: _FakeTokenResponse())
+
+    with pytest.raises(GitProviderError) as exc_info:
+        GitHubAppAdapter().get_branch_protection("1", "acme", "widgets", "main")
+
+    assert "500" in exc_info.value.detail

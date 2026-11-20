@@ -257,6 +257,9 @@ def stream_task(
                     "git_pr_number": task.git_pr_number,
                     "git_pr_state": task.git_pr_state,
                     "git_ci_status": task.git_ci_status,
+                    "git_base_branch_protected": task.git_base_branch_protected,
+                    "git_required_status_checks": task.git_required_status_checks,
+                    "git_required_approving_reviews": task.git_required_approving_reviews,
                 }
                 yield f"data: {json.dumps(payload)}\n\n"
                 if task.status != TaskStatus.RUNNING:

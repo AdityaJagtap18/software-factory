@@ -4,7 +4,13 @@ import time
 
 from app.services.agent_runtime.adapters import ClaudeCodeAdapter
 from app.services.agent_runtime.base import ExecutionResult, HealthCheckResult
-from app.services.git_provider.base import CommitSummary, GitProviderError, PullRequestSummary, RepositorySummary
+from app.services.git_provider.base import (
+    BranchProtectionSummary,
+    CommitSummary,
+    GitProviderError,
+    PullRequestSummary,
+    RepositorySummary,
+)
 from app.services.git_provider.github_app import GitHubAppAdapter
 
 
@@ -553,6 +559,113 @@ def test_a_pull_request_failure_is_reported_honestly_without_overturning_task_su
     assert body["git_pr_url"] == ""
     assert body["git_pr_number"] == 0
     assert "pull request already exists" in body["error_message"].lower()
+
+
+def test_task_pull_request_records_the_real_branch_protection_rules(client, monkeypatch, tmp_path):
+    """Phase 18: right after opening the PR, the base branch's real
+    branch protection rules are recorded too -- informational only, never
+    enforced by this backend."""
+    monkeypatch.setattr(
+        ClaudeCodeAdapter,
+        "health_check",
+        lambda self, credential_value: HealthCheckResult(connected=True, detail="ok"),
+    )
+
+    def fake_streaming(self, prompt, credential_value, on_chunk, should_cancel, cwd=None):
+        with open(f"{cwd}/new_feature.py", "w") as f:
+            f.write("print('real change')\n")
+        on_chunk("Added new_feature.py")
+        return ExecutionResult(succeeded=True, output="Added new_feature.py")
+
+    monkeypatch.setattr(ClaudeCodeAdapter, "start_execution_streaming", fake_streaming)
+    monkeypatch.setattr(
+        GitHubAppAdapter,
+        "create_pull_request",
+        lambda self, *a, **k: PullRequestSummary(number=7, url="https://github.com/acme/widgets/pull/7"),
+    )
+    monkeypatch.setattr(
+        GitHubAppAdapter,
+        "get_branch_protection",
+        lambda self, *a, **k: BranchProtectionSummary(
+            protected=True, required_status_checks=["ci/build"], required_approving_review_count=2
+        ),
+    )
+
+    alice = _register_and_login(client, "alice@example.com", "Alice")
+    org, project = _project(client, alice)
+    remote_repo = _seed_remote_repo(tmp_path)
+    _connect_repository(client, alice, org, project, remote_repo, monkeypatch, tmp_path)
+
+    connection = client.post(
+        f"/api/v1/organizations/{org['id']}/coding-agent-connections",
+        json={"runtime_slug": "claude_code", "connection_mode": "local_runtime"},
+        headers=alice,
+    ).json()
+    task = client.post(
+        f"/api/v1/projects/{project['id']}/tasks",
+        json={"title": "Add a feature", "coding_agent_connection_id": connection["id"]},
+        headers=alice,
+    ).json()
+
+    client.post(f"/api/v1/projects/{project['id']}/tasks/{task['id']}/start", headers=alice)
+    body = _wait_for_terminal_status(client, project["id"], task["id"], alice)
+
+    assert body["status"] == "completed"
+    assert body["git_base_branch_protected"] is True
+    assert body["git_required_status_checks"] == ["ci/build"]
+    assert body["git_required_approving_reviews"] == 2
+
+
+def test_task_branch_protection_lookup_failure_is_reported_honestly_without_overturning_task_success(
+    client, monkeypatch, tmp_path
+):
+    monkeypatch.setattr(
+        ClaudeCodeAdapter,
+        "health_check",
+        lambda self, credential_value: HealthCheckResult(connected=True, detail="ok"),
+    )
+
+    def fake_streaming(self, prompt, credential_value, on_chunk, should_cancel, cwd=None):
+        with open(f"{cwd}/new_feature.py", "w") as f:
+            f.write("print('real change')\n")
+        on_chunk("Added new_feature.py")
+        return ExecutionResult(succeeded=True, output="Added new_feature.py")
+
+    monkeypatch.setattr(ClaudeCodeAdapter, "start_execution_streaming", fake_streaming)
+    monkeypatch.setattr(
+        GitHubAppAdapter,
+        "create_pull_request",
+        lambda self, *a, **k: PullRequestSummary(number=7, url="https://github.com/acme/widgets/pull/7"),
+    )
+
+    def fake_get_branch_protection(self, *a, **k):
+        raise GitProviderError("Could not reach GitHub.")
+
+    monkeypatch.setattr(GitHubAppAdapter, "get_branch_protection", fake_get_branch_protection)
+
+    alice = _register_and_login(client, "alice@example.com", "Alice")
+    org, project = _project(client, alice)
+    remote_repo = _seed_remote_repo(tmp_path)
+    _connect_repository(client, alice, org, project, remote_repo, monkeypatch, tmp_path)
+
+    connection = client.post(
+        f"/api/v1/organizations/{org['id']}/coding-agent-connections",
+        json={"runtime_slug": "claude_code", "connection_mode": "local_runtime"},
+        headers=alice,
+    ).json()
+    task = client.post(
+        f"/api/v1/projects/{project['id']}/tasks",
+        json={"title": "Add a feature", "coding_agent_connection_id": connection["id"]},
+        headers=alice,
+    ).json()
+
+    client.post(f"/api/v1/projects/{project['id']}/tasks/{task['id']}/start", headers=alice)
+    body = _wait_for_terminal_status(client, project["id"], task["id"], alice)
+
+    assert body["status"] == "completed"
+    assert body["git_pr_number"] == 7
+    assert body["git_base_branch_protected"] is False
+    assert "could not read the base branch's protection rules" in body["error_message"].lower()
 
 
 def test_worktree_preparation_failure_fails_the_task_honestly(client, monkeypatch, tmp_path):

@@ -55,6 +55,17 @@ class PullRequestSummary:
     state: str = "open"
 
 
+@dataclass(frozen=True)
+class BranchProtectionSummary:
+    """What the provider's own branch protection rules require for a
+    branch -- `protected=False` means GitHub reports no rules configured,
+    never a guess from an unrelated failure (see `get_branch_protection`)."""
+
+    protected: bool
+    required_status_checks: list[str] = field(default_factory=list)
+    required_approving_review_count: int = 0
+
+
 class GitProviderAdapter(ABC):
     """Base class every Git provider adapter implements."""
 
@@ -105,3 +116,12 @@ class GitProviderAdapter(ABC):
         via the provider's API. `head_branch` must already exist on the
         remote (push it first). Raises `GitProviderError` with the real
         reason on failure -- never a fabricated PR number or URL."""
+
+    @abstractmethod
+    def get_branch_protection(
+        self, external_installation_id: str, owner: str, name: str, branch: str
+    ) -> BranchProtectionSummary:
+        """The real branch protection rules GitHub has configured for
+        `branch`, if any. A branch with no rules configured is a real,
+        successful result (`protected=False`), not an error. Raises
+        `GitProviderError` only when the check itself could not be made."""

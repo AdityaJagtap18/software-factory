@@ -7,6 +7,8 @@ import { TaskService } from '../../core/org/task.service';
 import { TaskDiff } from '../../core/org/task.models';
 import { DiffFile, parseUnifiedDiff } from '../../shared/diff/diff-parser';
 
+export type TaskWorkspaceTab = 'conversation' | 'changes' | 'tests' | 'quality' | 'artifacts' | 'logs';
+
 @Component({
   selector: 'sf-task-workspace',
   standalone: true,
@@ -31,12 +33,22 @@ export class TaskWorkspaceComponent {
     return list.find((t) => t.id === id) ?? list[0];
   });
 
+  readonly displayId = computed(() => {
+    const task = this.selectedTask();
+    return task ? `TSK-${task.id.slice(0, 8)}` : '';
+  });
+
   readonly startingTaskId = signal<string | null>(null);
 
-  readonly showingDiff = signal(false);
+  readonly tab = signal<TaskWorkspaceTab>('conversation');
+
   readonly loadingDiff = signal(false);
   readonly taskDiff = signal<TaskDiff | null>(null);
   readonly selectedDiffPath = signal<string | null>(null);
+  readonly diffExpanded = signal(false);
+  readonly copiedPath = signal<string | null>(null);
+
+  private loadedDiffForTaskId: string | null = null;
 
   readonly diffFiles = computed<DiffFile[]>(() => {
     const diff = this.taskDiff();
@@ -63,24 +75,40 @@ export class TaskWorkspaceComponent {
     this.taskService.listMine().subscribe();
   }
 
+  setTab(tab: TaskWorkspaceTab): void {
+    this.tab.set(tab);
+    if (tab === 'changes') this.ensureDiffLoaded();
+  }
+
   selectDiffFile(path: string): void {
     this.selectedDiffPath.set(path);
   }
 
-  toggleDiff(): void {
+  toggleDiffExpanded(): void {
+    this.diffExpanded.update((v) => !v);
+  }
+
+  copyDiff(file: DiffFile): void {
+    navigator.clipboard?.writeText(file.raw).then(
+      () => {
+        this.copiedPath.set(file.path);
+        setTimeout(() => this.copiedPath.set(null), 1500);
+      },
+      () => {}
+    );
+  }
+
+  private ensureDiffLoaded(): void {
     const task = this.selectedTask();
     if (!task) return;
-    if (this.showingDiff()) {
-      this.showingDiff.set(false);
-      return;
-    }
-    this.showingDiff.set(true);
+    if (this.loadedDiffForTaskId === task.id) return;
     this.loadingDiff.set(true);
     this.selectedDiffPath.set(null);
     this.taskService.getDiff(task.project_id, task.id).subscribe({
       next: (diff) => {
         this.taskDiff.set(diff);
         this.loadingDiff.set(false);
+        this.loadedDiffForTaskId = task.id;
       },
       error: () => this.loadingDiff.set(false)
     });

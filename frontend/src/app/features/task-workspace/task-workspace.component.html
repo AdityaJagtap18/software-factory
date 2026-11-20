@@ -1,7 +1,9 @@
-<div class="sf-breadcrumbs">
-  <a routerLink="/projects">Projects</a> <span>›</span>
-  <span class="current">My Tasks</span>
-</div>
+@if (!loaded() || tasks().length === 0 || !selectedTask()) {
+  <div class="sf-breadcrumbs">
+    <a routerLink="/projects">Projects</a> <span>›</span>
+    <span class="current">My Tasks</span>
+  </div>
+}
 
 @if (!loaded()) {
   <div class="sf-empty">Loading…</div>
@@ -15,167 +17,274 @@
   <div class="sf-empty">
     No tasks yet. Open a <a routerLink="/projects">project</a> and create one from its Tasks tab.
   </div>
-} @else if (selectedTask()) {
+} @else if (selectedTask(); as task) {
+  <div class="sf-breadcrumbs">
+    <a routerLink="/projects">Projects</a> <span>›</span>
+    <a [routerLink]="['/projects', task.project_id]">{{ task.project_name }}</a> <span>›</span>
+    <a routerLink="/tasks">Tasks</a> <span>›</span>
+    <a [routerLink]="['/tasks', task.id]">{{ displayId() }}</a> <span>›</span>
+    <span class="current">Code Review</span>
+  </div>
+
   <div class="sf-page-header">
     <div class="sf-page-header__title-group">
       <span class="sf-page-header__icon tone-violet"><sf-icon name="navigation/tasks" /></span>
       <div>
         <h1>
-          {{ selectedTask()!.title }}
-          <span class="sf-badge" [class]="'sf-badge--' + statusTone(selectedTask()!.status)">{{ selectedTask()!.status }}</span>
+          {{ displayId() }} — {{ task.title }}
+          <span class="sf-badge" [class]="'sf-badge--' + statusTone(task.status)">{{ task.status }}</span>
         </h1>
-        <p>{{ selectedTask()!.project_name }}</p>
+        <p>{{ task.description || 'No description provided.' }}</p>
       </div>
     </div>
     <div class="sf-page-header__actions">
-      @if (selectedTask()!.status === 'running') {
+      @if (task.git_pr_url) {
+        <a class="sf-btn" [href]="task.git_pr_url" target="_blank" rel="noopener">
+          <sf-icon name="navigation/repositories" /> View PR
+        </a>
+      }
+      @if (task.status === 'running') {
         <button class="sf-btn" type="button" (click)="cancel()">Cancel</button>
       } @else {
-        <button class="sf-btn sf-btn--primary" type="button" [disabled]="startingTaskId() === selectedTask()!.id" (click)="start()">
-          {{ startingTaskId() === selectedTask()!.id ? 'Starting…' : (selectedTask()!.status === 'not_started' ? 'Start' : 'Restart') }}
+        <button class="sf-btn sf-btn--primary" type="button" [disabled]="startingTaskId() === task.id" (click)="start()">
+          {{ startingTaskId() === task.id ? 'Starting…' : (task.status === 'not_started' ? 'Start' : 'Restart') }}
         </button>
       }
     </div>
   </div>
 
-  <div class="tw-layout">
-    <aside class="sf-card tw-tasklist">
-      <div class="sf-panel-title">
-        <h3>My Tasks ({{ tasks().length }})</h3>
-      </div>
-      <div class="tw-tasklist__items">
-        @for (t of tasks(); track t.id) {
-          <a class="tw-tasklist__item" [class.active]="t.id === selectedTask()!.id" [routerLink]="['/tasks', t.id]">
-            <sf-icon name="navigation/tasks" />
-            <div>
-              <div class="tw-tasklist__title">{{ t.title }}</div>
-              <span class="sf-pill">{{ t.project_name }}</span>
-              <span class="sf-badge" [class]="'sf-badge--' + statusTone(t.status)">{{ t.status }}</span>
-            </div>
-          </a>
-        }
-      </div>
-    </aside>
-
-    <section class="sf-card tw-conversation">
-      <div class="sf-panel-title"><h3>Description</h3></div>
-      <p style="padding:0 18px 14px;">{{ selectedTask()!.description || 'No description provided.' }}</p>
-
-      <div class="sf-panel-title"><h3>Real Output</h3></div>
-      @if (selectedTask()!.error_message) {
-        <div class="sf-empty" style="color: var(--sf-red-600, #d04444); white-space:pre-wrap; text-align:left; padding:0 18px 18px;">{{ selectedTask()!.error_message }}</div>
-      } @else if (selectedTask()!.output) {
-        <pre style="padding:0 18px 18px; margin:0; white-space:pre-wrap; font-size:12.5px;">{{ selectedTask()!.output }}</pre>
-      } @else {
-        <div class="sf-empty">No output yet — this task hasn't run.</div>
-      }
-    </section>
-
-    <aside class="tw-sidebar">
-      @if (selectedTask()!.git_branch_name) {
-        <section class="sf-card">
-          <div class="sf-panel-title"><h3>Git</h3></div>
-          <div class="pw-info" style="padding:6px 18px 14px;">
-            <div class="pw-info__row"><sf-icon name="workspace/code-diff" /><span class="label">Branch</span><code class="value" style="font-size:12px;">{{ selectedTask()!.git_branch_name }}</code></div>
-            <div class="pw-info__row"><sf-icon name="workspace/code-diff" /><span class="label">Base</span><code class="value" style="font-size:12px;">{{ selectedTask()!.git_base_branch }}</code></div>
-            <div class="pw-info__row"><sf-icon name="workspace/code-diff" /><span class="label">Changed files</span><span class="value">{{ selectedTask()!.git_changed_files.length }}</span></div>
-            @if (selectedTask()!.git_ci_status) {
-              <div class="pw-info__row"><sf-icon name="workspace/code-diff" /><span class="label">CI</span><span class="sf-pill">{{ selectedTask()!.git_ci_status }}</span></div>
-            }
-            @if (selectedTask()!.git_pr_url) {
-              <div class="pw-info__row"><sf-icon name="workspace/code-diff" /><span class="label">Pull request</span><a [href]="selectedTask()!.git_pr_url" target="_blank" rel="noopener" class="value">#{{ selectedTask()!.git_pr_number }}</a> <span class="sf-pill">{{ selectedTask()!.git_pr_state }}</span></div>
-              @if (selectedTask()!.git_base_branch_protected) {
-                <div class="pw-info__row"><sf-icon name="workspace/code-diff" /><span class="label">Branch protection</span>
-                  <span class="value">
-                    {{ selectedTask()!.git_required_approving_reviews }} review(s)@if (selectedTask()!.git_required_status_checks.length > 0) {, checks: {{ selectedTask()!.git_required_status_checks.join(', ') }}} required to merge
-                  </span>
-                </div>
-              }
-            }
-          </div>
-          @if (selectedTask()!.git_changed_files.length > 0) {
-            <div style="padding:0 18px 14px;">
-              <button class="sf-btn" type="button" style="padding:5px 10px;" (click)="toggleDiff()">
-                {{ showingDiff() ? 'Hide code changes' : 'View code changes' }}
-              </button>
-            </div>
-          }
-        </section>
-      }
-      <section class="sf-card">
-        <div class="sf-panel-title"><h3>Task Overview</h3></div>
-        <div class="pw-info" style="padding:6px 18px 14px;">
-          <div class="pw-info__row"><sf-icon name="navigation/projects" /><span class="label">Project</span><span class="value">{{ selectedTask()!.project_name }}</span></div>
-          <div class="pw-info__row"><sf-icon name="status/warning" /><span class="label">Priority</span><span class="sf-pill">{{ selectedTask()!.priority }}</span></div>
-          <div class="pw-info__row"><sf-icon name="navigation/monitoring" /><span class="label">Created</span><span class="value">{{ selectedTask()!.created_at | date:'medium' }}</span></div>
-          @if (selectedTask()!.started_at) {
-            <div class="pw-info__row"><sf-icon name="navigation/monitoring" /><span class="label">Started</span><span class="value">{{ selectedTask()!.started_at | date:'medium' }}</span></div>
-          }
-          @if (selectedTask()!.completed_at) {
-            <div class="pw-info__row"><sf-icon name="navigation/monitoring" /><span class="label">Completed</span><span class="value">{{ selectedTask()!.completed_at | date:'medium' }}</span></div>
-          }
-        </div>
-      </section>
-    </aside>
+  <div class="sf-tabs">
+    <button type="button" class="sf-tab" [class.active]="tab() === 'conversation'" (click)="setTab('conversation')">
+      <sf-icon name="navigation/approvals" /> Conversation
+    </button>
+    <button type="button" class="sf-tab" [class.active]="tab() === 'changes'" (click)="setTab('changes')">
+      <sf-icon name="workspace/code-diff" /> Code Changes ({{ task.git_changed_files.length }})
+    </button>
+    <button type="button" class="sf-tab" [class.active]="tab() === 'tests'" (click)="setTab('tests')">
+      <sf-icon name="status/success" /> Test Results
+    </button>
+    <button type="button" class="sf-tab" [class.active]="tab() === 'quality'" (click)="setTab('quality')">
+      <sf-icon name="agents/review-agent" /> Quality &amp; Security
+    </button>
+    <button type="button" class="sf-tab" [class.active]="tab() === 'artifacts'" (click)="setTab('artifacts')">
+      <sf-icon name="navigation/artifacts" /> Artifacts
+    </button>
+    <button type="button" class="sf-tab" [class.active]="tab() === 'logs'" (click)="setTab('logs')">
+      <sf-icon name="navigation/monitoring" /> Execution Logs
+    </button>
   </div>
 
-  @if (showingDiff()) {
-    <section class="sf-card tw-diff-card">
-      <div class="sf-panel-title">
-        <h3>Code Changes</h3>
-        @if (!loadingDiff() && diffFiles().length > 0) {
-          <div class="tw-diff__totals">
-            <span class="sf-pill">{{ diffTotals().files }} file(s)</span>
-            <span class="tw-diff__added">+{{ diffTotals().additions }}</span>
-            <span class="tw-diff__removed">-{{ diffTotals().deletions }}</span>
+  @if (tab() === 'conversation') {
+    <section class="sf-card tcr-conversation">
+      <div class="sf-panel-title"><h3>Conversation</h3></div>
+      <div class="tcr-conversation__thread">
+        <div class="tcr-msg">
+          <span class="tw-message__avatar">U</span>
+          <div class="tcr-msg__body">
+            <div class="tcr-msg__head"><strong>You</strong><span>{{ task.created_at | date:'short' }}</span></div>
+            <p>{{ task.description || task.title }}</p>
+          </div>
+        </div>
+        @if (task.status !== 'not_started') {
+          <div class="tcr-msg">
+            <span class="tw-message__avatar">&lt;/&gt;</span>
+            <div class="tcr-msg__body">
+              <div class="tcr-msg__head">
+                <strong>Coding Agent</strong>
+                @if (task.completed_at) { <span>{{ task.completed_at | date:'short' }}</span> }
+              </div>
+              @if (task.status === 'running' && !task.output && !task.error_message) {
+                <p class="tcr-msg__pending">Running…</p>
+              } @else if (task.error_message) {
+                <p class="tcr-msg__error">{{ task.error_message }}</p>
+              } @else if (task.output) {
+                <pre class="tcr-msg__output">{{ task.output }}</pre>
+              } @else {
+                <p class="tcr-msg__pending">No output yet.</p>
+              }
+            </div>
           </div>
         }
       </div>
-      @if (loadingDiff()) {
-        <div class="sf-empty">Loading diff…</div>
-      } @else if (diffFiles().length === 0) {
-        <div class="sf-empty">No changes.</div>
-      } @else {
-        <div class="tw-diff">
-          <aside class="tw-diff__filelist">
+      <div class="tcr-composer">
+        <textarea placeholder="Send a message or add a follow-up instruction…" disabled rows="2"></textarea>
+        <button class="sf-btn sf-btn--primary" type="button" disabled><sf-icon name="navigation/approvals" /></button>
+      </div>
+      <p class="tcr-composer__note">Follow-up conversation isn't available yet — each task currently runs its description as a single instruction.</p>
+    </section>
+  }
+
+  @if (tab() === 'changes') {
+    @if (task.git_changed_files.length === 0 && !loadingDiff()) {
+      <section class="sf-card">
+        <div class="sf-empty">No code changes for this task.</div>
+      </section>
+    } @else {
+      <div class="tcr-layout">
+        <aside class="sf-card tcr-files">
+          <div class="sf-panel-title"><h3>Changes</h3></div>
+          <div class="tcr-files__summary">
+            @if (loadingDiff()) {
+              <span>Loading…</span>
+            } @else {
+              <span class="tw-diff__added">+{{ diffTotals().additions }}</span>
+              <span class="tw-diff__removed">-{{ diffTotals().deletions }}</span>
+              <span class="tcr-files__count">{{ diffTotals().files }} files</span>
+            }
+          </div>
+          <div class="tcr-files__items">
             @for (f of diffFiles(); track f.path) {
               <button
                 type="button"
-                class="tw-diff__file"
+                class="tcr-files__item"
                 [class.active]="f.path === selectedDiffFile()?.path"
                 (click)="selectDiffFile(f.path)"
               >
                 <sf-icon name="workspace/code-diff" />
-                <span class="tw-diff__file-path">{{ f.path }}</span>
-                <span class="tw-diff__file-stats">
-                  <span class="tw-diff__added">+{{ f.additions }}</span>
-                  <span class="tw-diff__removed">-{{ f.deletions }}</span>
-                </span>
+                <div>
+                  <div class="tcr-files__name">{{ f.path }}</div>
+                  <div class="tcr-files__delta">
+                    <span class="tw-diff__added">+{{ f.additions }}</span>
+                    <span class="tw-diff__removed">-{{ f.deletions }}</span>
+                  </div>
+                </div>
               </button>
             }
-          </aside>
-          @if (selectedDiffFile(); as file) {
-            <div class="tw-diff__code">
-              <div class="tw-diff__code-head">
-                {{ file.path }}
-                <span class="tw-diff__added">+{{ file.additions }}</span>
-                <span class="tw-diff__removed">-{{ file.deletions }}</span>
-              </div>
-              <div class="tw-diff__code-body">
-                @for (line of file.lines; track $index) {
-                  @if (line.type !== 'meta') {
-                    <div [class]="'tw-diff__line tw-diff__line--' + line.type">
-                      <span class="tw-diff__lineno">{{ line.oldLineNo ?? '' }}</span>
-                      <span class="tw-diff__lineno">{{ line.newLineNo ?? '' }}</span>
-                      <span class="tw-diff__prefix">{{ line.type === 'add' ? '+' : line.type === 'del' ? '-' : '' }}</span>
-                      <span class="tw-diff__text">{{ line.text }}</span>
-                    </div>
-                  }
-                }
+          </div>
+        </aside>
+
+        <section class="sf-card tcr-diff" [class.tcr-diff--expanded]="diffExpanded()">
+          @if (loadingDiff()) {
+            <div class="sf-empty">Loading diff…</div>
+          } @else if (selectedDiffFile(); as file) {
+            <div class="tcr-diff__head">
+              <span class="tcr-diff__path"><sf-icon name="workspace/code-diff" /> {{ file.path }}</span>
+              <span class="tw-diff__added">+{{ file.additions }}</span>
+              <span class="tw-diff__removed">-{{ file.deletions }}</span>
+              <div class="tcr-diff__actions">
+                <button type="button" class="sf-btn" (click)="copyDiff(file)">{{ copiedPath() === file.path ? 'Copied' : 'Copy' }}</button>
+                <button type="button" class="sf-btn" (click)="toggleDiffExpanded()">{{ diffExpanded() ? 'Collapse' : 'Expand' }}</button>
               </div>
             </div>
+            <div class="tcr-diff__body">
+              @for (line of file.lines; track $index) {
+                @if (line.type !== 'meta') {
+                  <div [class]="'tcr-diff__line tcr-diff__line--' + line.type">
+                    <span class="tcr-diff__lineno">{{ line.oldLineNo ?? '' }}</span>
+                    <span class="tcr-diff__lineno">{{ line.newLineNo ?? '' }}</span>
+                    <span class="tcr-diff__prefix">{{ line.type === 'add' ? '+' : line.type === 'del' ? '-' : '' }}</span>
+                    <span class="tcr-diff__text">{{ line.text }}</span>
+                  </div>
+                }
+              }
+            </div>
+          } @else {
+            <div class="sf-empty">No changes.</div>
           }
+        </section>
+
+        <aside class="tcr-side">
+          <section class="sf-card">
+            <div class="sf-panel-title"><h3>Change Summary</h3></div>
+            <div class="pw-info" style="padding:6px 18px 14px;">
+              <div class="pw-info__row"><span class="label">Files changed</span><span class="value">{{ diffTotals().files }}</span></div>
+              <div class="pw-info__row"><span class="label">Lines added</span><span class="value added">+{{ diffTotals().additions }}</span></div>
+              <div class="pw-info__row"><span class="label">Lines removed</span><span class="value removed">-{{ diffTotals().deletions }}</span></div>
+              <div class="pw-info__row"><span class="label">Net change</span><span class="value">{{ diffTotals().additions - diffTotals().deletions >= 0 ? '+' : '' }}{{ diffTotals().additions - diffTotals().deletions }}</span></div>
+            </div>
+          </section>
+
+          <section class="sf-card">
+            <div class="sf-panel-title"><h3>Test Results</h3></div>
+            <div class="sf-empty tcr-side__empty">Not configured — no test runner is integrated yet.</div>
+          </section>
+
+          <section class="sf-card">
+            <div class="sf-panel-title"><h3>Quality &amp; Security</h3></div>
+            <div class="sf-empty tcr-side__empty">Not configured — no quality or security scanner is integrated yet.</div>
+          </section>
+
+          <section class="sf-card">
+            <div class="sf-panel-title"><h3>Pull Request</h3></div>
+            @if (task.git_pr_url) {
+              <div class="pw-info" style="padding:6px 18px 14px;">
+                <div class="pw-info__row"><span class="label">Source</span><code class="value" style="font-size:11.5px;">{{ task.git_branch_name }}</code></div>
+                <div class="pw-info__row"><span class="label">Target</span><code class="value" style="font-size:11.5px;">{{ task.git_base_branch }}</code></div>
+                <div class="pw-info__row"><span class="label">Status</span><span class="sf-pill">{{ task.git_pr_state || 'open' }}</span></div>
+                @if (task.git_ci_status) {
+                  <div class="pw-info__row"><span class="label">CI</span><span class="sf-pill">{{ task.git_ci_status }}</span></div>
+                }
+                @if (task.git_base_branch_protected) {
+                  <div class="pw-info__row"><span class="label">Protection</span>
+                    <span class="value">
+                      {{ task.git_required_approving_reviews }} review(s)@if (task.git_required_status_checks.length > 0) {, checks: {{ task.git_required_status_checks.join(', ') }}}
+                    </span>
+                  </div>
+                }
+              </div>
+              <div style="padding:0 18px 16px;">
+                <a class="sf-btn sf-btn--primary" style="width:100%;justify-content:center;" [href]="task.git_pr_url" target="_blank" rel="noopener">
+                  Open Pull Request #{{ task.git_pr_number }}
+                </a>
+              </div>
+            } @else {
+              <div class="sf-empty tcr-side__empty">No pull request yet.</div>
+            }
+          </section>
+
+          <section class="sf-card">
+            <div class="sf-panel-title"><h3>Task Details</h3></div>
+            <div class="pw-info" style="padding:6px 18px 14px;">
+              <div class="pw-info__row"><span class="label">Priority</span><span class="sf-pill">{{ task.priority }}</span></div>
+              <div class="pw-info__row"><span class="label">Created</span><span class="value">{{ task.created_at | date:'medium' }}</span></div>
+              @if (task.started_at) {
+                <div class="pw-info__row"><span class="label">Started</span><span class="value">{{ task.started_at | date:'medium' }}</span></div>
+              }
+              @if (task.completed_at) {
+                <div class="pw-info__row"><span class="label">Completed</span><span class="value">{{ task.completed_at | date:'medium' }}</span></div>
+              }
+            </div>
+          </section>
+        </aside>
+      </div>
+
+      <section class="sf-card tcr-comments">
+        <div class="sf-tabs tcr-comments__tabs">
+          <button type="button" class="sf-tab active">Review Comments</button>
+          <button type="button" class="sf-tab">Suggested Improvements</button>
         </div>
+        <div class="sf-empty tcr-side__empty">Review comments aren't supported yet — there's no backend model for them.</div>
+      </section>
+    }
+  }
+
+  @if (tab() === 'tests') {
+    <section class="sf-card">
+      <div class="sf-panel-title"><h3>Test Results</h3></div>
+      <div class="sf-empty">Not configured — this task's runtime doesn't run a test suite yet.</div>
+    </section>
+  }
+
+  @if (tab() === 'quality') {
+    <section class="sf-card">
+      <div class="sf-panel-title"><h3>Quality &amp; Security</h3></div>
+      <div class="sf-empty">Not configured — no quality or security scanner is integrated yet.</div>
+    </section>
+  }
+
+  @if (tab() === 'artifacts') {
+    <section class="sf-card">
+      <div class="sf-empty">Generated artifacts for this execution will appear here once the artifact store is connected.</div>
+    </section>
+  }
+
+  @if (tab() === 'logs') {
+    <section class="sf-card">
+      <div class="sf-panel-title"><h3>Execution Logs</h3></div>
+      @if (task.output || task.error_message) {
+        <pre class="tcr-logs">{{ task.error_message || task.output }}</pre>
+      } @else {
+        <div class="sf-empty">No output yet — this task hasn't run.</div>
       }
     </section>
   }

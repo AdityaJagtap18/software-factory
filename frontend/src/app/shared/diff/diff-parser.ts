@@ -15,6 +15,9 @@ export interface DiffFile {
   additions: number;
   deletions: number;
   lines: DiffLine[];
+  /** The file's own real raw diff text (its `diff --git` line onward), kept
+   * verbatim for an exact copy action -- not reconstructed from `lines`. */
+  raw: string;
 }
 
 const HUNK_HEADER = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
@@ -26,12 +29,17 @@ export function parseUnifiedDiff(diffText: string): DiffFile[] {
   if (!diffText.trim()) return [];
 
   const files: DiffFile[] = [];
+  const rawLinesByFile: string[][] = [];
   let current: DiffFile | null = null;
+  let currentRaw: string[] = [];
   let oldLineNo = 0;
   let newLineNo = 0;
 
   const pushCurrent = () => {
-    if (current) files.push(current);
+    if (current) {
+      files.push(current);
+      rawLinesByFile.push(currentRaw);
+    }
   };
 
   for (const rawLine of diffText.split('\n')) {
@@ -47,11 +55,14 @@ export function parseUnifiedDiff(diffText: string): DiffFile[] {
         status: 'modified',
         additions: 0,
         deletions: 0,
-        lines: []
+        lines: [],
+        raw: ''
       };
+      currentRaw = [rawLine];
       continue;
     }
     if (!current) continue;
+    currentRaw.push(rawLine);
 
     if (rawLine.startsWith('new file mode')) {
       current.status = 'added';
@@ -92,5 +103,6 @@ export function parseUnifiedDiff(diffText: string): DiffFile[] {
     }
   }
   pushCurrent();
+  files.forEach((f, i) => (f.raw = rawLinesByFile[i].join('\n')));
   return files;
 }

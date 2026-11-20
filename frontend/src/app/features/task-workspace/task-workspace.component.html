@@ -72,6 +72,30 @@
     </section>
 
     <aside class="tw-sidebar">
+      @if (selectedTask()!.git_branch_name) {
+        <section class="sf-card">
+          <div class="sf-panel-title"><h3>Git</h3></div>
+          <div class="pw-info" style="padding:6px 18px 14px;">
+            <div class="pw-info__row"><sf-icon name="workspace/code-diff" /><span class="label">Branch</span><code class="value" style="font-size:12px;">{{ selectedTask()!.git_branch_name }}</code></div>
+            <div class="pw-info__row"><sf-icon name="workspace/code-diff" /><span class="label">Base</span><code class="value" style="font-size:12px;">{{ selectedTask()!.git_base_branch }}</code></div>
+            <div class="pw-info__row"><sf-icon name="workspace/code-diff" /><span class="label">Changed files</span><span class="value">{{ selectedTask()!.git_changed_files.length }}</span></div>
+          </div>
+          @if (selectedTask()!.git_changed_files.length > 0) {
+            <div style="padding:0 18px 14px;">
+              <button class="sf-btn" type="button" style="padding:5px 10px;" (click)="toggleDiff()">
+                {{ showingDiff() ? 'Hide diff' : 'View diff' }}
+              </button>
+              @if (showingDiff()) {
+                @if (loadingDiff()) {
+                  <div class="sf-empty">Loading diff…</div>
+                } @else if (taskDiff()) {
+                  <pre style="max-height:280px; overflow:auto; background: var(--sf-bg-secondary); padding:10px; margin-top:10px; border-radius:8px; font-size:11.5px; white-space:pre-wrap;">{{ taskDiff()!.git_diff || 'No changes.' }}</pre>
+                }
+              }
+            </div>
+          }
+        </section>
+      }
       <section class="sf-card">
         <div class="sf-panel-title"><h3>Task Overview</h3></div>
         <div class="pw-info" style="padding:6px 18px 14px;">

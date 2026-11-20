@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     github_app_private_key: str = ""
     github_webhook_secret: str = ""
     github_api_base_url: str = "https://api.github.com"
+    worktree_root_dir: str = "data/worktrees"
 
 
 @lru_cache

@@ -1,4 +1,4 @@
-# Software Factory — Backend (Phases 1–12: Foundation Through a Real Global Workflow View)
+# Software Factory — Backend (Phases 1–14: Foundation Through Real Task Git Worktrees)
 
 FastAPI + PostgreSQL (+ Neo4j) backend implementing real authentication,
 organizations, membership, RBAC, projects, workspaces, coding-agent runtime
@@ -490,19 +490,75 @@ provider API key makes the same code paths report a real "Connected."**
   org-level installation list and when attempting to list a project's
   connectable repositories — never a fabricated repository list.
 
+### Phase 14 — Task-specific Git worktrees & real execution
+- When a task's project has a connected repository (Phase 13), starting
+  the task now clones that real repository (using a real, short-lived
+  GitHub App installation token) into an isolated directory dedicated to
+  that task, checks out a new real branch (`sf-task-<id>`), and runs the
+  task against that checkout — not a bare prompt with no codebase. A
+  project with no repository connection behaves exactly as before: no
+  worktree, same bare-prompt execution Phases 2-13 always had.
+- **Real adapters, not a simulated filesystem**: the Common Agent Runtime
+  Interface's `start_execution`/`start_execution_streaming` gained an
+  optional `cwd` parameter. A local-CLI adapter (Claude Code, Codex,
+  Gemini CLI, Qwen) runs the real CLI with that directory as its working
+  directory, so whatever files it genuinely edits land in the real
+  worktree. Docker Sandbox bind-mounts the worktree into the container at
+  `/workspace`. A hosted-API adapter (credential mode) or the Custom
+  adapter has no local filesystem to run in and honestly ignores `cwd`
+  rather than pretending to use it.
+- **Real diff capture, never fabricated**: after the adapter run finishes
+  (success or failure), the backend stages every real change inside the
+  worktree (`git add -A`), and — only if something actually changed —
+  commits it on the task's branch and records the genuine `git diff`
+  output and real changed-file list on the task row. A run that touched
+  no files leaves both empty, never a synthesized diff.
+- **Honest failure, identical pattern to every other integration point**:
+  if the clone, checkout, or diff collection fails for any real reason
+  (provider auth, network, a `git` error), the task is marked `failed`
+  with that real reason — it never silently falls back to a bare prompt
+  with no worktree, and it never reports a fabricated success.
+- New `GET /projects/{id}/tasks/{id}/diff` endpoint returns the real
+  branch name, base branch, changed-file list and diff text; the SSE
+  stream and task list/detail responses carry the branch name and
+  changed-file count live as the run progresses.
+- 8 new backend tests (95/95 total): real local-repository clone/branch/
+  commit/diff round trips (only the provider's clone-URL network edge is
+  stubbed, exactly like Phase 13's pattern), the empty-diff case, a
+  worktree-preparation failure honestly failing the task, and a full
+  API-level test that starts a task, verifies the real branch/diff via
+  both the task response and the new diff endpoint.
+- Verified end-to-end in-browser against the real backend: connected a
+  real GitHub repository (`fintrix`) through the real installed GitHub
+  App, ran a task against it through both the real Claude Code CLI (which
+  honestly failed with a real, unrelated local OAuth-expiry error — the
+  worktree itself cloned and branched correctly) and the Docker Sandbox
+  runtime (which genuinely wrote a file inside the real bind-mounted
+  worktree, completed, and produced a real diff visible in both the
+  project workspace's Tasks tab and the global My Tasks page). This pass
+  also caught and fixed two genuine, non-obvious bugs surfaced by that
+  real run rather than a mock: a relative worktree path that Docker's
+  volume-mount flag rejects outright (fixed by always resolving the
+  worktree root to an absolute path), and Windows leaving read-only `git`
+  pack files behind after a plain `shutil.rmtree`, which broke re-running
+  a task whose previous worktree directory still partially existed (fixed
+  with an `onerror` handler that clears the read-only bit before retrying
+  the removal).
+
 ## What's intentionally not here yet
 
 Temporal/LangGraph-based durable workflow orchestration (this pass's
 Factory Supervisor sequences steps via a background thread against the
 real database, not a distributed workflow engine), cloning a remote git
 repository server-side for ingestion (by design — see Phase 9; ingestion
-only reads a local path the backend host can already see), task-specific
-git worktrees/execution and full PR-lifecycle handling (branch
-protection, CI status, review state — Phase 13 records non-`push`
-webhook events but doesn't yet act on them), and coordinating presence
-across multiple backend replicas (Phase 6's presence registry is
-single-process/in-memory) are later phases of the execution spec and are
-not implemented in this pass.
+only reads a local path the backend host can already see), full
+PR-lifecycle handling (branch protection, CI status, review state, and
+actually opening a pull request from a task's branch — Phase 13 records
+non-`push` webhook events but doesn't yet act on them, and Phase 14 stops
+at a real local branch/commit), and coordinating presence across multiple
+backend replicas (Phase 6's presence registry is single-process/
+in-memory) are later phases of the execution spec and are not implemented
+in this pass.
 
 Several frontend-only pages the original UI scaffold shipped with are
 still backed by static mock data rather than this backend — Agents,

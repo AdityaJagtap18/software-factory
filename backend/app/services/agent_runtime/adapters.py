@@ -51,13 +51,16 @@ def _detect_cli_version(binary: str, version_flag: str = "--version") -> HealthC
     return HealthCheckResult(connected=True, version=version, detail=f"Detected '{binary}' on PATH.")
 
 
-def _run_cli_prompt(binary: str, prompt_flag: str, prompt: str) -> ExecutionResult:
+def _run_cli_prompt(
+    binary: str, prompt_flag: str, prompt: str, cwd: str | None = None
+) -> ExecutionResult:
     """Invoke a locally installed coding-agent CLI non-interactively.
 
     Exact non-interactive flags are documented by each CLI and may change
     between versions; if the installed binary rejects `prompt_flag`, that
     real failure is reported honestly rather than silently retried with a
-    guessed alternative.
+    guessed alternative. `cwd`, when given, runs the CLI inside a real Git
+    worktree (Phase 14) so any files it edits land there for real.
     """
     path = shutil.which(binary)
     if path is None:
@@ -71,6 +74,7 @@ def _run_cli_prompt(binary: str, prompt_flag: str, prompt: str) -> ExecutionResu
             capture_output=True,
             text=True,
             timeout=_EXECUTION_TIMEOUT_SECONDS,
+            cwd=cwd,
         )
     except (OSError, subprocess.SubprocessError) as exc:
         return ExecutionResult(succeeded=False, error=f"Failed to execute '{binary}': {exc}")
@@ -86,7 +90,7 @@ def _run_cli_prompt(binary: str, prompt_flag: str, prompt: str) -> ExecutionResu
 
 
 def _run_cli_prompt_streaming(
-    binary: str, prompt_flag: str, prompt: str, on_chunk, should_cancel
+    binary: str, prompt_flag: str, prompt: str, on_chunk, should_cancel, cwd: str | None = None
 ) -> ExecutionResult:
     """Like `_run_cli_prompt`, but reads the real child process's stdout line
     by line as it's produced and can terminate it early on real cancellation.
@@ -104,6 +108,7 @@ def _run_cli_prompt_streaming(
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
+            cwd=cwd,
         )
     except OSError as exc:
         return ExecutionResult(succeeded=False, error=f"Failed to execute '{binary}': {exc}")
@@ -513,15 +518,17 @@ class ClaudeCodeAdapter(CodingAgentRuntimeAdapter):
             return _probe_anthropic_api(credential_value)
         return _detect_cli_version("claude")
 
-    def start_execution(self, prompt: str, credential_value: str | None) -> ExecutionResult:
+    def start_execution(self, prompt: str, credential_value: str | None, cwd: str | None = None) -> ExecutionResult:
         if credential_value:
             return _run_anthropic_prompt(credential_value, prompt)
-        return _run_cli_prompt("claude", "-p", prompt)
+        return _run_cli_prompt("claude", "-p", prompt, cwd)
 
-    def start_execution_streaming(self, prompt, credential_value, on_chunk, should_cancel) -> ExecutionResult:
+    def start_execution_streaming(
+        self, prompt, credential_value, on_chunk, should_cancel, cwd: str | None = None
+    ) -> ExecutionResult:
         if credential_value:
             return _run_anthropic_prompt_streaming(credential_value, prompt, on_chunk, should_cancel)
-        return _run_cli_prompt_streaming("claude", "-p", prompt, on_chunk, should_cancel)
+        return _run_cli_prompt_streaming("claude", "-p", prompt, on_chunk, should_cancel, cwd)
 
 
 class CodexAdapter(CodingAgentRuntimeAdapter):
@@ -545,15 +552,17 @@ class CodexAdapter(CodingAgentRuntimeAdapter):
             return _probe_openai_api(credential_value)
         return _detect_cli_version("codex")
 
-    def start_execution(self, prompt: str, credential_value: str | None) -> ExecutionResult:
+    def start_execution(self, prompt: str, credential_value: str | None, cwd: str | None = None) -> ExecutionResult:
         if credential_value:
             return _run_openai_prompt(credential_value, prompt)
-        return _run_cli_prompt("codex", "exec", prompt)
+        return _run_cli_prompt("codex", "exec", prompt, cwd)
 
-    def start_execution_streaming(self, prompt, credential_value, on_chunk, should_cancel) -> ExecutionResult:
+    def start_execution_streaming(
+        self, prompt, credential_value, on_chunk, should_cancel, cwd: str | None = None
+    ) -> ExecutionResult:
         if credential_value:
             return _run_openai_prompt_streaming(credential_value, prompt, on_chunk, should_cancel)
-        return _run_cli_prompt_streaming("codex", "exec", prompt, on_chunk, should_cancel)
+        return _run_cli_prompt_streaming("codex", "exec", prompt, on_chunk, should_cancel, cwd)
 
 
 class GeminiCliAdapter(CodingAgentRuntimeAdapter):
@@ -576,15 +585,17 @@ class GeminiCliAdapter(CodingAgentRuntimeAdapter):
             return _probe_gemini_api(credential_value)
         return _detect_cli_version("gemini")
 
-    def start_execution(self, prompt: str, credential_value: str | None) -> ExecutionResult:
+    def start_execution(self, prompt: str, credential_value: str | None, cwd: str | None = None) -> ExecutionResult:
         if credential_value:
             return _run_gemini_prompt(credential_value, prompt)
-        return _run_cli_prompt("gemini", "-p", prompt)
+        return _run_cli_prompt("gemini", "-p", prompt, cwd)
 
-    def start_execution_streaming(self, prompt, credential_value, on_chunk, should_cancel) -> ExecutionResult:
+    def start_execution_streaming(
+        self, prompt, credential_value, on_chunk, should_cancel, cwd: str | None = None
+    ) -> ExecutionResult:
         if credential_value:
             return _run_gemini_prompt_streaming(credential_value, prompt, on_chunk, should_cancel)
-        return _run_cli_prompt_streaming("gemini", "-p", prompt, on_chunk, should_cancel)
+        return _run_cli_prompt_streaming("gemini", "-p", prompt, on_chunk, should_cancel, cwd)
 
 
 class QwenAdapter(CodingAgentRuntimeAdapter):
@@ -607,15 +618,17 @@ class QwenAdapter(CodingAgentRuntimeAdapter):
             return _probe_qwen_api(credential_value)
         return _detect_cli_version("qwen")
 
-    def start_execution(self, prompt: str, credential_value: str | None) -> ExecutionResult:
+    def start_execution(self, prompt: str, credential_value: str | None, cwd: str | None = None) -> ExecutionResult:
         if credential_value:
             return _run_qwen_prompt(credential_value, prompt)
-        return _run_cli_prompt("qwen", "-p", prompt)
+        return _run_cli_prompt("qwen", "-p", prompt, cwd)
 
-    def start_execution_streaming(self, prompt, credential_value, on_chunk, should_cancel) -> ExecutionResult:
+    def start_execution_streaming(
+        self, prompt, credential_value, on_chunk, should_cancel, cwd: str | None = None
+    ) -> ExecutionResult:
         if credential_value:
             return _run_qwen_prompt_streaming(credential_value, prompt, on_chunk, should_cancel)
-        return _run_cli_prompt_streaming("qwen", "-p", prompt, on_chunk, should_cancel)
+        return _run_cli_prompt_streaming("qwen", "-p", prompt, on_chunk, should_cancel, cwd)
 
 
 _SANDBOX_IMAGE = "python:3.11-slim"
@@ -648,35 +661,27 @@ def _docker_daemon_status() -> HealthCheckResult:
     )
 
 
-def _sandbox_command(prompt: str) -> list[str]:
+def _sandbox_command(prompt: str, cwd: str | None = None) -> list[str]:
     # --network none: no network access at all from inside the container.
     # --memory/--cpus: real resource limits enforced by the Docker daemon,
     # not just documentation. --rm: the container is destroyed on exit, so
-    # nothing persists between runs.
-    return [
-        "docker",
-        "run",
-        "--rm",
-        "--network",
-        "none",
-        "--memory",
-        _SANDBOX_MEMORY_LIMIT,
-        "--cpus",
-        _SANDBOX_CPU_LIMIT,
-        _SANDBOX_IMAGE,
-        "sh",
-        "-c",
-        prompt,
-    ]
+    # nothing persists between runs. When `cwd` is a real Git worktree
+    # (Phase 14), it's bind-mounted in so the container's real filesystem
+    # edits land directly in that checkout rather than being thrown away.
+    cmd = ["docker", "run", "--rm", "--network", "none", "--memory", _SANDBOX_MEMORY_LIMIT, "--cpus", _SANDBOX_CPU_LIMIT]
+    if cwd:
+        cmd += ["-v", f"{cwd}:/workspace", "-w", "/workspace"]
+    cmd += [_SANDBOX_IMAGE, "sh", "-c", prompt]
+    return cmd
 
 
-def _run_docker_sandbox(prompt: str) -> ExecutionResult:
+def _run_docker_sandbox(prompt: str, cwd: str | None = None) -> ExecutionResult:
     health = _docker_daemon_status()
     if not health.connected:
         return ExecutionResult(succeeded=False, error=health.detail)
     try:
         proc = subprocess.run(
-            _sandbox_command(prompt),
+            _sandbox_command(prompt, cwd),
             capture_output=True,
             text=True,
             timeout=_EXECUTION_TIMEOUT_SECONDS,
@@ -693,7 +698,7 @@ def _run_docker_sandbox(prompt: str) -> ExecutionResult:
     return ExecutionResult(succeeded=True, output=(proc.stdout or "")[:_MAX_OUTPUT_CHARS])
 
 
-def _run_docker_sandbox_streaming(prompt: str, on_chunk, should_cancel) -> ExecutionResult:
+def _run_docker_sandbox_streaming(prompt: str, on_chunk, should_cancel, cwd: str | None = None) -> ExecutionResult:
     """Like `_run_docker_sandbox`, but reads the real container's stdout
     line by line and can terminate the `docker run` client early on real
     cancellation -- which Docker forwards to the container itself.
@@ -703,7 +708,7 @@ def _run_docker_sandbox_streaming(prompt: str, on_chunk, should_cancel) -> Execu
         return ExecutionResult(succeeded=False, error=health.detail)
     try:
         proc = subprocess.Popen(
-            _sandbox_command(prompt),
+            _sandbox_command(prompt, cwd),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -761,11 +766,13 @@ class DockerSandboxAdapter(CodingAgentRuntimeAdapter):
     def health_check(self, credential_value: str | None) -> HealthCheckResult:
         return _docker_daemon_status()
 
-    def start_execution(self, prompt: str, credential_value: str | None) -> ExecutionResult:
-        return _run_docker_sandbox(prompt)
+    def start_execution(self, prompt: str, credential_value: str | None, cwd: str | None = None) -> ExecutionResult:
+        return _run_docker_sandbox(prompt, cwd)
 
-    def start_execution_streaming(self, prompt, credential_value, on_chunk, should_cancel) -> ExecutionResult:
-        return _run_docker_sandbox_streaming(prompt, on_chunk, should_cancel)
+    def start_execution_streaming(
+        self, prompt, credential_value, on_chunk, should_cancel, cwd: str | None = None
+    ) -> ExecutionResult:
+        return _run_docker_sandbox_streaming(prompt, on_chunk, should_cancel, cwd)
 
 
 class CustomAdapter(CodingAgentRuntimeAdapter):
@@ -792,7 +799,10 @@ class CustomAdapter(CodingAgentRuntimeAdapter):
             return HealthCheckResult(connected=True, detail=f"Endpoint responded (HTTP {resp.status_code}).")
         return HealthCheckResult(connected=False, detail=f"Endpoint returned HTTP {resp.status_code}.")
 
-    def start_execution(self, prompt: str, credential_value: str | None) -> ExecutionResult:
+    def start_execution(self, prompt: str, credential_value: str | None, cwd: str | None = None) -> ExecutionResult:
+        # `cwd` (a local Git worktree) is honestly ignored here: this adapter
+        # calls a remote HTTP endpoint with no access to this host's
+        # filesystem, so there is nothing real it could do with it.
         if not credential_value:
             return ExecutionResult(succeeded=False, error="No endpoint configured for this custom adapter.")
         try:

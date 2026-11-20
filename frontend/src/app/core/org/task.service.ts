@@ -3,7 +3,7 @@ import { Injectable, inject, signal } from '@angular/core';
 import { Observable, tap } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { AuthService } from '../auth/auth.service';
-import { ApiTask, CreateTaskPayload, MyApiTask } from './task.models';
+import { ApiTask, CreateTaskPayload, MyApiTask, TaskDiff } from './task.models';
 
 @Injectable({ providedIn: 'root' })
 export class TaskService {
@@ -77,6 +77,13 @@ export class TaskService {
     return this.http
       .post<ApiTask>(`${environment.apiBaseUrl}/projects/${projectId}/tasks/${taskId}/cancel`, {})
       .pipe(tap((task) => this.patchTask(taskId, task)));
+  }
+
+  /** The real diff this task's run produced inside its Git worktree
+   * (Phase 14) — empty fields for a task with no repository connection or
+   * no filesystem changes, never a fabricated one. */
+  getDiff(projectId: string, taskId: string): Observable<TaskDiff> {
+    return this.http.get<TaskDiff>(`${environment.apiBaseUrl}/projects/${projectId}/tasks/${taskId}/diff`);
   }
 
   private async streamUntilDone(projectId: string, taskId: string): Promise<void> {

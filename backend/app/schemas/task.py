@@ -35,9 +35,21 @@ class TaskResponse(BaseModel):
     created_at: datetime
     workflow_id: UUID | None = None
     step_order: int | None = None
+    git_branch_name: str = ""
+    git_base_branch: str = ""
+    git_changed_files: list[str] = []
 
     model_config = {"from_attributes": True}
 
 
 class MyTaskResponse(TaskResponse):
     project_name: str
+
+
+class TaskDiffResponse(BaseModel):
+    git_branch_name: str
+    git_base_branch: str
+    git_changed_files: list[str]
+    git_diff: str
+
+    model_config = {"from_attributes": True}

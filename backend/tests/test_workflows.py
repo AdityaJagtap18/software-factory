@@ -140,7 +140,7 @@ def test_multi_step_workflow_succeeds_when_every_step_succeeds(client, monkeypat
         lambda self, credential_value: HealthCheckResult(connected=True, detail="ok"),
     )
 
-    def fake_streaming(self, prompt, credential_value, on_chunk, should_cancel):
+    def fake_streaming(self, prompt, credential_value, on_chunk, should_cancel, cwd=None):
         on_chunk(f"done: {prompt}")
         return ExecutionResult(succeeded=True, output=f"done: {prompt}")
 
@@ -182,7 +182,7 @@ def test_second_step_never_runs_when_first_step_fails(client, monkeypatch):
         lambda self, credential_value: HealthCheckResult(connected=True, detail="ok"),
     )
 
-    def fake_streaming(self, prompt, credential_value, on_chunk, should_cancel):
+    def fake_streaming(self, prompt, credential_value, on_chunk, should_cancel, cwd=None):
         return ExecutionResult(succeeded=False, output="", error="Simulated real failure")
 
     monkeypatch.setattr(ClaudeCodeAdapter, "start_execution_streaming", fake_streaming)
@@ -235,7 +235,7 @@ def test_cancelling_a_running_workflow_stops_the_current_step(client, monkeypatc
 
     started = threading.Event()
 
-    def fake_streaming(self, prompt, credential_value, on_chunk, should_cancel):
+    def fake_streaming(self, prompt, credential_value, on_chunk, should_cancel, cwd=None):
         on_chunk("chunk-1 ")
         started.set()
         for _ in range(50):

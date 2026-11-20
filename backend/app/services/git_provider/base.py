@@ -75,3 +75,10 @@ class GitProviderAdapter(ABC):
         self, external_installation_id: str, owner: str, name: str, branch: str
     ) -> CommitSummary:
         """The real current HEAD commit of one branch."""
+
+    @abstractmethod
+    def get_authenticated_clone_url(self, external_installation_id: str, owner: str, name: str) -> str:
+        """A real HTTPS clone URL with a short-lived, real credential
+        embedded, usable directly with `git clone` -- never a long-lived
+        personal access token. Raises `GitProviderError` with the real
+        reason if a credential cannot be obtained."""

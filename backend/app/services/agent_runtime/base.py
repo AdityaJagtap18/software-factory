@@ -72,8 +72,16 @@ class CodingAgentRuntimeAdapter(ABC):
         """
 
     @abstractmethod
-    def start_execution(self, prompt: str, credential_value: str | None) -> ExecutionResult:
+    def start_execution(
+        self, prompt: str, credential_value: str | None, cwd: str | None = None
+    ) -> ExecutionResult:
         """Hand a task prompt to the real runtime and return its real output.
+
+        `cwd`, when given (Phase 14), is a real, isolated Git worktree the
+        task should run against -- a local-CLI adapter runs the CLI there
+        so its real filesystem edits land in that checkout; a hosted-API
+        adapter has no filesystem to run in and honestly ignores it rather
+        than pretending to use it.
 
         Must never return `succeeded=True` with fabricated output. If the
         runtime cannot actually be reached (CLI missing, no credential,
@@ -87,6 +95,7 @@ class CodingAgentRuntimeAdapter(ABC):
         credential_value: str | None,
         on_chunk: Callable[[str], None],
         should_cancel: Callable[[], bool],
+        cwd: str | None = None,
     ) -> ExecutionResult:
         """Like `start_execution`, but calls `on_chunk` as real output arrives
         (subprocess stdout lines, or provider SSE deltas) and checks
@@ -97,7 +106,7 @@ class CodingAgentRuntimeAdapter(ABC):
         the whole thing and emits one chunk — it never fabricates partial
         progress that didn't happen.
         """
-        result = self.start_execution(prompt, credential_value)
+        result = self.start_execution(prompt, credential_value, cwd)
         if result.output:
             on_chunk(result.output)
         return result

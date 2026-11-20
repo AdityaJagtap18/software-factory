@@ -14,6 +14,9 @@ export interface ApiTask {
   output: string;
   error_message: string;
   created_at: string;
+  git_branch_name: string;
+  git_base_branch: string;
+  git_changed_files: string[];
 }
 
 export interface MyApiTask extends ApiTask {
@@ -25,4 +28,11 @@ export interface CreateTaskPayload {
   description?: string;
   priority?: TaskPriority;
   coding_agent_connection_id?: string | null;
+}
+
+export interface TaskDiff {
+  git_branch_name: string;
+  git_base_branch: string;
+  git_changed_files: string[];
+  git_diff: string;
 }

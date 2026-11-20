@@ -1,8 +1,11 @@
 import json
+import subprocess
 import time
 
 from app.services.agent_runtime.adapters import ClaudeCodeAdapter
 from app.services.agent_runtime.base import ExecutionResult, HealthCheckResult
+from app.services.git_provider.base import CommitSummary, RepositorySummary
+from app.services.git_provider.github_app import GitHubAppAdapter
 
 
 def _wait_for_terminal_status(client, project_id, task_id, headers, timeout=10):
@@ -151,7 +154,7 @@ def test_successful_execution_marks_task_completed_with_real_output(client, monk
         "health_check",
         lambda self, credential_value: HealthCheckResult(connected=True, detail="ok"),
     )
-    def fake_streaming(self, prompt, credential_value, on_chunk, should_cancel):
+    def fake_streaming(self, prompt, credential_value, on_chunk, should_cancel, cwd=None):
         on_chunk(f"echo: {prompt}")
         return ExecutionResult(succeeded=True, output=f"echo: {prompt}")
 
@@ -230,7 +233,7 @@ def test_cancelling_a_running_task_stops_it_with_partial_output(client, monkeypa
 
     started = threading.Event()
 
-    def fake_streaming(self, prompt, credential_value, on_chunk, should_cancel):
+    def fake_streaming(self, prompt, credential_value, on_chunk, should_cancel, cwd=None):
         on_chunk("chunk-1 ")
         started.set()
         for i in range(2, 50):
@@ -304,3 +307,182 @@ def test_stream_endpoint_emits_sse_events_until_terminal(client, monkeypatch):
 
     assert events[-1]["status"] == "failed"
     assert "not connected" in events[-1]["error_message"].lower()
+
+
+def _run_git(args, cwd):
+    subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True)
+
+
+def _seed_remote_repo(tmp_path):
+    """A real local Git repository standing in for a remote GitHub repo."""
+    repo = tmp_path / "remote"
+    repo.mkdir()
+    _run_git(["init", "-b", "main"], repo)
+    _run_git(["config", "user.email", "seed@example.com"], repo)
+    _run_git(["config", "user.name", "Seed"], repo)
+    (repo / "README.md").write_text("hello\n")
+    _run_git(["add", "-A"], repo)
+    _run_git(["commit", "-m", "Initial commit"], repo)
+    return repo
+
+
+def _connect_repository(client, headers, org, project, remote_repo, monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        GitHubAppAdapter,
+        "get_repository",
+        lambda self, installation_id, owner, name: RepositorySummary(
+            owner=owner, name=name, full_name=f"{owner}/{name}", default_branch="main", private=True
+        ),
+    )
+    monkeypatch.setattr(
+        GitHubAppAdapter,
+        "get_branch_head_commit",
+        lambda self, installation_id, owner, name, branch: CommitSummary(sha="abc123"),
+    )
+    monkeypatch.setattr(
+        GitHubAppAdapter, "get_authenticated_clone_url", lambda self, *a, **k: str(remote_repo)
+    )
+    import app.services.git_worktree as git_worktree
+
+    monkeypatch.setattr(git_worktree, "_worktree_root", lambda: tmp_path / "worktrees")
+
+    installation = client.post(
+        f"/api/v1/organizations/{org['id']}/git-installations",
+        json={"external_installation_id": "1"},
+        headers=headers,
+    ).json()
+    client.post(
+        f"/api/v1/projects/{project['id']}/repository-connections",
+        json={"git_installation_id": installation["id"], "owner": "acme", "name": "widgets"},
+        headers=headers,
+    )
+
+
+def test_task_with_a_connected_repository_runs_in_a_real_git_worktree(client, monkeypatch, tmp_path):
+    """Phase 14: when the project has a connected repository, a task runs
+    against a real, isolated checkout on its own branch -- not a bare
+    prompt with no codebase. Only the network edge (which URL the GitHub
+    App adapter hands back) is stubbed; the clone, branch, file edit,
+    commit and diff are all genuine `git` operations."""
+    monkeypatch.setattr(
+        ClaudeCodeAdapter,
+        "health_check",
+        lambda self, credential_value: HealthCheckResult(connected=True, detail="ok"),
+    )
+
+    def fake_streaming(self, prompt, credential_value, on_chunk, should_cancel, cwd=None):
+        assert cwd is not None
+        with open(f"{cwd}/new_feature.py", "w") as f:
+            f.write("print('real change')\n")
+        on_chunk("Added new_feature.py")
+        return ExecutionResult(succeeded=True, output="Added new_feature.py")
+
+    monkeypatch.setattr(ClaudeCodeAdapter, "start_execution_streaming", fake_streaming)
+
+    alice = _register_and_login(client, "alice@example.com", "Alice")
+    org, project = _project(client, alice)
+    remote_repo = _seed_remote_repo(tmp_path)
+    _connect_repository(client, alice, org, project, remote_repo, monkeypatch, tmp_path)
+
+    connection = client.post(
+        f"/api/v1/organizations/{org['id']}/coding-agent-connections",
+        json={"runtime_slug": "claude_code", "connection_mode": "local_runtime"},
+        headers=alice,
+    ).json()
+    task = client.post(
+        f"/api/v1/projects/{project['id']}/tasks",
+        json={"title": "Add a feature", "coding_agent_connection_id": connection["id"]},
+        headers=alice,
+    ).json()
+
+    client.post(f"/api/v1/projects/{project['id']}/tasks/{task['id']}/start", headers=alice)
+    body = _wait_for_terminal_status(client, project["id"], task["id"], alice)
+
+    assert body["status"] == "completed"
+    assert body["git_branch_name"].startswith("sf-task-")
+    assert body["git_base_branch"] == "main"
+    assert body["git_changed_files"] == ["new_feature.py"]
+
+    diff = client.get(f"/api/v1/projects/{project['id']}/tasks/{task['id']}/diff", headers=alice).json()
+    assert diff["git_changed_files"] == ["new_feature.py"]
+    assert "real change" in diff["git_diff"]
+
+
+def test_task_with_no_filesystem_changes_reports_an_empty_diff(client, monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        ClaudeCodeAdapter,
+        "health_check",
+        lambda self, credential_value: HealthCheckResult(connected=True, detail="ok"),
+    )
+
+    def fake_streaming(self, prompt, credential_value, on_chunk, should_cancel, cwd=None):
+        on_chunk("Looked around, changed nothing")
+        return ExecutionResult(succeeded=True, output="Looked around, changed nothing")
+
+    monkeypatch.setattr(ClaudeCodeAdapter, "start_execution_streaming", fake_streaming)
+
+    alice = _register_and_login(client, "alice@example.com", "Alice")
+    org, project = _project(client, alice)
+    remote_repo = _seed_remote_repo(tmp_path)
+    _connect_repository(client, alice, org, project, remote_repo, monkeypatch, tmp_path)
+
+    connection = client.post(
+        f"/api/v1/organizations/{org['id']}/coding-agent-connections",
+        json={"runtime_slug": "claude_code", "connection_mode": "local_runtime"},
+        headers=alice,
+    ).json()
+    task = client.post(
+        f"/api/v1/projects/{project['id']}/tasks",
+        json={"title": "Investigate", "coding_agent_connection_id": connection["id"]},
+        headers=alice,
+    ).json()
+
+    client.post(f"/api/v1/projects/{project['id']}/tasks/{task['id']}/start", headers=alice)
+    body = _wait_for_terminal_status(client, project["id"], task["id"], alice)
+
+    assert body["status"] == "completed"
+    assert body["git_branch_name"].startswith("sf-task-")
+    assert body["git_changed_files"] == []
+
+
+def test_worktree_preparation_failure_fails_the_task_honestly(client, monkeypatch, tmp_path):
+    """A connected repository whose authenticated clone URL cannot be
+    obtained (e.g. the GitHub App stopped being configured between
+    connecting the repo and starting the task) must fail the task with
+    the real reason -- never a fabricated success with no codebase."""
+    monkeypatch.setattr(
+        ClaudeCodeAdapter,
+        "health_check",
+        lambda self, credential_value: HealthCheckResult(connected=True, detail="ok"),
+    )
+    alice = _register_and_login(client, "alice@example.com", "Alice")
+    org, project = _project(client, alice)
+    remote_repo = _seed_remote_repo(tmp_path)
+    _connect_repository(client, alice, org, project, remote_repo, monkeypatch, tmp_path)
+
+    # Simulate the App becoming unreachable right before the task starts.
+    def _fail(self, *a, **k):
+        from app.services.git_provider.base import GitProviderError
+
+        raise GitProviderError("GitHub App not configured on this backend.")
+
+    monkeypatch.setattr(GitHubAppAdapter, "get_authenticated_clone_url", _fail)
+
+    connection = client.post(
+        f"/api/v1/organizations/{org['id']}/coding-agent-connections",
+        json={"runtime_slug": "claude_code", "connection_mode": "local_runtime"},
+        headers=alice,
+    ).json()
+    task = client.post(
+        f"/api/v1/projects/{project['id']}/tasks",
+        json={"title": "Do thing", "coding_agent_connection_id": connection["id"]},
+        headers=alice,
+    ).json()
+
+    client.post(f"/api/v1/projects/{project['id']}/tasks/{task['id']}/start", headers=alice)
+    body = _wait_for_terminal_status(client, project["id"], task["id"], alice)
+
+    assert body["status"] == "failed"
+    assert body["output"] == ""
+    assert "could not prepare a git worktree" in body["error_message"].lower()
+    assert body["git_branch_name"] == ""

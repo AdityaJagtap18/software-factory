@@ -200,3 +200,11 @@ class GitHubAppAdapter(GitProviderAdapter):
         commit = data.get("commit") or {}
         message = ((commit.get("commit") or {}).get("message") or "")[:500]
         return CommitSummary(sha=commit.get("sha", ""), message=message)
+
+    def get_authenticated_clone_url(self, external_installation_id: str, owner: str, name: str) -> str:
+        if not _app_configured():
+            raise GitProviderError(_not_configured_detail())
+        settings = get_settings()
+        token = _mint_installation_token(external_installation_id)
+        host = settings.github_api_base_url.replace("https://api.", "https://").removesuffix("/")
+        return f"https://x-access-token:{token}@{host.split('://', 1)[1]}/{owner}/{name}.git"

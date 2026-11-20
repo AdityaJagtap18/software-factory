@@ -13,7 +13,7 @@ import { KnowledgeService } from '../../core/org/knowledge.service';
 import { GitIntegrationService } from '../../core/org/git-integration.service';
 import { RepositorySummary } from '../../core/org/git-integration.models';
 import { ApiProject } from '../../core/auth/auth.models';
-import { ApiTask } from '../../core/org/task.models';
+import { ApiTask, TaskDiff } from '../../core/org/task.models';
 import { ApiWorkflow, CreateWorkflowStepPayload } from '../../core/org/workflow.models';
 
 type TabId = 'overview' | 'tasks' | 'workflows' | 'agents' | 'knowledge' | 'artifacts' | 'activity' | 'settings';
@@ -72,6 +72,10 @@ export class ProjectWorkspaceComponent implements OnDestroy {
   readonly newTaskConnectionId = signal('');
   readonly creatingTask = signal(false);
   readonly startingTaskId = signal<string | null>(null);
+
+  readonly expandedDiffTaskId = signal<string | null>(null);
+  readonly loadingDiffTaskId = signal<string | null>(null);
+  readonly taskDiff = signal<TaskDiff | null>(null);
 
   readonly workflows = this.workflowService.workflows;
   readonly workflowsLoaded = this.workflowService.loaded;
@@ -193,6 +197,26 @@ export class ProjectWorkspaceComponent implements OnDestroy {
     const project = this.project();
     if (!project) return;
     this.taskService.cancel(project.id, task.id).subscribe();
+  }
+
+  toggleDiff(task: ApiTask) {
+    if (this.expandedDiffTaskId() === task.id) {
+      this.expandedDiffTaskId.set(null);
+      this.taskDiff.set(null);
+      return;
+    }
+    const project = this.project();
+    if (!project) return;
+    this.expandedDiffTaskId.set(task.id);
+    this.taskDiff.set(null);
+    this.loadingDiffTaskId.set(task.id);
+    this.taskService.getDiff(project.id, task.id).subscribe({
+      next: (diff) => {
+        this.taskDiff.set(diff);
+        this.loadingDiffTaskId.set(null);
+      },
+      error: () => this.loadingDiffTaskId.set(null)
+    });
   }
 
   workflowStatusLabel(status: string): string {

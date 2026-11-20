@@ -4,6 +4,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { DatePipe } from '@angular/common';
 import { IconComponent } from '../../shared/icon/icon.component';
 import { TaskService } from '../../core/org/task.service';
+import { TaskDiff } from '../../core/org/task.models';
 
 @Component({
   selector: 'sf-task-workspace',
@@ -31,8 +32,30 @@ export class TaskWorkspaceComponent {
 
   readonly startingTaskId = signal<string | null>(null);
 
+  readonly showingDiff = signal(false);
+  readonly loadingDiff = signal(false);
+  readonly taskDiff = signal<TaskDiff | null>(null);
+
   constructor() {
     this.taskService.listMine().subscribe();
+  }
+
+  toggleDiff(): void {
+    const task = this.selectedTask();
+    if (!task) return;
+    if (this.showingDiff()) {
+      this.showingDiff.set(false);
+      return;
+    }
+    this.showingDiff.set(true);
+    this.loadingDiff.set(true);
+    this.taskService.getDiff(task.project_id, task.id).subscribe({
+      next: (diff) => {
+        this.taskDiff.set(diff);
+        this.loadingDiff.set(false);
+      },
+      error: () => this.loadingDiff.set(false)
+    });
   }
 
   start(): void {

@@ -12,7 +12,7 @@ from app.models.agent_runtime import CodingAgentConnection
 from app.models.project import Project, ProjectRole
 from app.models.task import Task, TaskStatus
 from app.models.user import User
-from app.schemas.task import MyTaskResponse, TaskCreate, TaskResponse, TaskUpdate
+from app.schemas.task import MyTaskResponse, TaskCreate, TaskDiffResponse, TaskResponse, TaskUpdate
 from app.services import audit
 from app.services.access import visible_project_ids
 from app.services.task_execution import start_task_in_background
@@ -211,6 +211,19 @@ def cancel_task(
     return task
 
 
+@router.get("/projects/{project_id}/tasks/{task_id}/diff", response_model=TaskDiffResponse)
+def get_task_diff(
+    project_id: uuid.UUID,
+    task_id: uuid.UUID,
+    ctx: ProjectContext = Depends(require_project_access),
+    db: DBSession = Depends(get_db),
+) -> TaskDiffResponse:
+    """The real diff this task's run produced inside its Git worktree
+    (Phase 14) — empty fields for a task that had no repository connection
+    or made no file changes, never a fabricated one."""
+    return _get_task_or_404(db, project_id, task_id)
+
+
 @router.get("/projects/{project_id}/tasks/{task_id}/stream")
 def stream_task(
     project_id: uuid.UUID,
@@ -238,6 +251,8 @@ def stream_task(
                     "error_message": task.error_message,
                     "started_at": task.started_at.isoformat() if task.started_at else None,
                     "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+                    "git_branch_name": task.git_branch_name,
+                    "git_changed_files": task.git_changed_files,
                 }
                 yield f"data: {json.dumps(payload)}\n\n"
                 if task.status != TaskStatus.RUNNING:

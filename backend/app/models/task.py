@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -61,5 +61,15 @@ class Task(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         UUID(as_uuid=True), ForeignKey("workflows.id", ondelete="CASCADE"), nullable=True
     )
     step_order: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Phase 14: when the project has a connected repository, a task runs
+    # inside its own real, isolated Git worktree/branch rather than a bare
+    # prompt with no codebase. These stay empty for a task with no
+    # repository connection, or if worktree preparation itself failed
+    # honestly before any branch existed.
+    git_branch_name: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    git_base_branch: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    git_diff: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    git_changed_files: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
 
     project: Mapped["Project"] = relationship()

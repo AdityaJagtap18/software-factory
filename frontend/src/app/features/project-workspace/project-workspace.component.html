@@ -133,6 +133,9 @@
                         {{ expandedDiffTaskId() === t.id ? 'Hide diff' : (t.git_changed_files.length + ' file(s) changed') }}
                       </button>
                     }
+                    @if (t.git_pr_url) {
+                      <div><a [href]="t.git_pr_url" target="_blank" rel="noopener" style="font-size:12px;">PR #{{ t.git_pr_number }}</a></div>
+                    }
                   } @else { — }
                 </td>
                 <td>

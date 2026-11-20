@@ -4,7 +4,7 @@ import time
 
 from app.services.agent_runtime.adapters import ClaudeCodeAdapter
 from app.services.agent_runtime.base import ExecutionResult, HealthCheckResult
-from app.services.git_provider.base import CommitSummary, RepositorySummary
+from app.services.git_provider.base import CommitSummary, GitProviderError, PullRequestSummary, RepositorySummary
 from app.services.git_provider.github_app import GitHubAppAdapter
 
 
@@ -443,6 +443,116 @@ def test_task_with_no_filesystem_changes_reports_an_empty_diff(client, monkeypat
     assert body["status"] == "completed"
     assert body["git_branch_name"].startswith("sf-task-")
     assert body["git_changed_files"] == []
+
+
+def test_task_with_real_changes_pushes_its_branch_and_opens_a_real_pull_request(client, monkeypatch, tmp_path):
+    """Phase 15: once the task actually changed files, its branch is pushed
+    to the real remote (a genuine `git push`, verified below against the
+    local repo standing in for GitHub) and a pull request is opened via
+    the Git Provider Interface -- only `create_pull_request` itself is
+    stubbed, since opening a real GitHub PR needs a real GitHub repo."""
+    monkeypatch.setattr(
+        ClaudeCodeAdapter,
+        "health_check",
+        lambda self, credential_value: HealthCheckResult(connected=True, detail="ok"),
+    )
+
+    def fake_streaming(self, prompt, credential_value, on_chunk, should_cancel, cwd=None):
+        with open(f"{cwd}/new_feature.py", "w") as f:
+            f.write("print('real change')\n")
+        on_chunk("Added new_feature.py")
+        return ExecutionResult(succeeded=True, output="Added new_feature.py")
+
+    monkeypatch.setattr(ClaudeCodeAdapter, "start_execution_streaming", fake_streaming)
+
+    captured_pr_request = {}
+
+    def fake_create_pull_request(self, installation_id, owner, name, head_branch, base_branch, title, body=""):
+        captured_pr_request.update(
+            installation_id=installation_id, owner=owner, name=name,
+            head_branch=head_branch, base_branch=base_branch, title=title, body=body,
+        )
+        return PullRequestSummary(number=7, url="https://github.com/acme/widgets/pull/7")
+
+    monkeypatch.setattr(GitHubAppAdapter, "create_pull_request", fake_create_pull_request)
+
+    alice = _register_and_login(client, "alice@example.com", "Alice")
+    org, project = _project(client, alice)
+    remote_repo = _seed_remote_repo(tmp_path)
+    _connect_repository(client, alice, org, project, remote_repo, monkeypatch, tmp_path)
+
+    connection = client.post(
+        f"/api/v1/organizations/{org['id']}/coding-agent-connections",
+        json={"runtime_slug": "claude_code", "connection_mode": "local_runtime"},
+        headers=alice,
+    ).json()
+    task = client.post(
+        f"/api/v1/projects/{project['id']}/tasks",
+        json={"title": "Add a feature", "coding_agent_connection_id": connection["id"]},
+        headers=alice,
+    ).json()
+
+    client.post(f"/api/v1/projects/{project['id']}/tasks/{task['id']}/start", headers=alice)
+    body = _wait_for_terminal_status(client, project["id"], task["id"], alice)
+
+    assert body["status"] == "completed"
+    assert body["git_pr_number"] == 7
+    assert body["git_pr_url"] == "https://github.com/acme/widgets/pull/7"
+    assert captured_pr_request["owner"] == "acme"
+    assert captured_pr_request["name"] == "widgets"
+    assert captured_pr_request["head_branch"] == body["git_branch_name"]
+    assert captured_pr_request["base_branch"] == "main"
+    assert captured_pr_request["title"] == "Add a feature"
+
+    branches = subprocess.run(
+        ["git", "branch", "--list", body["git_branch_name"]], cwd=remote_repo, capture_output=True, text=True
+    )
+    assert body["git_branch_name"] in branches.stdout
+
+
+def test_a_pull_request_failure_is_reported_honestly_without_overturning_task_success(client, monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        ClaudeCodeAdapter,
+        "health_check",
+        lambda self, credential_value: HealthCheckResult(connected=True, detail="ok"),
+    )
+
+    def fake_streaming(self, prompt, credential_value, on_chunk, should_cancel, cwd=None):
+        with open(f"{cwd}/new_feature.py", "w") as f:
+            f.write("print('real change')\n")
+        on_chunk("Added new_feature.py")
+        return ExecutionResult(succeeded=True, output="Added new_feature.py")
+
+    monkeypatch.setattr(ClaudeCodeAdapter, "start_execution_streaming", fake_streaming)
+
+    def fake_create_pull_request(self, installation_id, owner, name, head_branch, base_branch, title, body=""):
+        raise GitProviderError("A pull request already exists for acme:sf-task.")
+
+    monkeypatch.setattr(GitHubAppAdapter, "create_pull_request", fake_create_pull_request)
+
+    alice = _register_and_login(client, "alice@example.com", "Alice")
+    org, project = _project(client, alice)
+    remote_repo = _seed_remote_repo(tmp_path)
+    _connect_repository(client, alice, org, project, remote_repo, monkeypatch, tmp_path)
+
+    connection = client.post(
+        f"/api/v1/organizations/{org['id']}/coding-agent-connections",
+        json={"runtime_slug": "claude_code", "connection_mode": "local_runtime"},
+        headers=alice,
+    ).json()
+    task = client.post(
+        f"/api/v1/projects/{project['id']}/tasks",
+        json={"title": "Add a feature", "coding_agent_connection_id": connection["id"]},
+        headers=alice,
+    ).json()
+
+    client.post(f"/api/v1/projects/{project['id']}/tasks/{task['id']}/start", headers=alice)
+    body = _wait_for_terminal_status(client, project["id"], task["id"], alice)
+
+    assert body["status"] == "completed"
+    assert body["git_pr_url"] == ""
+    assert body["git_pr_number"] == 0
+    assert "pull request already exists" in body["error_message"].lower()
 
 
 def test_worktree_preparation_failure_fails_the_task_honestly(client, monkeypatch, tmp_path):

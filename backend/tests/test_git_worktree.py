@@ -1,11 +1,12 @@
 """Phase 14: task-specific Git worktrees and real execution.
+Phase 15: pushing a task's branch to the remote (below).
 
 These exercise `app/services/git_worktree.py` against a genuine local Git
-repository acting as the "remote" -- the clone, branch checkout, commit and
-diff are all real `git` invocations. Only the network edge (which URL
-`GitHubAppAdapter` hands back for a given installation) is stubbed, exactly
-like the rest of this suite stubs provider network calls while keeping the
-decision logic real.
+repository acting as the "remote" -- the clone, branch checkout, commit,
+diff, and push are all real `git` invocations. Only the network edge
+(which URL `GitHubAppAdapter` hands back for a given installation) is
+stubbed, exactly like the rest of this suite stubs provider network calls
+while keeping the decision logic real.
 """
 
 import subprocess
@@ -138,3 +139,33 @@ def test_collect_diff_captures_a_real_file_change(remote_repo, tmp_path):
     assert diff.changed_files == ["new_feature.py"]
     assert "real change" in diff.diff_text
     assert "+print" in diff.diff_text
+
+
+def test_push_branch_pushes_the_real_branch_to_the_remote(remote_repo, tmp_path):
+    clone_dir = tmp_path / "clone"
+    _run(["clone", str(remote_repo), str(clone_dir)], tmp_path)
+    _run(["checkout", "-b", "sf-task-push"], clone_dir)
+    _run(["config", "user.email", "factory@software-factory.local"], clone_dir)
+    _run(["config", "user.name", "Software Factory"], clone_dir)
+    (clone_dir / "new_feature.py").write_text("print('pushed')\n")
+    git_worktree.collect_diff(str(clone_dir), "Add new_feature.py")
+
+    git_worktree.push_branch(str(clone_dir), "sf-task-push")
+
+    branches = subprocess.run(
+        ["git", "branch", "--list", "sf-task-push"], cwd=remote_repo, capture_output=True, text=True
+    )
+    assert "sf-task-push" in branches.stdout
+
+
+def test_push_branch_raises_honestly_and_redacts_the_secret_on_failure(remote_repo, tmp_path):
+    clone_dir = tmp_path / "clone"
+    _run(["clone", str(remote_repo), str(clone_dir)], tmp_path)
+    _run(["checkout", "-b", "sf-task-push"], clone_dir)
+    secret_url = "https://x-access-token:super-secret-token@localhost:1/no/such/repo.git"
+    _run(["remote", "set-url", "origin", secret_url], clone_dir)
+
+    with pytest.raises(git_worktree.WorktreeError) as exc_info:
+        git_worktree.push_branch(str(clone_dir), "sf-task-push", clone_secret="super-secret-token@")
+
+    assert "super-secret-token" not in exc_info.value.detail

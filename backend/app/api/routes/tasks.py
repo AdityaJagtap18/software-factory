@@ -253,6 +253,8 @@ def stream_task(
                     "completed_at": task.completed_at.isoformat() if task.completed_at else None,
                     "git_branch_name": task.git_branch_name,
                     "git_changed_files": task.git_changed_files,
+                    "git_pr_url": task.git_pr_url,
+                    "git_pr_number": task.git_pr_number,
                 }
                 yield f"data: {json.dumps(payload)}\n\n"
                 if task.status != TaskStatus.RUNNING:

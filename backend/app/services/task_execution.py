@@ -15,6 +15,11 @@ Phase 14: when the project has a real connected repository, the task runs
 inside its own isolated Git worktree/branch (`app/services/git_worktree.py`)
 instead of a bare prompt with no codebase, and the real resulting diff is
 captured on the task row.
+
+Phase 15: once that task actually changed files, its branch is pushed to
+the real remote and a real pull request is opened from it via the Git
+Provider Interface -- never a fabricated PR number or URL, and a push/PR
+failure never overturns the adapter's own success/failure verdict.
 """
 
 import threading
@@ -31,6 +36,8 @@ from app.models.git_integration import RepositoryConnection, RepositoryConnectio
 from app.models.task import Task, TaskStatus
 from app.services import git_worktree
 from app.services.agent_runtime.registry import get_adapter
+from app.services.git_provider.base import GitProviderError
+from app.services.git_provider.registry import get_git_provider
 
 _OUTPUT_COMMIT_INTERVAL = 20  # flush to the DB at least every N chunks
 
@@ -149,6 +156,30 @@ def execute_task(
             # over a diff-collection problem -- just note it honestly.
             note = f"Task output recorded, but could not collect the git diff: {exc.detail}"
             task.error_message = f"{task.error_message} ({note})" if task.error_message else note
+            diff = None
+
+        # Phase 15: a task that actually changed files gets its branch
+        # pushed and a real pull request opened from it -- never a
+        # fabricated PR number/URL, and never overturning the task's own
+        # success/failure verdict over a push/PR problem.
+        if diff is not None and diff.changed_files and connection_record is not None:
+            try:
+                git_worktree.push_branch(worktree.path, worktree.branch_name, worktree.clone_secret)
+                provider = get_git_provider(connection_record.installation.provider.value)
+                pr = provider.create_pull_request(
+                    connection_record.installation.external_installation_id,
+                    connection_record.owner,
+                    connection_record.name,
+                    worktree.branch_name,
+                    worktree.base_branch,
+                    task.title,
+                    task.description or "",
+                )
+                task.git_pr_url = pr.url
+                task.git_pr_number = pr.number
+            except (git_worktree.WorktreeError, GitProviderError) as exc:
+                note = f"Task output recorded, but could not open a pull request: {exc.detail}"
+                task.error_message = f"{task.error_message} ({note})" if task.error_message else note
     db.commit()
 
 

@@ -37,6 +37,10 @@ class WorktreeResult:
     path: str
     branch_name: str
     base_branch: str
+    # The real credential embedded in the clone URL, kept only so a later
+    # `push_branch` call can redact it from any error message -- never
+    # persisted on the task row.
+    clone_secret: str = field(default="", repr=False)
 
 
 @dataclass(frozen=True)
@@ -125,7 +129,9 @@ def prepare_worktree(task: Task, connection: RepositoryConnection) -> WorktreeRe
     _run_git(["config", "user.email", "factory@software-factory.local"], clone_dir, secret)
     _run_git(["config", "user.name", "Software Factory"], clone_dir, secret)
 
-    return WorktreeResult(path=clone_dir, branch_name=branch_name, base_branch=base_branch)
+    return WorktreeResult(
+        path=clone_dir, branch_name=branch_name, base_branch=base_branch, clone_secret=secret
+    )
 
 
 def collect_diff(worktree_path: str, commit_message: str) -> DiffResult:
@@ -143,6 +149,15 @@ def collect_diff(worktree_path: str, commit_message: str) -> DiffResult:
     changed_files = [line.strip() for line in name_proc.stdout.splitlines() if line.strip()]
     diff_proc = _run_git(["diff", "HEAD~1", "HEAD"], worktree_path)
     return DiffResult(changed_files=changed_files, diff_text=diff_proc.stdout[:_MAX_DIFF_CHARS])
+
+
+def push_branch(worktree_path: str, branch_name: str, clone_secret: str = "") -> None:
+    """Pushes the task's real branch to the remote the worktree was cloned
+    from (the `origin` remote's URL, embedded credential included, was set
+    by the real `git clone` in `prepare_worktree`). Raises `WorktreeError`
+    with the real reason -- e.g. the credential expired -- on failure,
+    with the credential redacted from the message."""
+    _run_git(["push", "origin", branch_name], worktree_path, clone_secret)
 
 
 def cleanup_worktree(path: str) -> None:

@@ -23,6 +23,7 @@ from app.services.git_provider.base import (
     GitHealthCheckResult,
     GitProviderAdapter,
     GitProviderError,
+    PullRequestSummary,
     RepositorySummary,
 )
 
@@ -208,3 +209,34 @@ class GitHubAppAdapter(GitProviderAdapter):
         token = _mint_installation_token(external_installation_id)
         host = settings.github_api_base_url.replace("https://api.", "https://").removesuffix("/")
         return f"https://x-access-token:{token}@{host.split('://', 1)[1]}/{owner}/{name}.git"
+
+    def create_pull_request(
+        self,
+        external_installation_id: str,
+        owner: str,
+        name: str,
+        head_branch: str,
+        base_branch: str,
+        title: str,
+        body: str = "",
+    ) -> PullRequestSummary:
+        if not _app_configured():
+            raise GitProviderError(_not_configured_detail())
+        settings = get_settings()
+        token = _mint_installation_token(external_installation_id)
+        try:
+            resp = httpx.post(
+                f"{settings.github_api_base_url}/repos/{owner}/{name}/pulls",
+                headers={"Authorization": f"Bearer {token}", **_API_VERSION_HEADERS},
+                json={"title": title, "head": head_branch, "base": base_branch, "body": body},
+                timeout=_PROBE_TIMEOUT_SECONDS,
+            )
+        except httpx.HTTPError as exc:
+            raise GitProviderError(f"Could not reach GitHub: {exc}") from exc
+        if resp.status_code != 201:
+            raise GitProviderError(
+                f"GitHub rejected the pull request creation for '{owner}/{name}' "
+                f"(HTTP {resp.status_code}): {resp.text[:300]}"
+            )
+        data = resp.json()
+        return PullRequestSummary(number=data.get("number", 0), url=data.get("html_url", ""))

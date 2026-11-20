@@ -27,6 +27,18 @@ from app.services.git_provider.base import GitProviderError, RepositorySummary, 
 from app.services.git_provider.github_app import GitHubAppAdapter
 
 
+def _generate_test_private_key_pem() -> str:
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    return private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    ).decode()
+
+
+_TEST_PRIVATE_KEY_PEM = _generate_test_private_key_pem()
+
+
 def _register_and_login(client, email, name):
     client.post(
         "/api/v1/auth/register",
@@ -441,3 +453,98 @@ def test_webhook_requires_delivery_id(client):
         headers={"x-github-event": "push", "content-type": "application/json"},
     )
     assert r.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Phase 15: opening a real pull request from a task's branch.
+# ---------------------------------------------------------------------------
+
+
+def test_create_pull_request_fails_honestly_without_a_configured_app(monkeypatch):
+    monkeypatch.setattr(github_app, "get_settings", lambda: Settings(github_app_id="", github_app_private_key=""))
+
+    with pytest.raises(GitProviderError) as exc_info:
+        GitHubAppAdapter().create_pull_request("1", "acme", "widgets", "feature", "main", "A title")
+
+    assert "not configured" in exc_info.value.detail.lower()
+
+
+def test_create_pull_request_sends_the_real_github_api_call_and_parses_the_response(monkeypatch):
+    """The network edge (`httpx.post`) is the only thing stubbed here --
+    everything else (JWT minting, request construction, response parsing)
+    is the real adapter code running end to end."""
+    captured = {}
+
+    class _FakeTokenResponse:
+        status_code = 201
+
+        def json(self):
+            return {"token": "fake-installation-token"}
+
+    class _FakePrResponse:
+        status_code = 201
+        text = ""
+
+        def json(self):
+            return {"number": 42, "html_url": "https://github.com/acme/widgets/pull/42"}
+
+    def _fake_post(url, headers=None, json=None, timeout=None):
+        if url.endswith("/access_tokens"):
+            return _FakeTokenResponse()
+        captured["url"] = url
+        captured["json"] = json
+        return _FakePrResponse()
+
+    monkeypatch.setattr(
+        github_app,
+        "get_settings",
+        lambda: Settings(github_app_id="123", github_app_private_key=_TEST_PRIVATE_KEY_PEM),
+    )
+    monkeypatch.setattr(github_app.httpx, "post", _fake_post)
+
+    pr = GitHubAppAdapter().create_pull_request(
+        "1", "acme", "widgets", "sf-task-abc12345", "main", "Fix the bug", "Real task output."
+    )
+
+    assert pr.number == 42
+    assert pr.url == "https://github.com/acme/widgets/pull/42"
+    assert captured["url"].endswith("/repos/acme/widgets/pulls")
+    assert captured["json"] == {
+        "title": "Fix the bug",
+        "head": "sf-task-abc12345",
+        "base": "main",
+        "body": "Real task output.",
+    }
+
+
+def test_create_pull_request_raises_honestly_when_github_rejects_it(monkeypatch):
+    class _FakeTokenResponse:
+        status_code = 201
+
+        def json(self):
+            return {"token": "fake-installation-token"}
+
+    class _FakeFailureResponse:
+        status_code = 422
+        text = '{"message": "A pull request already exists for acme:sf-task-abc."}'
+
+        def json(self):
+            return {}
+
+    def _fake_post(url, headers=None, json=None, timeout=None):
+        if url.endswith("/access_tokens"):
+            return _FakeTokenResponse()
+        return _FakeFailureResponse()
+
+    monkeypatch.setattr(
+        github_app,
+        "get_settings",
+        lambda: Settings(github_app_id="123", github_app_private_key=_TEST_PRIVATE_KEY_PEM),
+    )
+    monkeypatch.setattr(github_app.httpx, "post", _fake_post)
+
+    with pytest.raises(GitProviderError) as exc_info:
+        GitHubAppAdapter().create_pull_request("1", "acme", "widgets", "sf-task-abc", "main", "Fix the bug")
+
+    assert "422" in exc_info.value.detail
+    assert "already exists" in exc_info.value.detail

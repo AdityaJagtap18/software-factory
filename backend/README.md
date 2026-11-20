@@ -1,4 +1,4 @@
-# Software Factory — Backend (Phases 1–14: Foundation Through Real Task Git Worktrees)
+# Software Factory — Backend (Phases 1–15: Foundation Through Real Pull Requests)
 
 FastAPI + PostgreSQL (+ Neo4j) backend implementing real authentication,
 organizations, membership, RBAC, projects, workspaces, coding-agent runtime
@@ -545,20 +545,48 @@ provider API key makes the same code paths report a real "Connected."**
   with an `onerror` handler that clears the read-only bit before retrying
   the removal).
 
+### Phase 15 — Opening a real pull request from a task's branch
+- Once a task with a connected repository actually changes a file (real,
+  non-empty `git diff` from Phase 14), the backend pushes its real branch
+  to the real remote (`git push origin sf-task-<id>`, authenticated with
+  the same short-lived installation credential the clone used) and opens
+  a real pull request from it via the Git Provider Interface's new
+  `create_pull_request` method — a genuine GitHub API call
+  (`POST /repos/{owner}/{name}/pulls`), never a fabricated PR number or
+  URL. A task with no changes, or no repository connection, opens no PR,
+  exactly as before this phase.
+- **Honest failure, same pattern as every other integration point in this
+  phase**: a push or PR-creation failure (an expired credential, a branch
+  protection rule, an already-open PR for that branch) is recorded as a
+  real, specific note on the task's `error_message` — it never overturns
+  the coding agent's own success/failure verdict, and it never fabricates
+  a PR number or URL on failure.
+- The task row gained `git_pr_url`/`git_pr_number`, surfaced in the task
+  response, the SSE stream, and a "PR #N" link in both the project
+  workspace's Tasks tab and the global task workspace's Git sidebar card.
+- 7 new backend tests (102/102 total): a real `git push` against a local
+  repository standing in for the remote (plus a credential-redaction test
+  for a real push failure), `create_pull_request`'s honest not-configured
+  path, a direct test of the real GitHub API request/response handling
+  (only `httpx.post` stubbed — JWT minting, request construction and
+  response parsing are the genuine adapter code), an honest-rejection
+  case, and two full task-execution tests (a real push + PR open with the
+  PR fields verified on the task response, and a PR-creation failure that
+  is reported without overturning the task's own `completed` status).
+
 ## What's intentionally not here yet
 
 Temporal/LangGraph-based durable workflow orchestration (this pass's
 Factory Supervisor sequences steps via a background thread against the
 real database, not a distributed workflow engine), cloning a remote git
 repository server-side for ingestion (by design — see Phase 9; ingestion
-only reads a local path the backend host can already see), full
-PR-lifecycle handling (branch protection, CI status, review state, and
-actually opening a pull request from a task's branch — Phase 13 records
-non-`push` webhook events but doesn't yet act on them, and Phase 14 stops
-at a real local branch/commit), and coordinating presence across multiple
-backend replicas (Phase 6's presence registry is single-process/
-in-memory) are later phases of the execution spec and are not implemented
-in this pass.
+only reads a local path the backend host can already see), the rest of
+PR-lifecycle handling (branch protection, CI status, and acting on review
+state — Phase 13 records non-`push` webhook events but doesn't yet act on
+them, and Phase 15 only opens the PR itself), and coordinating presence
+across multiple backend replicas (Phase 6's presence registry is
+single-process/in-memory) are later phases of the execution spec and are
+not implemented in this pass.
 
 Several frontend-only pages the original UI scaffold shipped with are
 still backed by static mock data rather than this backend — Agents,

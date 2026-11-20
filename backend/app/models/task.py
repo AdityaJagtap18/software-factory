@@ -72,4 +72,11 @@ class Task(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     git_diff: Mapped[str] = mapped_column(Text, default="", nullable=False)
     git_changed_files: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
 
+    # Phase 15: once a task with real changes finishes, its branch is
+    # pushed and a real pull request opened from it. Stay empty when
+    # there's no repository connection, no changes to push, or the push/PR
+    # call itself failed honestly (see `task_execution.py`).
+    git_pr_url: Mapped[str] = mapped_column(String(500), default="", nullable=False)
+    git_pr_number: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
     project: Mapped["Project"] = relationship()

@@ -48,6 +48,13 @@ class CommitSummary:
     message: str = ""
 
 
+@dataclass(frozen=True)
+class PullRequestSummary:
+    number: int
+    url: str
+    state: str = "open"
+
+
 class GitProviderAdapter(ABC):
     """Base class every Git provider adapter implements."""
 
@@ -82,3 +89,19 @@ class GitProviderAdapter(ABC):
         embedded, usable directly with `git clone` -- never a long-lived
         personal access token. Raises `GitProviderError` with the real
         reason if a credential cannot be obtained."""
+
+    @abstractmethod
+    def create_pull_request(
+        self,
+        external_installation_id: str,
+        owner: str,
+        name: str,
+        head_branch: str,
+        base_branch: str,
+        title: str,
+        body: str = "",
+    ) -> PullRequestSummary:
+        """Opens a real pull request from `head_branch` into `base_branch`
+        via the provider's API. `head_branch` must already exist on the
+        remote (push it first). Raises `GitProviderError` with the real
+        reason on failure -- never a fabricated PR number or URL."""

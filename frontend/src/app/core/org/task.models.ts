@@ -17,6 +17,8 @@ export interface ApiTask {
   git_branch_name: string;
   git_base_branch: string;
   git_changed_files: string[];
+  git_pr_url: string;
+  git_pr_number: number;
 }
 
 export interface MyApiTask extends ApiTask {

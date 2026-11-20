@@ -446,6 +446,120 @@ def test_webhook_for_unknown_repository_is_recorded_not_an_error(client, monkeyp
     assert "no matching repository connection" in r.json()["processing_result"]
 
 
+def test_webhook_pull_request_event_updates_the_originating_tasks_pr_state(client, monkeypatch):
+    """Phase 16: GitHub's own `pull_request` webhook is the only source of
+    truth for a PR's real lifecycle -- matched purely by PR number within
+    the connected project, never guessed or polled."""
+    monkeypatch.setattr(
+        GitHubAppAdapter,
+        "get_repository",
+        lambda self, installation_id, owner, name: RepositorySummary(
+            owner=owner, name=name, full_name=f"{owner}/{name}", default_branch="main", private=True
+        ),
+    )
+    monkeypatch.setattr(
+        GitHubAppAdapter,
+        "get_branch_head_commit",
+        lambda self, installation_id, owner, name, branch: CommitSummary(sha="abc123"),
+    )
+    alice = _register_and_login(client, "alice@example.com", "Alice")
+    org, project = _org_and_project(client, alice)
+    installation = client.post(
+        f"/api/v1/organizations/{org['id']}/git-installations",
+        json={"external_installation_id": "1"},
+        headers=alice,
+    ).json()
+    client.post(
+        f"/api/v1/projects/{project['id']}/repository-connections",
+        json={"git_installation_id": installation["id"], "owner": "acme", "name": "widgets"},
+        headers=alice,
+    )
+
+    task = client.post(
+        f"/api/v1/projects/{project['id']}/tasks", json={"title": "Add a feature"}, headers=alice
+    ).json()
+
+    import uuid as uuid_module
+
+    from app.core.database import SessionLocal
+    from app.models.task import Task
+
+    db = SessionLocal()
+    db_task = db.get(Task, uuid_module.UUID(task["id"]))
+    db_task.git_pr_number = 42
+    db_task.git_pr_state = "open"
+    db.commit()
+    db.close()
+
+    secret = "webhook-secret"
+    monkeypatch.setattr(git_webhook, "get_settings", lambda: Settings(github_webhook_secret=secret))
+
+    body = json.dumps(
+        {
+            "action": "closed",
+            "repository": {"full_name": "acme/widgets"},
+            "pull_request": {"number": 42, "state": "closed", "merged": True},
+        }
+    ).encode()
+    headers = {
+        "x-hub-signature-256": _sign(secret, body),
+        "x-github-event": "pull_request",
+        "x-github-delivery": "delivery-pr-merged",
+        "content-type": "application/json",
+    }
+    r = client.post("/api/v1/webhooks/github", data=body, headers=headers)
+    assert r.status_code == 200, r.text
+    assert "updated pull request state to 'merged'" in r.json()["processing_result"]
+
+    r2 = client.get(f"/api/v1/projects/{project['id']}/tasks/{task['id']}", headers=alice)
+    assert r2.json()["git_pr_state"] == "merged"
+
+
+def test_webhook_pull_request_event_with_no_matching_task_is_recorded_not_an_error(client, monkeypatch):
+    monkeypatch.setattr(
+        GitHubAppAdapter,
+        "get_repository",
+        lambda self, installation_id, owner, name: RepositorySummary(
+            owner=owner, name=name, full_name=f"{owner}/{name}", default_branch="main", private=True
+        ),
+    )
+    monkeypatch.setattr(
+        GitHubAppAdapter,
+        "get_branch_head_commit",
+        lambda self, installation_id, owner, name, branch: CommitSummary(sha="abc123"),
+    )
+    alice = _register_and_login(client, "alice@example.com", "Alice")
+    org, project = _org_and_project(client, alice)
+    installation = client.post(
+        f"/api/v1/organizations/{org['id']}/git-installations",
+        json={"external_installation_id": "1"},
+        headers=alice,
+    ).json()
+    client.post(
+        f"/api/v1/projects/{project['id']}/repository-connections",
+        json={"git_installation_id": installation["id"], "owner": "acme", "name": "widgets"},
+        headers=alice,
+    )
+
+    secret = "webhook-secret"
+    monkeypatch.setattr(git_webhook, "get_settings", lambda: Settings(github_webhook_secret=secret))
+    body = json.dumps(
+        {
+            "repository": {"full_name": "acme/widgets"},
+            "pull_request": {"number": 999, "state": "open", "merged": False},
+        }
+    ).encode()
+    headers = {
+        "x-hub-signature-256": _sign(secret, body),
+        "x-github-event": "pull_request",
+        "x-github-delivery": "delivery-pr-no-match",
+        "content-type": "application/json",
+    }
+    r = client.post("/api/v1/webhooks/github", data=body, headers=headers)
+    assert r.status_code == 200
+    assert "matches no task" in r.json()["processing_result"]
+
+
 def test_webhook_requires_delivery_id(client):
     r = client.post(
         "/api/v1/webhooks/github",

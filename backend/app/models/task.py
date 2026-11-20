@@ -79,4 +79,9 @@ class Task(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     git_pr_url: Mapped[str] = mapped_column(String(500), default="", nullable=False)
     git_pr_number: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
+    # Phase 16: kept in sync with the real PR's lifecycle via GitHub's own
+    # `pull_request` webhook ("open", "closed", or "merged") -- never
+    # inferred or guessed locally; empty until Phase 15 actually opens one.
+    git_pr_state: Mapped[str] = mapped_column(String(20), default="", nullable=False)
+
     project: Mapped["Project"] = relationship()

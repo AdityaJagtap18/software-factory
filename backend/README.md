@@ -1,4 +1,4 @@
-# Software Factory — Backend (Phases 1–15: Foundation Through Real Pull Requests)
+# Software Factory — Backend (Phases 1–16: Foundation Through Real PR Lifecycle)
 
 FastAPI + PostgreSQL (+ Neo4j) backend implementing real authentication,
 organizations, membership, RBAC, projects, workspaces, coding-agent runtime
@@ -574,6 +574,27 @@ provider API key makes the same code paths report a real "Connected."**
   PR fields verified on the task response, and a PR-creation failure that
   is reported without overturning the task's own `completed` status).
 
+### Phase 16 — Real pull-request lifecycle via GitHub's own webhook
+- A task's `git_pr_state` ("open", "closed", or "merged") is no longer
+  just the value Phase 15 recorded at PR-creation time — it's kept in
+  sync with the PR's real lifecycle by GitHub's own `pull_request`
+  webhook event, which Phase 13 already received and recorded but didn't
+  yet act on. Matching is by real PR number within the connected
+  project only — never guessed from branch name or timing, and a
+  `pull_request` event for a PR this backend didn't open (or for a
+  project it can't match) is recorded honestly as such, never silently
+  dropped or treated as an error.
+- `state` is derived the same way GitHub itself represents it: `merged`
+  when the payload's `pull_request.merged` is true, otherwise GitHub's
+  own `open`/`closed` — never inferred from the webhook `action` field.
+- The PR state is surfaced as a pill next to the "PR #N" link in both the
+  project workspace's Tasks tab and the task workspace's Git sidebar
+  card.
+- 2 new backend tests (104/104 total): a real webhook delivery that
+  flips a matching task's PR state to `merged` (verified by re-fetching
+  the task over the API), and a `pull_request` event that matches no
+  task, recorded honestly rather than silently accepted or errored.
+
 ## What's intentionally not here yet
 
 Temporal/LangGraph-based durable workflow orchestration (this pass's
@@ -581,12 +602,12 @@ Factory Supervisor sequences steps via a background thread against the
 real database, not a distributed workflow engine), cloning a remote git
 repository server-side for ingestion (by design — see Phase 9; ingestion
 only reads a local path the backend host can already see), the rest of
-PR-lifecycle handling (branch protection, CI status, and acting on review
-state — Phase 13 records non-`push` webhook events but doesn't yet act on
-them, and Phase 15 only opens the PR itself), and coordinating presence
-across multiple backend replicas (Phase 6's presence registry is
-single-process/in-memory) are later phases of the execution spec and are
-not implemented in this pass.
+PR-lifecycle handling (branch protection and CI/check-status events are
+still received and recorded without deeper action — Phase 16 only acts
+on `pull_request` events), and coordinating presence across multiple
+backend replicas (Phase 6's presence registry is single-process/
+in-memory) are later phases of the execution spec and are not
+implemented in this pass.
 
 Several frontend-only pages the original UI scaffold shipped with are
 still backed by static mock data rather than this backend — Agents,

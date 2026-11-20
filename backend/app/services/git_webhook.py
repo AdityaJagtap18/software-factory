@@ -21,11 +21,13 @@ from app.models.git_integration import (
     RepositoryConnectionStatus,
     WebhookEvent,
 )
+from app.models.task import Task
 
-# Event types this phase actually acts on. Branch create/delete, pull-request
-# lifecycle, and CI/check-status events are received and recorded (never
-# silently dropped) but their deeper handling is later roadmap scope (PR
-# lifecycle lands in Phase 15) -- recorded here rather than claimed as done.
+# Event types this phase actually acts on. Branch create/delete and
+# CI/check-status events are received and recorded (never silently
+# dropped) but their deeper handling is later roadmap scope -- recorded
+# here rather than claimed as done. `push` (Phase 13) and `pull_request`
+# (Phase 16) are genuinely handled below.
 _METADATA_SYNC_EVENTS = {"push"}
 
 
@@ -46,6 +48,33 @@ def _find_connections(db: DBSession, full_name: str) -> list[RepositoryConnectio
     if not full_name:
         return []
     return db.query(RepositoryConnection).filter_by(full_name=full_name).all()
+
+
+def _apply_pull_request_event(
+    db: DBSession, connections: list[RepositoryConnection], payload: dict
+) -> str:
+    """Phase 16: keeps the originating task's `git_pr_state` in sync with
+    GitHub's own real pull-request state ("open", "closed", or "merged").
+    Matched only by PR number within the connected project(s) -- never
+    guessed from the branch name or timing. A PR GitHub opened some other
+    way (not via Phase 15) matches no task and is recorded as such."""
+    pr = payload.get("pull_request") or {}
+    pr_number = pr.get("number")
+    if not pr_number:
+        return "recorded: pull_request event missing a PR number"
+
+    state = "merged" if pr.get("merged") else pr.get("state", "")
+    project_ids = [c.project_id for c in connections]
+    tasks = (
+        db.query(Task)
+        .filter(Task.project_id.in_(project_ids), Task.git_pr_number == pr_number)
+        .all()
+    )
+    for task in tasks:
+        task.git_pr_state = state
+    if not tasks:
+        return f"recorded: pull_request #{pr_number} matches no task opened by this backend"
+    return f"updated pull request state to '{state}' on {len(tasks)} task(s)"
 
 
 def process_event(
@@ -92,6 +121,9 @@ def process_event(
     connections = _find_connections(db, full_name)
     if not connections:
         event.processing_result = "recorded: no matching repository connection"
+    elif event_type == "pull_request":
+        event.processing_result = _apply_pull_request_event(db, connections, payload)
+        event.repository_connection_id = connections[0].id
     elif event_type not in _METADATA_SYNC_EVENTS:
         event.processing_result = f"recorded: '{event_type}' event type handling not yet implemented"
     else:

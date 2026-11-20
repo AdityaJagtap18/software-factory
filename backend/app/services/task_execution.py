@@ -20,6 +20,11 @@ Phase 15: once that task actually changed files, its branch is pushed to
 the real remote and a real pull request is opened from it via the Git
 Provider Interface -- never a fabricated PR number or URL, and a push/PR
 failure never overturns the adapter's own success/failure verdict.
+
+Phase 16: the PR's state recorded here (`git_pr_state`) is only the
+initial "open" -- it is kept in sync with the PR's real lifecycle
+(merged/closed) by GitHub's own `pull_request` webhook, handled in
+`app/services/git_webhook.py`, never inferred or polled from here.
 """
 
 import threading
@@ -177,6 +182,7 @@ def execute_task(
                 )
                 task.git_pr_url = pr.url
                 task.git_pr_number = pr.number
+                task.git_pr_state = pr.state
             except (git_worktree.WorktreeError, GitProviderError) as exc:
                 note = f"Task output recorded, but could not open a pull request: {exc.detail}"
                 task.error_message = f"{task.error_message} ({note})" if task.error_message else note

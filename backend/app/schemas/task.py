@@ -40,6 +40,7 @@ class TaskResponse(BaseModel):
     git_changed_files: list[str] = []
     git_pr_url: str = ""
     git_pr_number: int = 0
+    git_pr_state: str = ""
 
     model_config = {"from_attributes": True}
 

@@ -255,6 +255,7 @@ def stream_task(
                     "git_changed_files": task.git_changed_files,
                     "git_pr_url": task.git_pr_url,
                     "git_pr_number": task.git_pr_number,
+                    "git_pr_state": task.git_pr_state,
                 }
                 yield f"data: {json.dumps(payload)}\n\n"
                 if task.status != TaskStatus.RUNNING:

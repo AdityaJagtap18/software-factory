@@ -134,7 +134,7 @@
                       </button>
                     }
                     @if (t.git_pr_url) {
-                      <div><a [href]="t.git_pr_url" target="_blank" rel="noopener" style="font-size:12px;">PR #{{ t.git_pr_number }}</a></div>
+                      <div><a [href]="t.git_pr_url" target="_blank" rel="noopener" style="font-size:12px;">PR #{{ t.git_pr_number }}</a> <span class="sf-pill">{{ t.git_pr_state }}</span></div>
                     }
                   } @else { — }
                 </td>

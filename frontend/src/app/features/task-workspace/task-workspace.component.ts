@@ -5,6 +5,7 @@ import { DatePipe } from '@angular/common';
 import { IconComponent } from '../../shared/icon/icon.component';
 import { TaskService } from '../../core/org/task.service';
 import { TaskDiff } from '../../core/org/task.models';
+import { DiffFile, parseUnifiedDiff } from '../../shared/diff/diff-parser';
 
 @Component({
   selector: 'sf-task-workspace',
@@ -35,9 +36,35 @@ export class TaskWorkspaceComponent {
   readonly showingDiff = signal(false);
   readonly loadingDiff = signal(false);
   readonly taskDiff = signal<TaskDiff | null>(null);
+  readonly selectedDiffPath = signal<string | null>(null);
+
+  readonly diffFiles = computed<DiffFile[]>(() => {
+    const diff = this.taskDiff();
+    return diff ? parseUnifiedDiff(diff.git_diff) : [];
+  });
+
+  readonly diffTotals = computed(() => {
+    const files = this.diffFiles();
+    return {
+      files: files.length,
+      additions: files.reduce((sum, f) => sum + f.additions, 0),
+      deletions: files.reduce((sum, f) => sum + f.deletions, 0)
+    };
+  });
+
+  readonly selectedDiffFile = computed<DiffFile | null>(() => {
+    const files = this.diffFiles();
+    if (files.length === 0) return null;
+    const wanted = this.selectedDiffPath();
+    return files.find((f) => f.path === wanted) ?? files[0];
+  });
 
   constructor() {
     this.taskService.listMine().subscribe();
+  }
+
+  selectDiffFile(path: string): void {
+    this.selectedDiffPath.set(path);
   }
 
   toggleDiff(): void {
@@ -49,6 +76,7 @@ export class TaskWorkspaceComponent {
     }
     this.showingDiff.set(true);
     this.loadingDiff.set(true);
+    this.selectedDiffPath.set(null);
     this.taskService.getDiff(task.project_id, task.id).subscribe({
       next: (diff) => {
         this.taskDiff.set(diff);

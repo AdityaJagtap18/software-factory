@@ -96,15 +96,8 @@
           @if (selectedTask()!.git_changed_files.length > 0) {
             <div style="padding:0 18px 14px;">
               <button class="sf-btn" type="button" style="padding:5px 10px;" (click)="toggleDiff()">
-                {{ showingDiff() ? 'Hide diff' : 'View diff' }}
+                {{ showingDiff() ? 'Hide code changes' : 'View code changes' }}
               </button>
-              @if (showingDiff()) {
-                @if (loadingDiff()) {
-                  <div class="sf-empty">Loading diff…</div>
-                } @else if (taskDiff()) {
-                  <pre style="max-height:280px; overflow:auto; background: var(--sf-bg-secondary); padding:10px; margin-top:10px; border-radius:8px; font-size:11.5px; white-space:pre-wrap;">{{ taskDiff()!.git_diff || 'No changes.' }}</pre>
-                }
-              }
             </div>
           }
         </section>
@@ -125,4 +118,65 @@
       </section>
     </aside>
   </div>
+
+  @if (showingDiff()) {
+    <section class="sf-card tw-diff-card">
+      <div class="sf-panel-title">
+        <h3>Code Changes</h3>
+        @if (!loadingDiff() && diffFiles().length > 0) {
+          <div class="tw-diff__totals">
+            <span class="sf-pill">{{ diffTotals().files }} file(s)</span>
+            <span class="tw-diff__added">+{{ diffTotals().additions }}</span>
+            <span class="tw-diff__removed">-{{ diffTotals().deletions }}</span>
+          </div>
+        }
+      </div>
+      @if (loadingDiff()) {
+        <div class="sf-empty">Loading diff…</div>
+      } @else if (diffFiles().length === 0) {
+        <div class="sf-empty">No changes.</div>
+      } @else {
+        <div class="tw-diff">
+          <aside class="tw-diff__filelist">
+            @for (f of diffFiles(); track f.path) {
+              <button
+                type="button"
+                class="tw-diff__file"
+                [class.active]="f.path === selectedDiffFile()?.path"
+                (click)="selectDiffFile(f.path)"
+              >
+                <sf-icon name="workspace/code-diff" />
+                <span class="tw-diff__file-path">{{ f.path }}</span>
+                <span class="tw-diff__file-stats">
+                  <span class="tw-diff__added">+{{ f.additions }}</span>
+                  <span class="tw-diff__removed">-{{ f.deletions }}</span>
+                </span>
+              </button>
+            }
+          </aside>
+          @if (selectedDiffFile(); as file) {
+            <div class="tw-diff__code">
+              <div class="tw-diff__code-head">
+                {{ file.path }}
+                <span class="tw-diff__added">+{{ file.additions }}</span>
+                <span class="tw-diff__removed">-{{ file.deletions }}</span>
+              </div>
+              <div class="tw-diff__code-body">
+                @for (line of file.lines; track $index) {
+                  @if (line.type !== 'meta') {
+                    <div [class]="'tw-diff__line tw-diff__line--' + line.type">
+                      <span class="tw-diff__lineno">{{ line.oldLineNo ?? '' }}</span>
+                      <span class="tw-diff__lineno">{{ line.newLineNo ?? '' }}</span>
+                      <span class="tw-diff__prefix">{{ line.type === 'add' ? '+' : line.type === 'del' ? '-' : '' }}</span>
+                      <span class="tw-diff__text">{{ line.text }}</span>
+                    </div>
+                  }
+                }
+              </div>
+            </div>
+          }
+        </div>
+      }
+    </section>
+  }
 }

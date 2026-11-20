@@ -12,6 +12,7 @@ class TaskCreate(BaseModel):
     description: str = ""
     priority: TaskPriority = TaskPriority.MEDIUM
     coding_agent_connection_id: UUID | None = None
+    base_branch: str = ""
 
 
 class TaskUpdate(BaseModel):

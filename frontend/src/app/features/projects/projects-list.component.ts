@@ -39,6 +39,9 @@ export class ProjectsListComponent implements OnInit {
   readonly createRepoError = signal('');
   readonly selectedRepoFullName = signal('');
   readonly repoFilterTerm = signal('');
+  readonly createRepoMode = signal<'existing' | 'new'>('existing');
+  readonly newRepoName = signal('');
+  readonly newRepoPrivate = signal(true);
 
   readonly filteredCreateRepositories = computed(() => {
     const term = this.repoFilterTerm().toLowerCase().trim();
@@ -88,10 +91,18 @@ export class ProjectsListComponent implements OnInit {
     this.createRepoError.set('');
     this.selectedRepoFullName.set('');
     this.repoFilterTerm.set('');
+    this.createRepoMode.set('existing');
+    this.newRepoName.set('');
+    this.newRepoPrivate.set(true);
     const firstInstallation = this.gitInstallations()[0];
     this.createInstallationId.set(firstInstallation?.id ?? '');
     this.showCreate.set(true);
     if (firstInstallation) this.loadCreateRepositories();
+  }
+
+  setCreateRepoMode(mode: 'existing' | 'new') {
+    this.createRepoMode.set(mode);
+    this.createRepoError.set('');
   }
 
   closeCreate() {
@@ -132,6 +143,10 @@ export class ProjectsListComponent implements OnInit {
   }
 
   submitCreate() {
+    if (this.createRepoMode() === 'new') {
+      this.submitCreateWithNewRepo();
+      return;
+    }
     const orgId = this.orgService.activeOrgId();
     const name = this.newProjectName().trim();
     if (!orgId || !name) return;
@@ -172,6 +187,46 @@ export class ProjectsListComponent implements OnInit {
             this.showCreate.set(false);
             this.router.navigate(['/projects', project.id]);
           }
+        },
+        error: () => this.creating.set(false)
+      });
+  }
+
+  private submitCreateWithNewRepo() {
+    const orgId = this.orgService.activeOrgId();
+    const name = this.newProjectName().trim();
+    const repoName = this.newRepoName().trim();
+    const installationId = this.createInstallationId();
+    const installation = this.gitInstallations().find((i) => i.id === installationId);
+    if (!orgId || !name || !repoName || !installationId) return;
+    this.creating.set(true);
+    this.createRepoError.set('');
+
+    this.projectService
+      .create(orgId, {
+        name,
+        description: this.newProjectDescription().trim(),
+        repository_url: installation?.account_login ? `github.com/${installation.account_login}/${repoName}` : ''
+      })
+      .subscribe({
+        next: (project) => {
+          this.gitService
+            .createRepository(project.id, { git_installation_id: installationId, name: repoName, private: this.newRepoPrivate() })
+            .subscribe({
+              complete: () => {
+                this.creating.set(false);
+                this.showCreate.set(false);
+                this.router.navigate(['/projects', project.id]);
+              },
+              error: (err) => {
+                this.creating.set(false);
+                this.createRepoError.set(err?.error?.detail ?? 'Could not create the repository on GitHub.');
+                // The project itself was created successfully -- let the
+                // user continue there and connect/retry from Settings
+                // rather than losing it over this failure.
+                this.router.navigate(['/projects', project.id]);
+              }
+            });
         },
         error: () => this.creating.set(false)
       });

@@ -35,6 +35,7 @@ export interface CreateTaskPayload {
   description?: string;
   priority?: TaskPriority;
   coding_agent_connection_id?: string | null;
+  base_branch?: string;
 }
 
 export interface TaskDiff {

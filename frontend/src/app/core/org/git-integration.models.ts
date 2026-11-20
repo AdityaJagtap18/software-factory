@@ -49,3 +49,41 @@ export interface CreateRepositoryConnectionPayload {
   name: string;
   selected_working_branches?: string[];
 }
+
+export interface BranchSummary {
+  name: string;
+  commit_sha: string;
+  protected: boolean;
+}
+
+export interface CreateBranchPayload {
+  name: string;
+  from_branch?: string;
+}
+
+export interface BranchComparisonCommit {
+  sha: string;
+  message: string;
+  author_login: string;
+  authored_at: string | null;
+}
+
+export interface BranchComparison {
+  ahead_by: number;
+  behind_by: number;
+  commits: BranchComparisonCommit[];
+  diff_text: string;
+}
+
+export interface MergePullRequestResult {
+  merged: boolean;
+  sha: string;
+  message: string;
+}
+
+export interface CreateRepositoryPayload {
+  git_installation_id: string;
+  name: string;
+  private?: boolean;
+  selected_working_branches?: string[];
+}

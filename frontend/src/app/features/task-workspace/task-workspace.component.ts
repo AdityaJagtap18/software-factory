@@ -7,6 +7,7 @@ import { IconComponent } from '../../shared/icon/icon.component';
 import { TaskService } from '../../core/org/task.service';
 import { TaskDiff, TaskMessage } from '../../core/org/task.models';
 import { DiffFile, parseUnifiedDiff } from '../../shared/diff/diff-parser';
+import { GitIntegrationService } from '../../core/org/git-integration.service';
 
 export type TaskWorkspaceTab = 'conversation' | 'changes' | 'tests' | 'quality' | 'artifacts' | 'logs';
 
@@ -20,6 +21,7 @@ export type TaskWorkspaceTab = 'conversation' | 'changes' | 'tests' | 'quality' 
 })
 export class TaskWorkspaceComponent {
   private readonly taskService = inject(TaskService);
+  private readonly gitService = inject(GitIntegrationService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
 
@@ -41,6 +43,8 @@ export class TaskWorkspaceComponent {
   });
 
   readonly startingTaskId = signal<string | null>(null);
+  readonly mergingPr = signal(false);
+  readonly mergePrError = signal('');
 
   readonly tab = signal<TaskWorkspaceTab>('conversation');
 
@@ -216,6 +220,27 @@ export class TaskWorkspaceComponent {
     const task = this.selectedTask();
     if (!task) return;
     this.taskService.cancel(task.project_id, task.id).subscribe();
+  }
+
+  mergePr(): void {
+    const task = this.selectedTask();
+    if (!task || this.mergingPr()) return;
+    this.mergingPr.set(true);
+    this.mergePrError.set('');
+    this.gitService.mergePullRequest(task.project_id, task.id).subscribe({
+      next: (result) => {
+        this.mergingPr.set(false);
+        if (result.merged) {
+          this.taskService.markPrMerged(task.id);
+        } else {
+          this.mergePrError.set(result.message || 'GitHub did not merge this pull request.');
+        }
+      },
+      error: (err) => {
+        this.mergingPr.set(false);
+        this.mergePrError.set(err?.error?.detail ?? 'Could not merge this pull request.');
+      }
+    });
   }
 
   messageAvatar(role: string): string {

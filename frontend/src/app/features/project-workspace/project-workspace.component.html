@@ -187,6 +187,23 @@
           <label for="taskDesc">Description</label>
           <input id="taskDesc" type="text" placeholder="What should the agent do?" [value]="newTaskDescription()" (input)="newTaskDescription.set($any($event.target).value)" />
 
+          @if (repositoryConnections().length > 0) {
+            <label for="taskBranch">Base branch</label>
+            @if (loadingNewTaskBranches()) {
+              <p class="set-note" style="padding-left:0;">Loading branches…</p>
+            } @else {
+              <select id="taskBranch" [value]="newTaskBaseBranch()" (change)="newTaskBaseBranch.set($any($event.target).value)">
+                @for (b of newTaskBranches(); track b.name) {
+                  <option [value]="b.name">{{ b.name }}</option>
+                }
+              </select>
+            }
+            <p class="set-note" style="padding-left:0;">
+              The task's worktree and new branch are built on top of this branch — not necessarily the
+              repository's default.
+            </p>
+          }
+
           <label for="taskConn">Coding-agent connection</label>
           <select id="taskConn" [value]="newTaskConnectionId()" (change)="newTaskConnectionId.set($any($event.target).value)">
             <option value="">Unassigned (configure later)</option>
@@ -474,9 +491,88 @@
                   <button class="sf-btn" type="button" style="padding:5px 10px;" [disabled]="syncingConnectionId() === c.id" (click)="syncRepositoryConnection(c.id)">
                     {{ syncingConnectionId() === c.id ? 'Syncing…' : 'Sync now' }}
                   </button>
+                  <button class="sf-btn" type="button" style="padding:5px 10px;" (click)="toggleBranches(c)">
+                    {{ expandedBranchesConnectionId() === c.id ? 'Hide branches' : 'Branches' }}
+                  </button>
                   <button class="sf-btn" type="button" style="padding:5px 10px;" (click)="disconnectRepositoryConnection(c.id)">Disconnect</button>
                 </td>
               </tr>
+              @if (expandedBranchesConnectionId() === c.id) {
+                <tr>
+                  <td colspan="6">
+                    <div class="sf-card" style="margin: 8px 0;">
+                      <div class="sf-panel-title"><h3>Branches — {{ c.full_name }}</h3></div>
+
+                      <div style="display:flex; gap:8px; align-items:flex-end; margin-bottom:12px;">
+                        <div>
+                          <label for="newBranchName">New branch name</label>
+                          <input id="newBranchName" type="text" placeholder="e.g. sf-experiment" [value]="newBranchName()" (input)="newBranchName.set($any($event.target).value)" />
+                        </div>
+                        <div>
+                          <label for="newBranchFrom">From</label>
+                          <select id="newBranchFrom" [value]="newBranchFrom()" (change)="newBranchFrom.set($any($event.target).value)">
+                            @for (b of branches(); track b.name) {
+                              <option [value]="b.name">{{ b.name }}</option>
+                            }
+                          </select>
+                        </div>
+                        <button type="button" class="sf-btn sf-btn--primary" style="padding:5px 10px;" [disabled]="creatingBranch() || !newBranchName().trim()" (click)="createBranch(c.id)">
+                          {{ creatingBranch() ? 'Creating…' : 'Create branch' }}
+                        </button>
+                      </div>
+
+                      @if (branchesError()) {
+                        <p class="set-note" style="color: var(--sf-red-600); padding-left:0;">{{ branchesError() }}</p>
+                      }
+
+                      @if (loadingBranches()) {
+                        <div class="sf-empty">Loading branches…</div>
+                      } @else if (branches().length === 0) {
+                        <div class="sf-empty">No branches found.</div>
+                      } @else {
+                        <table class="sf-table">
+                          <thead><tr><th>Branch</th><th>Commit</th><th>Protected</th><th></th></tr></thead>
+                          <tbody>
+                            @for (b of branches(); track b.name) {
+                              <tr>
+                                <td>{{ b.name }}</td>
+                                <td>{{ b.commit_sha.slice(0, 7) }}</td>
+                                <td>{{ b.protected ? 'Yes' : 'No' }}</td>
+                                <td>
+                                  <button class="sf-btn" type="button" style="padding:4px 8px;" (click)="inspectBranch(c.id, b.name, c.default_branch)">
+                                    {{ inspectingBranchName() === b.name ? 'Hide' : 'Compare vs ' + (c.default_branch || 'default') }}
+                                  </button>
+                                </td>
+                              </tr>
+                              @if (inspectingBranchName() === b.name) {
+                                <tr>
+                                  <td colspan="4">
+                                    @if (loadingComparison()) {
+                                      <div class="sf-empty">Loading comparison…</div>
+                                    } @else if (comparisonError()) {
+                                      <p class="set-note" style="color: var(--sf-red-600); padding-left:0;">{{ comparisonError() }}</p>
+                                    } @else if (branchComparison()) {
+                                      <p class="set-note" style="padding-left:0;">
+                                        {{ branchComparison()!.ahead_by }} ahead, {{ branchComparison()!.behind_by }} behind {{ c.default_branch }}
+                                      </p>
+                                      @for (commit of branchComparison()!.commits; track commit.sha) {
+                                        <div class="set-rt-desc">{{ commit.sha.slice(0, 7) }} — {{ commit.message }}</div>
+                                      }
+                                      @if (branchComparison()!.diff_text) {
+                                        <pre style="max-height:300px; overflow:auto; background: var(--sf-surface-muted, #f5f5f5); padding:10px; border-radius:6px; font-size:12px;">{{ branchComparison()!.diff_text }}</pre>
+                                      }
+                                    }
+                                  </td>
+                                </tr>
+                              }
+                            }
+                          </tbody>
+                        </table>
+                      }
+                    </div>
+                  </td>
+                </tr>
+              }
             }
           </tbody>
         </table>
@@ -488,6 +584,11 @@
         <div class="org-modal" (click)="$event.stopPropagation()">
           <h3>Connect a repository</h3>
 
+          <div style="display:flex; gap:8px; margin-bottom:12px;">
+            <button type="button" class="sf-btn" [class.sf-btn--primary]="connectRepoMode() === 'existing'" (click)="setConnectRepoMode('existing')">Connect existing</button>
+            <button type="button" class="sf-btn" [class.sf-btn--primary]="connectRepoMode() === 'new'" (click)="setConnectRepoMode('new')">Create new repo</button>
+          </div>
+
           <label for="repoInstallation">GitHub App installation</label>
           <select id="repoInstallation" [value]="connectRepoInstallationId()" (change)="onConnectRepoInstallationChange($any($event.target).value)">
             @for (i of gitInstallations(); track i.id) {
@@ -495,16 +596,30 @@
             }
           </select>
 
-          <label for="repoSelect">Repository</label>
-          @if (loadingRepositories()) {
-            <p class="set-note" style="padding-left:0;">Loading repositories from GitHub…</p>
+          @if (connectRepoMode() === 'existing') {
+            <label for="repoSelect">Repository</label>
+            @if (loadingRepositories()) {
+              <p class="set-note" style="padding-left:0;">Loading repositories from GitHub…</p>
+            } @else {
+              <select id="repoSelect" [value]="selectedRepositoryFullName()" (change)="selectedRepositoryFullName.set($any($event.target).value)">
+                <option value="">Select a repository…</option>
+                @for (r of availableRepositories(); track r.full_name) {
+                  <option [value]="r.full_name">{{ r.full_name }}</option>
+                }
+              </select>
+            }
           } @else {
-            <select id="repoSelect" [value]="selectedRepositoryFullName()" (change)="selectedRepositoryFullName.set($any($event.target).value)">
-              <option value="">Select a repository…</option>
-              @for (r of availableRepositories(); track r.full_name) {
-                <option [value]="r.full_name">{{ r.full_name }}</option>
-              }
-            </select>
+            <label for="newRepoName">New repository name</label>
+            <input id="newRepoName" type="text" placeholder="e.g. my-new-service" [value]="newRepoName()" (input)="newRepoName.set($any($event.target).value)" />
+            <label style="display:flex; align-items:center; gap:6px; padding-left:0;">
+              <input type="checkbox" [checked]="newRepoPrivate()" (change)="newRepoPrivate.set($any($event.target).checked)" />
+              Private repository
+            </label>
+            <p class="set-note" style="padding-left:0;">
+              Creates a brand-new repository on GitHub under this installation's account, then connects it
+              to this project — only works for installations on an organization account (GitHub does not
+              allow app installations to create repositories under a personal account).
+            </p>
           }
 
           @if (repoConnectError()) {
@@ -513,9 +628,15 @@
 
           <div class="org-modal__actions">
             <button type="button" class="sf-btn" (click)="closeConnectRepository()">Cancel</button>
-            <button type="button" class="sf-btn sf-btn--primary" [disabled]="connectingRepository() || !selectedRepositoryFullName()" (click)="submitConnectRepository()">
-              {{ connectingRepository() ? 'Connecting…' : 'Connect' }}
-            </button>
+            @if (connectRepoMode() === 'existing') {
+              <button type="button" class="sf-btn sf-btn--primary" [disabled]="connectingRepository() || !selectedRepositoryFullName()" (click)="submitConnectRepository()">
+                {{ connectingRepository() ? 'Connecting…' : 'Connect' }}
+              </button>
+            } @else {
+              <button type="button" class="sf-btn sf-btn--primary" [disabled]="connectingRepository() || !newRepoName().trim()" (click)="submitConnectRepository()">
+                {{ connectingRepository() ? 'Creating…' : 'Create & connect' }}
+              </button>
+            }
           </div>
         </div>
       </div>

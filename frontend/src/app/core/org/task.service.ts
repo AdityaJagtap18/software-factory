@@ -57,6 +57,12 @@ export class TaskService {
     this.myTasks.update((list) => list.map((t) => (t.id === taskId ? { ...t, ...patch } : t)));
   }
 
+  /** Reflects a real merge result (from `GitIntegrationService.mergePullRequest`)
+   * in the local task lists without a full re-fetch. */
+  markPrMerged(taskId: string): void {
+    this.patchTask(taskId, { git_pr_state: 'merged' });
+  }
+
   /**
    * Starts a task, then live-streams its real status/output over SSE and
    * applies each genuine update to the local task list as it arrives — no

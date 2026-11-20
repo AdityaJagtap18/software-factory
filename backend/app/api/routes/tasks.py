@@ -9,10 +9,12 @@ from starlette.responses import StreamingResponse
 from app.api.deps import ProjectContext, get_current_user, require_project_access
 from app.core.database import SessionLocal, get_db
 from app.models.agent_runtime import CodingAgentConnection
+from app.models.git_integration import RepositoryConnection, RepositoryConnectionStatus
 from app.models.project import Project, ProjectRole
 from app.models.task import Task, TaskStatus
 from app.models.task_message import TaskMessage, TaskMessageRole
 from app.models.user import User
+from app.schemas.git_integration import MergePullRequestResult
 from app.schemas.task import (
     MyTaskResponse,
     TaskCreate,
@@ -24,6 +26,8 @@ from app.schemas.task import (
 )
 from app.services import audit
 from app.services.access import visible_project_ids
+from app.services.git_provider.base import GitProviderError
+from app.services.git_provider.registry import get_git_provider
 from app.services.task_execution import start_followup_in_background, start_task_in_background
 
 _STREAM_POLL_SECONDS = 0.5
@@ -104,6 +108,10 @@ def create_task(
         description=payload.description,
         priority=payload.priority,
         coding_agent_connection_id=payload.coding_agent_connection_id,
+        # A real, user-chosen base branch to build this task's worktree on
+        # top of (see `git_worktree.prepare_worktree`) -- empty falls back
+        # to the connected repository's own default branch.
+        git_base_branch=payload.base_branch,
         created_by_user_id=user.id,
     )
     db.add(task)
@@ -231,6 +239,64 @@ def get_task_diff(
     (Phase 14) — empty fields for a task that had no repository connection
     or made no file changes, never a fabricated one."""
     return _get_task_or_404(db, project_id, task_id)
+
+
+@router.post(
+    "/projects/{project_id}/tasks/{task_id}/merge-pr",
+    response_model=MergePullRequestResult,
+)
+def merge_task_pull_request(
+    project_id: uuid.UUID,
+    task_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    ctx: ProjectContext = Depends(require_project_access),
+    db: DBSession = Depends(get_db),
+) -> MergePullRequestResult:
+    """Merges this task's real, already-open pull request via GitHub's own
+    merge endpoint -- never a local merge, and never bypassing whatever
+    protections/checks GitHub itself enforces on the base branch."""
+    ctx.require_role(MANAGE_ROLES)
+    task = _get_task_or_404(db, project_id, task_id)
+    if not task.git_pr_number:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This task has no open pull request to merge")
+
+    connection = (
+        db.query(RepositoryConnection)
+        .filter(
+            RepositoryConnection.project_id == project_id,
+            RepositoryConnection.status == RepositoryConnectionStatus.CONNECTED,
+        )
+        .first()
+    )
+    if connection is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This project has no connected repository")
+
+    adapter = get_git_provider(connection.installation.provider.value)
+    if adapter is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unknown git provider")
+    try:
+        result = adapter.merge_pull_request(
+            connection.installation.external_installation_id,
+            connection.owner,
+            connection.name,
+            task.git_pr_number,
+        )
+    except GitProviderError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, exc.detail) from exc
+
+    if result.merged:
+        task.git_pr_state = "merged"
+        audit.record(
+            db,
+            action="task.merge_pr",
+            target_type="task",
+            target_id=str(task.id),
+            actor_user_id=user.id,
+            organization_id=ctx.project.organization_id,
+            extra={"pr_number": task.git_pr_number, "sha": result.sha},
+        )
+        db.commit()
+    return MergePullRequestResult(merged=result.merged, sha=result.sha, message=result.message)
 
 
 @router.get("/projects/{project_id}/tasks/{task_id}/messages", response_model=list[TaskMessageResponse])

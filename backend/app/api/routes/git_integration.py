@@ -24,10 +24,14 @@ from app.models.organization import OrganizationMember
 from app.models.project import ProjectRole
 from app.models.user import User
 from app.schemas.git_integration import (
+    BranchComparisonSchema,
+    BranchCreate,
+    BranchSummarySchema,
     GitInstallationCreate,
     GitInstallationResponse,
     RepositoryConnectionCreate,
     RepositoryConnectionResponse,
+    RepositoryCreate,
     RepositorySummarySchema,
     WebhookEventResponse,
 )
@@ -322,6 +326,189 @@ def sync_repository_connection_now(
     same real sync logic a webhook triggers, runnable on demand."""
     connection = _get_repository_connection_or_404(db, project_id, connection_id)
     git_sync.sync_repository_connection(connection)
+    db.commit()
+    db.refresh(connection)
+    return connection
+
+
+@router.get(
+    "/projects/{project_id}/repository-connections/{connection_id}/branches",
+    response_model=list[BranchSummarySchema],
+)
+def list_connection_branches(
+    project_id: uuid.UUID,
+    connection_id: uuid.UUID,
+    ctx: ProjectContext = Depends(require_project_access),
+    db: DBSession = Depends(get_db),
+) -> list[BranchSummarySchema]:
+    connection = _get_repository_connection_or_404(db, project_id, connection_id)
+    adapter = get_git_provider(connection.installation.provider.value)
+    if adapter is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unknown git provider")
+    try:
+        branches = adapter.list_branches(
+            connection.installation.external_installation_id, connection.owner, connection.name
+        )
+    except GitProviderError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, exc.detail) from exc
+    return [BranchSummarySchema(**vars(b)) for b in branches]
+
+
+@router.post(
+    "/projects/{project_id}/repository-connections/{connection_id}/branches",
+    response_model=BranchSummarySchema,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_connection_branch(
+    project_id: uuid.UUID,
+    connection_id: uuid.UUID,
+    payload: BranchCreate,
+    ctx: ProjectContext = Depends(require_project_access),
+    user: User = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+) -> BranchSummarySchema:
+    ctx.require_role({ProjectRole.PROJECT_ADMIN, ProjectRole.DEVELOPER})
+    connection = _get_repository_connection_or_404(db, project_id, connection_id)
+    adapter = get_git_provider(connection.installation.provider.value)
+    if adapter is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unknown git provider")
+    from_branch = payload.from_branch or connection.default_branch
+    if not from_branch:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "No base branch known for this repository")
+    try:
+        branch = adapter.create_branch(
+            connection.installation.external_installation_id,
+            connection.owner,
+            connection.name,
+            payload.name,
+            from_branch,
+        )
+    except GitProviderError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, exc.detail) from exc
+    audit.record(
+        db,
+        action="repository_branch.create",
+        target_type="repository_connection",
+        target_id=str(connection.id),
+        actor_user_id=user.id,
+        organization_id=ctx.project.organization_id,
+        extra={"branch": payload.name, "from_branch": from_branch},
+    )
+    db.commit()
+    return BranchSummarySchema(**vars(branch))
+
+
+@router.get(
+    "/projects/{project_id}/repository-connections/{connection_id}/compare",
+    response_model=BranchComparisonSchema,
+)
+def compare_connection_branches(
+    project_id: uuid.UUID,
+    connection_id: uuid.UUID,
+    head: str,
+    base: str = "",
+    ctx: ProjectContext = Depends(require_project_access),
+    db: DBSession = Depends(get_db),
+) -> BranchComparisonSchema:
+    """Read-only: the real commits and diff of `head` against `base` (the
+    repository's default branch when `base` is omitted), so a branch can
+    be checked before deciding to merge it."""
+    connection = _get_repository_connection_or_404(db, project_id, connection_id)
+    adapter = get_git_provider(connection.installation.provider.value)
+    if adapter is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unknown git provider")
+    base_branch = base or connection.default_branch
+    if not base_branch:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "No base branch known for this repository")
+    try:
+        comparison = adapter.compare_branches(
+            connection.installation.external_installation_id,
+            connection.owner,
+            connection.name,
+            base_branch,
+            head,
+        )
+    except GitProviderError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, exc.detail) from exc
+    return BranchComparisonSchema(
+        ahead_by=comparison.ahead_by,
+        behind_by=comparison.behind_by,
+        commits=[
+            {
+                "sha": c.sha,
+                "message": c.message,
+                "author_login": c.author_login,
+                "authored_at": c.authored_at,
+            }
+            for c in comparison.commits
+        ],
+        diff_text=comparison.diff_text,
+    )
+
+
+@router.post(
+    "/projects/{project_id}/repository-connections/create-repository",
+    response_model=RepositoryConnectionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_repository_and_connect(
+    project_id: uuid.UUID,
+    payload: RepositoryCreate,
+    ctx: ProjectContext = Depends(require_project_access),
+    user: User = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+) -> RepositoryConnectionResponse:
+    """Creates a real, brand-new repository on GitHub, then connects it to
+    this project exactly as `create_repository_connection` would an
+    existing one -- one step, same real sync logic."""
+    ctx.require_role({ProjectRole.PROJECT_ADMIN})
+
+    installation = db.get(GitInstallation, payload.git_installation_id)
+    if installation is None or installation.organization_id != ctx.project.organization_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Installation not found for this organization")
+
+    adapter = get_git_provider(installation.provider.value)
+    if adapter is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unknown git provider")
+    try:
+        created = adapter.create_repository(
+            installation.external_installation_id, payload.name, payload.private
+        )
+    except GitProviderError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, exc.detail) from exc
+
+    existing = (
+        db.query(RepositoryConnection)
+        .filter_by(project_id=project_id, full_name=created.full_name)
+        .first()
+    )
+    if existing is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This repository is already connected to this project")
+
+    connection = RepositoryConnection(
+        project_id=project_id,
+        git_installation_id=installation.id,
+        owner=created.owner,
+        name=created.name,
+        full_name=created.full_name,
+        selected_working_branches=payload.selected_working_branches,
+        created_by_user_id=user.id,
+    )
+    connection.installation = installation
+    db.add(connection)
+    db.flush()
+
+    git_sync.sync_repository_connection(connection)
+
+    audit.record(
+        db,
+        action="repository_connection.create_repository",
+        target_type="repository_connection",
+        target_id=str(connection.id),
+        actor_user_id=user.id,
+        organization_id=ctx.project.organization_id,
+        extra={"full_name": created.full_name, "status": connection.status.value},
+    )
     db.commit()
     db.refresh(connection)
     return connection

@@ -109,7 +109,10 @@ def prepare_worktree(task: Task, connection: RepositoryConnection) -> WorktreeRe
     if target.exists():
         shutil.rmtree(target, onerror=_force_remove_readonly)
 
-    base_branch = connection.default_branch or "main"
+    # A task can request a specific branch to build on top of (set at
+    # creation time -- see TaskCreate.base_branch); falling back to the
+    # repository's own default branch when none was chosen.
+    base_branch = task.git_base_branch or connection.default_branch or "main"
     try:
         proc = subprocess.run(
             [

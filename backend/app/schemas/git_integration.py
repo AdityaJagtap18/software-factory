@@ -62,6 +62,44 @@ class RepositoryConnectionResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class BranchSummarySchema(BaseModel):
+    name: str
+    commit_sha: str
+    protected: bool = False
+
+
+class BranchCreate(BaseModel):
+    name: str
+    from_branch: str = ""
+
+
+class BranchComparisonCommitSchema(BaseModel):
+    sha: str
+    message: str
+    author_login: str = ""
+    authored_at: datetime | None = None
+
+
+class BranchComparisonSchema(BaseModel):
+    ahead_by: int
+    behind_by: int
+    commits: list[BranchComparisonCommitSchema]
+    diff_text: str
+
+
+class MergePullRequestResult(BaseModel):
+    merged: bool
+    sha: str = ""
+    message: str = ""
+
+
+class RepositoryCreate(BaseModel):
+    git_installation_id: UUID
+    name: str
+    private: bool = True
+    selected_working_branches: list[str] = []
+
+
 class WebhookEventResponse(BaseModel):
     id: UUID
     event_type: str

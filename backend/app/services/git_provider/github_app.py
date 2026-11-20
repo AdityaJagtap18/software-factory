@@ -17,13 +17,20 @@ import time
 import httpx
 import jwt
 
+from datetime import datetime
+
 from app.core.config import get_settings
 from app.services.git_provider.base import (
+    BranchComparison,
+    BranchComparisonCommit,
     BranchProtectionSummary,
+    BranchSummary,
     CommitSummary,
+    CreatedRepository,
     GitHealthCheckResult,
     GitProviderAdapter,
     GitProviderError,
+    MergeResult,
     PullRequestSummary,
     RepositorySummary,
 )
@@ -81,7 +88,7 @@ def _mint_installation_token(external_installation_id: str) -> str:
     return token
 
 
-def _get_installation_account_login(external_installation_id: str) -> str:
+def _get_installation_account(external_installation_id: str) -> dict:
     settings = get_settings()
     app_jwt = _build_app_jwt()
     try:
@@ -96,7 +103,11 @@ def _get_installation_account_login(external_installation_id: str) -> str:
         raise GitProviderError(
             f"GitHub rejected the installation lookup (HTTP {resp.status_code}): {resp.text[:300]}"
         )
-    return (resp.json().get("account") or {}).get("login", "")
+    return resp.json().get("account") or {}
+
+
+def _get_installation_account_login(external_installation_id: str) -> str:
+    return _get_installation_account(external_installation_id).get("login", "")
 
 
 def _repo_summary(data: dict) -> RepositorySummary:
@@ -275,4 +286,182 @@ class GitHubAppAdapter(GitProviderAdapter):
             protected=True,
             required_status_checks=list(contexts),
             required_approving_review_count=review_count,
+        )
+
+    def list_branches(self, external_installation_id: str, owner: str, name: str) -> list[BranchSummary]:
+        if not _app_configured():
+            raise GitProviderError(_not_configured_detail())
+        settings = get_settings()
+        token = _mint_installation_token(external_installation_id)
+        branches: list[BranchSummary] = []
+        page = 1
+        while True:
+            try:
+                resp = httpx.get(
+                    f"{settings.github_api_base_url}/repos/{owner}/{name}/branches",
+                    headers={"Authorization": f"Bearer {token}", **_API_VERSION_HEADERS},
+                    params={"per_page": 100, "page": page},
+                    timeout=_PROBE_TIMEOUT_SECONDS,
+                )
+            except httpx.HTTPError as exc:
+                raise GitProviderError(f"Could not reach GitHub: {exc}") from exc
+            if resp.status_code != 200:
+                raise GitProviderError(
+                    f"GitHub rejected the branch list request for '{owner}/{name}' "
+                    f"(HTTP {resp.status_code}): {resp.text[:300]}"
+                )
+            page_branches = resp.json()
+            branches.extend(
+                BranchSummary(
+                    name=b.get("name", ""),
+                    commit_sha=(b.get("commit") or {}).get("sha", ""),
+                    protected=bool(b.get("protected", False)),
+                )
+                for b in page_branches
+            )
+            if len(page_branches) < 100:
+                break
+            page += 1
+        return branches
+
+    def create_branch(
+        self, external_installation_id: str, owner: str, name: str, new_branch: str, from_branch: str
+    ) -> BranchSummary:
+        if not _app_configured():
+            raise GitProviderError(_not_configured_detail())
+        base_commit = self.get_branch_head_commit(external_installation_id, owner, name, from_branch)
+        if not base_commit.sha:
+            raise GitProviderError(f"Could not resolve the HEAD commit of '{from_branch}'.")
+        settings = get_settings()
+        token = _mint_installation_token(external_installation_id)
+        try:
+            resp = httpx.post(
+                f"{settings.github_api_base_url}/repos/{owner}/{name}/git/refs",
+                headers={"Authorization": f"Bearer {token}", **_API_VERSION_HEADERS},
+                json={"ref": f"refs/heads/{new_branch}", "sha": base_commit.sha},
+                timeout=_PROBE_TIMEOUT_SECONDS,
+            )
+        except httpx.HTTPError as exc:
+            raise GitProviderError(f"Could not reach GitHub: {exc}") from exc
+        if resp.status_code != 201:
+            raise GitProviderError(
+                f"GitHub rejected creating branch '{new_branch}' from '{from_branch}' "
+                f"(HTTP {resp.status_code}): {resp.text[:300]}"
+            )
+        return BranchSummary(name=new_branch, commit_sha=base_commit.sha, protected=False)
+
+    def compare_branches(
+        self, external_installation_id: str, owner: str, name: str, base: str, head: str
+    ) -> BranchComparison:
+        if not _app_configured():
+            raise GitProviderError(_not_configured_detail())
+        settings = get_settings()
+        token = _mint_installation_token(external_installation_id)
+        try:
+            resp = httpx.get(
+                f"{settings.github_api_base_url}/repos/{owner}/{name}/compare/{base}...{head}",
+                headers={"Authorization": f"Bearer {token}", **_API_VERSION_HEADERS},
+                timeout=_PROBE_TIMEOUT_SECONDS,
+            )
+        except httpx.HTTPError as exc:
+            raise GitProviderError(f"Could not reach GitHub: {exc}") from exc
+        if resp.status_code != 200:
+            raise GitProviderError(
+                f"GitHub rejected comparing '{base}...{head}' for '{owner}/{name}' "
+                f"(HTTP {resp.status_code}): {resp.text[:300]}"
+            )
+        data = resp.json()
+        commits = []
+        for c in data.get("commits", []):
+            commit_info = c.get("commit") or {}
+            authored_at_raw = (commit_info.get("author") or {}).get("date")
+            authored_at = None
+            if authored_at_raw:
+                try:
+                    authored_at = datetime.fromisoformat(authored_at_raw.replace("Z", "+00:00"))
+                except ValueError:
+                    authored_at = None
+            commits.append(
+                BranchComparisonCommit(
+                    sha=c.get("sha", ""),
+                    message=(commit_info.get("message") or "")[:500],
+                    author_login=(c.get("author") or {}).get("login", ""),
+                    authored_at=authored_at,
+                )
+            )
+        diff_parts = []
+        for f in data.get("files", []):
+            patch = f.get("patch")
+            if patch:
+                diff_parts.append(f"diff --git a/{f.get('filename')} b/{f.get('filename')}\n{patch}")
+        return BranchComparison(
+            ahead_by=data.get("ahead_by", 0),
+            behind_by=data.get("behind_by", 0),
+            commits=commits,
+            diff_text="\n".join(diff_parts),
+        )
+
+    def merge_pull_request(
+        self, external_installation_id: str, owner: str, name: str, pr_number: int
+    ) -> MergeResult:
+        if not _app_configured():
+            raise GitProviderError(_not_configured_detail())
+        settings = get_settings()
+        token = _mint_installation_token(external_installation_id)
+        try:
+            resp = httpx.put(
+                f"{settings.github_api_base_url}/repos/{owner}/{name}/pulls/{pr_number}/merge",
+                headers={"Authorization": f"Bearer {token}", **_API_VERSION_HEADERS},
+                timeout=_PROBE_TIMEOUT_SECONDS,
+            )
+        except httpx.HTTPError as exc:
+            raise GitProviderError(f"Could not reach GitHub: {exc}") from exc
+        if resp.status_code == 200:
+            data = resp.json()
+            return MergeResult(merged=bool(data.get("merged", False)), sha=data.get("sha", ""), message=data.get("message", ""))
+        # GitHub's real, specific rejection reason -- failing checks, missing
+        # reviews, merge conflicts, branch protection, etc.
+        raise GitProviderError(
+            f"GitHub rejected merging PR #{pr_number} for '{owner}/{name}' "
+            f"(HTTP {resp.status_code}): {resp.text[:300]}"
+        )
+
+    def create_repository(
+        self, external_installation_id: str, name: str, private: bool = True
+    ) -> CreatedRepository:
+        if not _app_configured():
+            raise GitProviderError(_not_configured_detail())
+        account = _get_installation_account(external_installation_id)
+        account_type = account.get("type", "")
+        account_login = account.get("login", "")
+        if account_type != "Organization":
+            raise GitProviderError(
+                f"This installation is on a personal GitHub account ('{account_login}'), and GitHub "
+                "does not allow a GitHub App installation token to create repositories there -- only "
+                "under an organization account. Create the repository on GitHub directly, then connect it."
+            )
+        settings = get_settings()
+        token = _mint_installation_token(external_installation_id)
+        try:
+            resp = httpx.post(
+                f"{settings.github_api_base_url}/orgs/{account_login}/repos",
+                headers={"Authorization": f"Bearer {token}", **_API_VERSION_HEADERS},
+                json={"name": name, "private": private, "auto_init": True},
+                timeout=_PROBE_TIMEOUT_SECONDS,
+            )
+        except httpx.HTTPError as exc:
+            raise GitProviderError(f"Could not reach GitHub: {exc}") from exc
+        if resp.status_code != 201:
+            raise GitProviderError(
+                f"GitHub rejected creating repository '{account_login}/{name}' "
+                f"(HTTP {resp.status_code}): {resp.text[:300]}"
+            )
+        data = resp.json()
+        owner = (data.get("owner") or {}).get("login", account_login)
+        return CreatedRepository(
+            owner=owner,
+            name=data.get("name", name),
+            full_name=data.get("full_name", f"{owner}/{name}"),
+            default_branch=data.get("default_branch", ""),
+            html_url=data.get("html_url", ""),
         )

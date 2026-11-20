@@ -3,9 +3,14 @@ import { Injectable, inject, signal } from '@angular/core';
 import { Observable, tap } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import {
+  BranchComparison,
+  BranchSummary,
+  CreateBranchPayload,
   CreateGitInstallationPayload,
   CreateRepositoryConnectionPayload,
+  CreateRepositoryPayload,
   GitInstallation,
+  MergePullRequestResult,
   RepositoryConnection,
   RepositorySummary
 } from './git-integration.models';
@@ -104,5 +109,48 @@ export class GitIntegrationService {
           );
         })
       );
+  }
+
+  listBranches(projectId: string, connectionId: string): Observable<BranchSummary[]> {
+    return this.http.get<BranchSummary[]>(
+      `${environment.apiBaseUrl}/projects/${projectId}/repository-connections/${connectionId}/branches`
+    );
+  }
+
+  createBranch(projectId: string, connectionId: string, payload: CreateBranchPayload): Observable<BranchSummary> {
+    return this.http.post<BranchSummary>(
+      `${environment.apiBaseUrl}/projects/${projectId}/repository-connections/${connectionId}/branches`,
+      payload
+    );
+  }
+
+  compareBranch(
+    projectId: string,
+    connectionId: string,
+    head: string,
+    base?: string
+  ): Observable<BranchComparison> {
+    const params: Record<string, string> = { head };
+    if (base) params['base'] = base;
+    return this.http.get<BranchComparison>(
+      `${environment.apiBaseUrl}/projects/${projectId}/repository-connections/${connectionId}/compare`,
+      { params }
+    );
+  }
+
+  createRepository(projectId: string, payload: CreateRepositoryPayload): Observable<RepositoryConnection> {
+    return this.http
+      .post<RepositoryConnection>(
+        `${environment.apiBaseUrl}/projects/${projectId}/repository-connections/create-repository`,
+        payload
+      )
+      .pipe(tap((connection) => this.repositoryConnections.update((list) => [connection, ...list])));
+  }
+
+  mergePullRequest(projectId: string, taskId: string): Observable<MergePullRequestResult> {
+    return this.http.post<MergePullRequestResult>(
+      `${environment.apiBaseUrl}/projects/${projectId}/tasks/${taskId}/merge-pr`,
+      {}
+    );
   }
 }

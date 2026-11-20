@@ -11,7 +11,7 @@ import { WorkflowService } from '../../core/org/workflow.service';
 import { PresenceService } from '../../core/org/presence.service';
 import { KnowledgeService } from '../../core/org/knowledge.service';
 import { GitIntegrationService } from '../../core/org/git-integration.service';
-import { RepositorySummary } from '../../core/org/git-integration.models';
+import { BranchComparison, BranchSummary, RepositorySummary } from '../../core/org/git-integration.models';
 import { ApiProject } from '../../core/auth/auth.models';
 import { ApiTask, TaskDiff } from '../../core/org/task.models';
 import { ApiWorkflow, CreateWorkflowStepPayload } from '../../core/org/workflow.models';
@@ -66,10 +66,30 @@ export class ProjectWorkspaceComponent implements OnDestroy {
   readonly repoConnectError = signal('');
   readonly syncingConnectionId = signal<string | null>(null);
 
+  readonly connectRepoMode = signal<'existing' | 'new'>('existing');
+  readonly newRepoName = signal('');
+  readonly newRepoPrivate = signal(true);
+
+  readonly expandedBranchesConnectionId = signal<string | null>(null);
+  readonly loadingBranches = signal(false);
+  readonly branches = signal<BranchSummary[]>([]);
+  readonly branchesError = signal('');
+  readonly newBranchName = signal('');
+  readonly newBranchFrom = signal('');
+  readonly creatingBranch = signal(false);
+
+  readonly inspectingBranchName = signal<string | null>(null);
+  readonly loadingComparison = signal(false);
+  readonly branchComparison = signal<BranchComparison | null>(null);
+  readonly comparisonError = signal('');
+
   readonly showCreateTask = signal(false);
   readonly newTaskTitle = signal('');
   readonly newTaskDescription = signal('');
   readonly newTaskConnectionId = signal('');
+  readonly newTaskBaseBranch = signal('');
+  readonly newTaskBranches = signal<BranchSummary[]>([]);
+  readonly loadingNewTaskBranches = signal(false);
   readonly creatingTask = signal(false);
   readonly startingTaskId = signal<string | null>(null);
 
@@ -156,7 +176,31 @@ export class ProjectWorkspaceComponent implements OnDestroy {
     this.newTaskTitle.set('');
     this.newTaskDescription.set('');
     this.newTaskConnectionId.set('');
+    this.newTaskBaseBranch.set('');
+    this.newTaskBranches.set([]);
     this.showCreateTask.set(true);
+    const project = this.project();
+    const connection = this.repositoryConnections().find((c) => c.project_id === project?.id);
+    if (project && connection) {
+      this.loadingNewTaskBranches.set(true);
+      this.gitService.listBranches(project.id, connection.id).subscribe({
+        next: (branches) => {
+          this.newTaskBranches.set(branches);
+          this.loadingNewTaskBranches.set(false);
+          // Same Angular <select>-after-options-render quirk as the branch
+          // panel (see `toggleBranches`) -- deferred so the default branch
+          // option actually exists when this value is applied.
+          setTimeout(() => {
+            this.newTaskBaseBranch.set(
+              connection.default_branch && branches.some((b) => b.name === connection.default_branch)
+                ? connection.default_branch
+                : (branches[0]?.name ?? '')
+            );
+          });
+        },
+        error: () => this.loadingNewTaskBranches.set(false)
+      });
+    }
   }
 
   closeCreateTask() {
@@ -172,7 +216,8 @@ export class ProjectWorkspaceComponent implements OnDestroy {
       .create(project.id, {
         title,
         description: this.newTaskDescription().trim(),
-        coding_agent_connection_id: this.newTaskConnectionId() || null
+        coding_agent_connection_id: this.newTaskConnectionId() || null,
+        base_branch: this.newTaskBaseBranch() || undefined
       })
       .subscribe({
         next: () => {
@@ -341,8 +386,16 @@ export class ProjectWorkspaceComponent implements OnDestroy {
     this.availableRepositories.set([]);
     this.selectedRepositoryFullName.set('');
     this.repoConnectError.set('');
+    this.connectRepoMode.set('existing');
+    this.newRepoName.set('');
+    this.newRepoPrivate.set(true);
     this.showConnectRepository.set(true);
     if (this.connectRepoInstallationId()) this.loadRepositoriesForInstallation();
+  }
+
+  setConnectRepoMode(mode: 'existing' | 'new') {
+    this.connectRepoMode.set(mode);
+    this.repoConnectError.set('');
   }
 
   closeConnectRepository() {
@@ -375,6 +428,10 @@ export class ProjectWorkspaceComponent implements OnDestroy {
   }
 
   submitConnectRepository() {
+    if (this.connectRepoMode() === 'new') {
+      this.submitCreateRepository();
+      return;
+    }
     const project = this.project();
     const installationId = this.connectRepoInstallationId();
     const repo = this.availableRepositories().find((r) => r.full_name === this.selectedRepositoryFullName());
@@ -399,6 +456,31 @@ export class ProjectWorkspaceComponent implements OnDestroy {
       });
   }
 
+  private submitCreateRepository() {
+    const project = this.project();
+    const installationId = this.connectRepoInstallationId();
+    const name = this.newRepoName().trim();
+    if (!project || !installationId || !name) return;
+    this.connectingRepository.set(true);
+    this.repoConnectError.set('');
+    this.gitService
+      .createRepository(project.id, {
+        git_installation_id: installationId,
+        name,
+        private: this.newRepoPrivate()
+      })
+      .subscribe({
+        next: () => {
+          this.connectingRepository.set(false);
+          this.showConnectRepository.set(false);
+        },
+        error: (err) => {
+          this.connectingRepository.set(false);
+          this.repoConnectError.set(err?.error?.detail ?? 'Could not create this repository on GitHub.');
+        }
+      });
+  }
+
   syncRepositoryConnection(connectionId: string) {
     const project = this.project();
     if (!project) return;
@@ -413,6 +495,102 @@ export class ProjectWorkspaceComponent implements OnDestroy {
     const project = this.project();
     if (!project) return;
     this.gitService.deleteRepositoryConnection(project.id, connectionId).subscribe();
+  }
+
+  toggleBranches(connection: { id: string; default_branch: string }) {
+    if (this.expandedBranchesConnectionId() === connection.id) {
+      this.expandedBranchesConnectionId.set(null);
+      this.branches.set([]);
+      this.inspectingBranchName.set(null);
+      this.branchComparison.set(null);
+      return;
+    }
+    const project = this.project();
+    if (!project) return;
+    this.expandedBranchesConnectionId.set(connection.id);
+    this.newBranchName.set('');
+    // Left empty until the branch list actually loads (not pre-set to the
+    // default branch here) -- the <select>'s options don't exist yet, and
+    // Angular skips re-writing a bound [value] whose expression result
+    // hasn't changed since the previous change-detection pass, so setting
+    // this before the options exist leaves the browser's own default
+    // (first option) selected once they appear.
+    this.newBranchFrom.set('');
+    this.branchesError.set('');
+    this.inspectingBranchName.set(null);
+    this.branchComparison.set(null);
+    this.loadingBranches.set(true);
+    this.gitService.listBranches(project.id, connection.id).subscribe({
+      next: (branches) => {
+        this.branches.set(branches);
+        this.loadingBranches.set(false);
+        // Deferred to a real macrotask (not just a microtask -- Angular's
+        // own change-detection flush is itself microtask-scheduled, so a
+        // queued microtask can still run before it): Angular writes the
+        // <select>'s bound [value] before it inserts the <option>s the
+        // @for block just produced from `branches` within the same
+        // change-detection pass, so setting this synchronously has no
+        // matching option to select yet and the browser falls back to the
+        // first one. A setTimeout runs after that pass has flushed.
+        setTimeout(() => {
+          this.newBranchFrom.set(
+            connection.default_branch && branches.some((b) => b.name === connection.default_branch)
+              ? connection.default_branch
+              : (branches[0]?.name ?? '')
+          );
+        });
+      },
+      error: (err) => {
+        this.branches.set([]);
+        this.loadingBranches.set(false);
+        this.branchesError.set(err?.error?.detail ?? 'Could not list branches for this repository.');
+      }
+    });
+  }
+
+  createBranch(connectionId: string) {
+    const project = this.project();
+    const name = this.newBranchName().trim();
+    if (!project || !name) return;
+    this.creatingBranch.set(true);
+    this.branchesError.set('');
+    this.gitService
+      .createBranch(project.id, connectionId, { name, from_branch: this.newBranchFrom() || undefined })
+      .subscribe({
+        next: (branch) => {
+          this.branches.update((list) => [branch, ...list]);
+          this.newBranchName.set('');
+          this.creatingBranch.set(false);
+        },
+        error: (err) => {
+          this.creatingBranch.set(false);
+          this.branchesError.set(err?.error?.detail ?? 'Could not create this branch.');
+        }
+      });
+  }
+
+  inspectBranch(connectionId: string, branchName: string, defaultBranch: string) {
+    if (this.inspectingBranchName() === branchName) {
+      this.inspectingBranchName.set(null);
+      this.branchComparison.set(null);
+      return;
+    }
+    const project = this.project();
+    if (!project) return;
+    this.inspectingBranchName.set(branchName);
+    this.branchComparison.set(null);
+    this.comparisonError.set('');
+    this.loadingComparison.set(true);
+    this.gitService.compareBranch(project.id, connectionId, branchName, defaultBranch).subscribe({
+      next: (comparison) => {
+        this.branchComparison.set(comparison);
+        this.loadingComparison.set(false);
+      },
+      error: (err) => {
+        this.loadingComparison.set(false);
+        this.comparisonError.set(err?.error?.detail ?? 'Could not compare this branch.');
+      }
+    });
   }
 
   ngOnDestroy(): void {

@@ -58,6 +58,11 @@
       <p>Projects group tasks, workflows, agents and knowledge for one codebase.</p>
 
       @if (gitInstallations().length > 0) {
+        <div style="display:flex; gap:8px; margin-bottom:12px;">
+          <button type="button" class="sf-btn" [class.sf-btn--primary]="createRepoMode() === 'existing'" (click)="setCreateRepoMode('existing')">Connect existing repo</button>
+          <button type="button" class="sf-btn" [class.sf-btn--primary]="createRepoMode() === 'new'" (click)="setCreateRepoMode('new')">Create new repo</button>
+        </div>
+
         <label for="projInstallation">GitHub App installation</label>
         <select id="projInstallation" [value]="createInstallationId()" (change)="onCreateInstallationChange($any($event.target).value)">
           @for (i of gitInstallations(); track i.id) {
@@ -65,26 +70,39 @@
           }
         </select>
 
-        <label for="projRepoSelect">Repository <span class="org-modal__count">{{ createRepositories().length }} available</span></label>
-        @if (loadingCreateRepositories()) {
-          <p class="set-note" style="padding-left:0;">Loading repositories from GitHub…</p>
-        } @else {
-          @if (createRepositories().length > 8) {
-            <input
-              type="text"
-              class="org-modal__filter"
-              placeholder="Filter repositories…"
-              [value]="repoFilterTerm()"
-              (input)="repoFilterTerm.set($any($event.target).value)"
-            />
-          }
-          <select id="projRepoSelect" size="6" [value]="selectedRepoFullName()" (change)="onSelectRepo($any($event.target).value)">
-            @for (r of filteredCreateRepositories(); track r.full_name) {
-              <option [value]="r.full_name">{{ r.full_name }}{{ r.private ? ' 🔒' : '' }}</option>
-            } @empty {
-              <option disabled>No repositories match "{{ repoFilterTerm() }}"</option>
+        @if (createRepoMode() === 'existing') {
+          <label for="projRepoSelect">Repository <span class="org-modal__count">{{ createRepositories().length }} available</span></label>
+          @if (loadingCreateRepositories()) {
+            <p class="set-note" style="padding-left:0;">Loading repositories from GitHub…</p>
+          } @else {
+            @if (createRepositories().length > 8) {
+              <input
+                type="text"
+                class="org-modal__filter"
+                placeholder="Filter repositories…"
+                [value]="repoFilterTerm()"
+                (input)="repoFilterTerm.set($any($event.target).value)"
+              />
             }
-          </select>
+            <select id="projRepoSelect" size="6" [value]="selectedRepoFullName()" (change)="onSelectRepo($any($event.target).value)">
+              @for (r of filteredCreateRepositories(); track r.full_name) {
+                <option [value]="r.full_name">{{ r.full_name }}{{ r.private ? ' 🔒' : '' }}</option>
+              } @empty {
+                <option disabled>No repositories match "{{ repoFilterTerm() }}"</option>
+              }
+            </select>
+          }
+        } @else {
+          <label for="projNewRepoName">New repository name</label>
+          <input id="projNewRepoName" type="text" placeholder="e.g. my-new-service" [value]="newRepoName()" (input)="newRepoName.set($any($event.target).value)" />
+          <label style="display:flex; align-items:center; gap:6px; padding-left:0;">
+            <input type="checkbox" [checked]="newRepoPrivate()" (change)="newRepoPrivate.set($any($event.target).checked)" />
+            Private repository
+          </label>
+          <p class="set-note" style="padding-left:0;">
+            Creates a brand-new repository on GitHub under this installation's account, then connects it to
+            this project — only works for installations on an organization account.
+          </p>
         }
         @if (createRepoError()) {
           <p class="set-note" style="color: var(--sf-red-600); padding-left:0;">{{ createRepoError() }}</p>

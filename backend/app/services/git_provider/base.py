@@ -66,6 +66,49 @@ class BranchProtectionSummary:
     required_approving_review_count: int = 0
 
 
+@dataclass(frozen=True)
+class BranchSummary:
+    name: str
+    commit_sha: str
+    protected: bool = False
+
+
+@dataclass(frozen=True)
+class BranchComparisonCommit:
+    sha: str
+    message: str
+    author_login: str = ""
+    authored_at: datetime | None = None
+
+
+@dataclass(frozen=True)
+class BranchComparison:
+    """The real result of comparing `head` against `base` -- mirrors
+    GitHub's own compare API (`ahead_by`/`behind_by` are the real counts
+    GitHub reports, never derived locally)."""
+
+    ahead_by: int
+    behind_by: int
+    commits: list[BranchComparisonCommit] = field(default_factory=list)
+    diff_text: str = ""
+
+
+@dataclass(frozen=True)
+class MergeResult:
+    merged: bool
+    sha: str = ""
+    message: str = ""
+
+
+@dataclass(frozen=True)
+class CreatedRepository:
+    owner: str
+    name: str
+    full_name: str
+    default_branch: str
+    html_url: str
+
+
 class GitProviderAdapter(ABC):
     """Base class every Git provider adapter implements."""
 
@@ -125,3 +168,43 @@ class GitProviderAdapter(ABC):
         `branch`, if any. A branch with no rules configured is a real,
         successful result (`protected=False`), not an error. Raises
         `GitProviderError` only when the check itself could not be made."""
+
+    @abstractmethod
+    def list_branches(self, external_installation_id: str, owner: str, name: str) -> list[BranchSummary]:
+        """The repository's real, current branches. Raises
+        `GitProviderError` on failure -- never a fabricated or stale list."""
+
+    @abstractmethod
+    def create_branch(
+        self, external_installation_id: str, owner: str, name: str, new_branch: str, from_branch: str
+    ) -> BranchSummary:
+        """Creates a real branch `new_branch` pointed at `from_branch`'s
+        current HEAD via the provider's refs API. Raises `GitProviderError`
+        with the real reason on failure (e.g. the branch already exists)."""
+
+    @abstractmethod
+    def compare_branches(
+        self, external_installation_id: str, owner: str, name: str, base: str, head: str
+    ) -> BranchComparison:
+        """The real commits and diff of `head` against `base`, read-only --
+        never a locally-derived guess. Raises `GitProviderError` on
+        failure (e.g. one of the branches does not exist)."""
+
+    @abstractmethod
+    def merge_pull_request(
+        self, external_installation_id: str, owner: str, name: str, pr_number: int
+    ) -> MergeResult:
+        """Merges a real, already-open pull request via the provider's own
+        merge endpoint -- this backend never performs the merge itself and
+        never bypasses the provider's own protection/check enforcement.
+        Raises `GitProviderError` with the provider's real rejection reason
+        (failing checks, missing reviews, merge conflicts, ...) on failure."""
+
+    @abstractmethod
+    def create_repository(
+        self, external_installation_id: str, name: str, private: bool = True
+    ) -> CreatedRepository:
+        """Creates a real, brand-new repository under this installation's
+        account via the provider's API. Raises `GitProviderError` with the
+        real reason on failure (e.g. a repository with that name already
+        exists)."""

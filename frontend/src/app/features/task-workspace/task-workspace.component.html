@@ -53,6 +53,14 @@
           <sf-icon name="navigation/repositories" /> View PR
         </a>
       }
+      @if (task.git_pr_number && task.git_pr_state !== 'merged' && task.git_pr_state !== 'closed') {
+        <button class="sf-btn sf-btn--primary" type="button" [disabled]="mergingPr()" (click)="mergePr()">
+          {{ mergingPr() ? 'Merging…' : 'Merge PR' }}
+        </button>
+      }
+      @if (mergePrError()) {
+        <span class="tcr-composer__note" style="color: var(--sf-red-600);">{{ mergePrError() }}</span>
+      }
       @if (task.status === 'running') {
         <button class="sf-btn" type="button" (click)="cancel()">Cancel</button>
       } @else {

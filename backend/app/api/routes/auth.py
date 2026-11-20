@@ -99,6 +99,36 @@ def logout(payload: RefreshRequest, db: DBSession = Depends(get_db)) -> None:
         db.commit()
 
 
+@router.get("/dev-login")
+def dev_login_status(db: DBSession = Depends(get_db)) -> dict:
+    """Tells the login screen whether to show the local-dev "Quick sign in"
+    button, without revealing the configured email unless it's enabled."""
+    if not settings.dev_quick_login_enabled or not settings.dev_quick_login_email:
+        return {"available": False}
+    user = db.query(User).filter_by(email=settings.dev_quick_login_email.lower()).first()
+    if user is None or not user.is_active:
+        return {"available": False}
+    return {"available": True, "display_name": user.full_name}
+
+
+@router.post("/dev-login", response_model=TokenResponse)
+def dev_login(db: DBSession = Depends(get_db)) -> TokenResponse:
+    """Issues tokens for the configured local-dev account with no password
+    check. Only ever active when dev_quick_login_enabled is set in a
+    gitignored .env -- never in a real deployment."""
+    if not settings.dev_quick_login_enabled or not settings.dev_quick_login_email:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Quick sign in is not enabled")
+
+    user = db.query(User).filter_by(email=settings.dev_quick_login_email.lower()).first()
+    if user is None or not user.is_active:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Quick sign in is not enabled")
+
+    tokens = _issue_tokens(db, user)
+    audit.record(db, action="user.dev_login", target_type="user", target_id=str(user.id), actor_user_id=user.id)
+    db.commit()
+    return tokens
+
+
 @router.get("/me", response_model=UserResponse)
 def me(user: User = Depends(get_current_user)) -> User:
     return user

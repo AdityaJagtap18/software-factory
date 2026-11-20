@@ -32,6 +32,10 @@ export class LoginComponent {
   submitting = signal(false);
   errorMessage = signal('');
 
+  quickLoginAvailable = signal(false);
+  quickLoginName = signal('');
+  quickLoggingIn = signal(false);
+
   readonly title = computed(() => (this.isRegister() ? 'Create your workspace' : 'Welcome back'));
   readonly subtitle = computed(() =>
     this.isRegister()
@@ -42,6 +46,38 @@ export class LoginComponent {
     if (this.submitting()) return this.isRegister() ? 'Creating account…' : 'Signing in…';
     return this.isRegister() ? 'Create account' : 'Sign in';
   });
+
+  constructor() {
+    this.auth.devLoginStatus().subscribe({
+      next: (status) => {
+        this.quickLoginAvailable.set(!!status.available);
+        this.quickLoginName.set(status.display_name ?? '');
+      },
+      error: () => this.quickLoginAvailable.set(false)
+    });
+  }
+
+  quickLogin() {
+    this.quickLoggingIn.set(true);
+    this.errorMessage.set('');
+    this.auth
+      .devLogin()
+      .pipe(
+        switchMap(() => this.auth.fetchCurrentUser()),
+        switchMap(() => this.orgs.listMine()),
+        catchError((err: HttpErrorResponse) => {
+          this.quickLoggingIn.set(false);
+          this.errorMessage.set(this.describeError(err));
+          return of(null);
+        })
+      )
+      .subscribe((result) => {
+        if (result !== null) {
+          this.quickLoggingIn.set(false);
+          this.router.navigateByUrl('/dashboard');
+        }
+      });
+  }
 
   togglePassword() {
     this.showPassword.update((v) => !v);

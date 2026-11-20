@@ -21,6 +21,12 @@ class Settings(BaseSettings):
     github_webhook_secret: str = ""
     github_api_base_url: str = "https://api.github.com"
     worktree_root_dir: str = "data/worktrees"
+    # Local-dev convenience only: lets the login screen offer a one-click
+    # "Quick sign in" that skips typing a password. Both must be set
+    # explicitly in a (gitignored) .env -- empty/false by default means the
+    # feature is off and /auth/dev-login always 404s.
+    dev_quick_login_enabled: bool = False
+    dev_quick_login_email: str = ""
 
 
 @lru_cache

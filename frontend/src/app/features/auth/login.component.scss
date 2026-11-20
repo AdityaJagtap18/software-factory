@@ -196,6 +196,24 @@
     }
   }
 
+  &__quick {
+    width: 100%;
+    justify-content: center;
+    padding: 11px;
+    font-size: 14px;
+    margin-top: 18px;
+
+    sf-icon {
+      width: 16px;
+      height: 16px;
+    }
+
+    &:disabled {
+      opacity: 0.7;
+      cursor: wait;
+    }
+  }
+
   &__oauth {
     width: 100%;
     justify-content: center;

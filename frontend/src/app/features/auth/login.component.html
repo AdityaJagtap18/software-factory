@@ -32,6 +32,19 @@
         <p class="login__error">{{ errorMessage() }}</p>
       }
 
+      @if (quickLoginAvailable()) {
+        <button
+          type="button"
+          class="sf-btn sf-btn--primary login__quick"
+          [disabled]="quickLoggingIn()"
+          (click)="quickLogin()"
+        >
+          <sf-icon name="status/success" />
+          {{ quickLoggingIn() ? 'Signing in…' : 'Quick sign in' + (quickLoginName() ? ' as ' + quickLoginName() : '') }}
+        </button>
+        <div class="login__divider"><span>or sign in with password</span></div>
+      }
+
       <form (ngSubmit)="submit()">
         @if (isRegister()) {
           <label class="login__label" for="fullName">Full name</label>

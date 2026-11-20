@@ -40,6 +40,21 @@ export class AuthService {
       .pipe(tap((tokens) => this.storeTokens(tokens)));
   }
 
+  /** Local-dev convenience: whether the backend has a quick sign-in account
+   * configured, and its display name if so. Returns unavailable on any
+   * error so a disabled/missing endpoint never breaks the login page. */
+  devLoginStatus(): Observable<{ available: boolean; display_name?: string }> {
+    return this.http.get<{ available: boolean; display_name?: string }>(
+      `${environment.apiBaseUrl}/auth/dev-login`
+    );
+  }
+
+  devLogin(): Observable<TokenResponse> {
+    return this.http
+      .post<TokenResponse>(`${environment.apiBaseUrl}/auth/dev-login`, {})
+      .pipe(tap((tokens) => this.storeTokens(tokens)));
+  }
+
   fetchCurrentUser(): Observable<AuthUser> {
     return this.http
       .get<AuthUser>(`${environment.apiBaseUrl}/auth/me`)

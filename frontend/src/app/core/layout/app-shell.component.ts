@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { NavigationStart, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { filter } from 'rxjs';
 import { IconComponent } from '../../shared/icon/icon.component';
 import { MockDataService } from '../mock-data.service';
 import { NAV_ITEMS } from '../nav-items';
@@ -26,6 +27,7 @@ export class AppShellComponent implements OnInit {
   readonly unreadNotifications = this.notificationService.unreadCount;
   readonly recentNotifications = this.notificationService.notifications;
   readonly showNotifications = signal(false);
+  readonly mobileSidebarOpen = signal(false);
 
   readonly navItems = NAV_ITEMS;
   readonly approvalsPending = this.data.approvals;
@@ -59,6 +61,17 @@ export class AppShellComponent implements OnInit {
       this.orgService.listMine().subscribe({ error: () => this.handleSessionExpired() });
     }
     this.notificationService.refreshUnreadCount();
+    this.router
+      .events.pipe(filter((e) => e instanceof NavigationStart))
+      .subscribe(() => this.mobileSidebarOpen.set(false));
+  }
+
+  toggleMobileSidebar(): void {
+    this.mobileSidebarOpen.update((v) => !v);
+  }
+
+  closeMobileSidebar(): void {
+    this.mobileSidebarOpen.set(false);
   }
 
   toggleNotifications(): void {

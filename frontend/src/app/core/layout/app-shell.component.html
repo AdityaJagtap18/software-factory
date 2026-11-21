@@ -1,8 +1,12 @@
 <div class="shell">
-  <aside class="sidebar">
+  @if (mobileSidebarOpen()) {
+    <div class="sidebar-backdrop" (click)="closeMobileSidebar()"></div>
+  }
+  <aside class="sidebar" [class.sidebar--mobile-open]="mobileSidebarOpen()">
     <div class="sidebar__brand">
       <sf-icon name="logos/software-factory-mark" class="sidebar__brand-mark" />
       <span>Software Factory</span>
+      <button type="button" class="sidebar__close" aria-label="Close menu" (click)="closeMobileSidebar()">&times;</button>
     </div>
 
     <nav class="sidebar__nav">
@@ -46,6 +50,9 @@
 
   <div class="main">
     <header class="topbar">
+      <button type="button" class="topbar__menu-btn" aria-label="Open menu" (click)="toggleMobileSidebar()">
+        <span></span><span></span><span></span>
+      </button>
       <div class="topbar__search">
         <sf-icon name="workspace/code-search" />
         <input type="text" placeholder="Search projects, tasks, agents, artifacts..." />

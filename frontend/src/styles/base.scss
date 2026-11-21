@@ -657,3 +657,80 @@ td.link {
     border-radius: var(--sf-radius-pill);
   }
 }
+
+// ---- Phone-width adjustments for the shared utility classes above ----
+// (the app shell handles the sidebar/topbar itself -- see
+// app-shell.component.scss). These keep every page built from these
+// classes usable at phone width without each feature re-solving it.
+@media (max-width: 640px) {
+  .sf-page-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .sf-page-header__actions {
+    width: 100%;
+  }
+
+  .sf-page-header__icon {
+    width: 36px;
+    height: 36px;
+
+    svg {
+      width: 18px;
+      height: 18px;
+    }
+  }
+
+  .sf-page-header h1 {
+    font-size: 18px;
+  }
+
+  .sf-stat-grid {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 10px;
+  }
+
+  .sf-stat-card {
+    padding: 12px 14px;
+  }
+
+  .sf-tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+
+    &::-webkit-scrollbar {
+      height: 0;
+    }
+  }
+
+  .sf-tab {
+    flex-shrink: 0;
+  }
+
+  // A plain <table> at phone width overflows its card instead of
+  // squeezing columns unreadably -- the card scrolls horizontally and
+  // keeps every column's real content intact.
+  .sf-card:has(> table),
+  .sf-card:has(.sf-table) {
+    overflow-x: auto;
+  }
+
+  .projects-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+
+    &__search {
+      width: 100%;
+    }
+  }
+
+  .org-modal {
+    width: calc(100vw - 32px);
+
+    &--wide {
+      width: calc(100vw - 32px);
+    }
+  }
+}

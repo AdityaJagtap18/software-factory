@@ -28,6 +28,21 @@
     font-size: 16px;
   }
 
+  &__close {
+    display: none;
+    margin-left: auto;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    font-size: 22px;
+    line-height: 1;
+    align-items: center;
+    justify-content: center;
+  }
+
   &__brand-mark {
     width: 28px;
     height: 28px;
@@ -212,6 +227,33 @@
     gap: 14px;
   }
 
+  &__menu-btn {
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    width: 34px;
+    height: 34px;
+    flex-shrink: 0;
+    border-radius: var(--sf-radius-sm);
+    border: 1px solid var(--sf-border);
+    background: var(--sf-surface);
+    padding: 0;
+
+    span {
+      display: block;
+      width: 16px;
+      height: 2px;
+      margin: 0 auto;
+      background: var(--sf-text-secondary);
+      border-radius: 2px;
+    }
+
+    &:hover {
+      background: var(--sf-surface-muted);
+    }
+  }
+
   &__icon-btn {
     position: relative;
     width: 34px;
@@ -342,5 +384,79 @@
   flex: 1;
   overflow-y: auto;
   padding: 24px 28px 48px;
+}
+
+.sidebar-backdrop {
+  display: none;
+}
+
+// Phone/narrow-tablet layout: the sidebar becomes an off-canvas drawer
+// instead of a permanently-docked column, since there's no room to show
+// both it and real page content side by side below this width.
+@media (max-width: 860px) {
+  .shell {
+    position: relative;
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: min(var(--sf-sidebar-width), 82vw);
+    z-index: 60;
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+    box-shadow: var(--sf-shadow-lg, 0 16px 40px rgba(16, 24, 48, 0.3));
+
+    &--mobile-open {
+      transform: translateX(0);
+    }
+
+    &__close {
+      display: flex;
+    }
+  }
+
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(9, 14, 32, 0.5);
+    z-index: 55;
+  }
+
+  .topbar {
+    padding: 0 12px;
+    gap: 10px;
+
+    &__menu-btn {
+      display: flex;
+    }
+
+    &__search {
+      display: none;
+    }
+
+    &__name {
+      display: none;
+    }
+
+    &__chevron {
+      display: none;
+    }
+  }
+
+  .content {
+    padding: 16px 14px 32px;
+  }
+}
+
+@media (max-width: 420px) {
+  .topbar {
+    &__actions {
+      gap: 8px;
+    }
+  }
 }
 

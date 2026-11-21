@@ -248,3 +248,42 @@
     }
   }
 }
+
+@media (max-width: 860px) {
+  .login {
+    flex-direction: column;
+    min-height: auto;
+
+    &__hero {
+      flex: none;
+      padding: 28px 24px;
+    }
+
+    &__hero-graphic {
+      display: none;
+    }
+
+    h1 {
+      font-size: 26px;
+      max-width: none;
+    }
+
+    p {
+      font-size: 14px;
+      max-width: none;
+    }
+
+    &__brand {
+      margin-bottom: 20px;
+    }
+
+    &__form-panel {
+      flex: none;
+      padding: 28px 20px 48px;
+    }
+
+    &__form-wrap {
+      max-width: none;
+    }
+  }
+}

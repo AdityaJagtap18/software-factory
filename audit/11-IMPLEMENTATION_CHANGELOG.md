@@ -3,6 +3,43 @@
 Running record of implementation work done against `09-SOFTWARE_FACTORY_REMAINING_ROADMAP.md`, in the order
 it happened. Each entry: what changed, why, how it was verified. Newest first.
 
+Starting with this entry, this changelog records only the "why" and headline evidence per milestone —
+full file-by-file detail for each change lives in `IMPLEMENTATION_STATE.md` (ground truth of what's
+done) and `DECISION_REGISTER.md` (non-obvious decisions), per the project's token-efficiency pass.
+This keeps the changelog itself from having to be regenerated wholesale after every task.
+
+---
+
+## 2026-11-21 — Phase 4: RAG / Document Knowledge (P4-1, P4-2, P4-3, P4-4)
+
+**Why:** The roadmap flagged Phase 4 as contingent on resolving an open architecture question
+(P4-1: "what search mix is needed across graph traversal, keyword search and vector retrieval?") before
+scheduling the rest with real confidence. Per the standing mandate to keep building the real product
+rather than stall on an audit finding, P4-1 was resolved as an engineering decision (not left open) and
+P4-2–P4-4 were then built against it in the same pass.
+
+**What changed:** Real document ingestion + chunking (`document_chunking.py`), real local embeddings via
+this project's own Ollama instance running `nomic-embed-text` (`embeddings.py` — no API key, no external
+network call), real pgvector-backed storage and cosine-similarity retrieval (`document_retrieval.py`,
+new `documents`/`document_chunks` tables with an HNSW index, migration `8a0dcf3b06fb`), and a new
+`POST /projects/{id}/documents/search` endpoint plus automatic retrieval wired into
+`task_execution.py`'s prompt construction (`_build_prompt_with_rag_context`). The dev Postgres container's
+image was swapped `postgres:16-alpine` → `pgvector/pgvector:pg16` (same data volume, verified intact).
+Full rationale, scoping choices (plain text/Markdown only, no PDF/DOCX/OCR), and the decision to pull
+the embedding model onto this project's own Ollama instance rather than borrow an unrelated project's
+already-running one on this dev machine: see `DECISION_REGISTER.md`'s P4-1 entry.
+
+**Verification:** `tests/test_document_chunking.py` (4 cases) + `tests/test_documents.py` (7 cases, RBAC
+and empty-state included). Full suite: **182 passed, 14 failed** — same pre-existing, unrelated failures
+as every prior phase, zero regressions (Phase 3 baseline was 172 passed). Live end-to-end verification via
+curl against the running dev backend: real document ingested, real embedding computed, real semantic
+search returned the correct document for a paraphrased (non-keyword-matching) query with a genuine
+cosine-similarity score.
+
+**Roadmap status:** P4-1, P4-2, P4-3, P4-4 are **DONE**. See `IMPLEMENTATION_STATE.md` for the full
+per-task proof table and `NEXT_ACTIONS.md` for what's next (P3-3 recommended first, since P5-4 is
+hard-gated on it).
+
 ---
 
 ## 2026-11-21 — Phase 3: Real Test Execution, Approvals, Review Comments, Commit Provenance (P3-1, P3-2, P3-5, P3-6)

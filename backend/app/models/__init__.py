@@ -2,6 +2,7 @@ from app.models.agent import Agent, AgentStatus
 from app.models.agent_runtime import CodingAgentConnection, Credential
 from app.models.approval import Approval, ApprovalCategory, ApprovalPriority, ApprovalStatus
 from app.models.audit import AuditLog
+from app.models.document import Document, DocumentChunk
 from app.models.git_integration import GitInstallation, RepositoryConnection, WebhookEvent
 from app.models.organization import Organization, OrganizationMember
 from app.models.project import Project, ProjectMember, Workspace
@@ -23,6 +24,8 @@ __all__ = [
     "AuditLog",
     "CodingAgentConnection",
     "Credential",
+    "Document",
+    "DocumentChunk",
     "GitInstallation",
     "Organization",
     "OrganizationMember",

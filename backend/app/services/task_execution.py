@@ -127,9 +127,23 @@ def execute_task(
             return
 
     _run_adapter_and_finish(
-        db, task, adapter, credential_value, task.description or task.title,
+        db, task, adapter, credential_value, _build_prompt_with_rag_context(db, task),
         worktree, connection_record, extra_should_cancel,
     )
+
+
+def _build_prompt_with_rag_context(db: DBSession, task: Task) -> str:
+    """P4-4: prepends real RAG retrieval over this project's ingested
+    documents (see app/services/document_retrieval.py) to the task prompt.
+    Returns the bare instruction unchanged when the project has no
+    documents or the local embedding model is unreachable -- never blocks
+    or fabricates context, it's a pure addition."""
+    user_instruction = task.description or task.title
+    from app.services import document_retrieval
+    rag_context = document_retrieval.build_rag_context(db, task.project_id, user_instruction)
+    if rag_context:
+        return f"{rag_context}\n\nTASK INSTRUCTION:\n{user_instruction}"
+    return user_instruction
 
 
 def _run_adapter_and_finish(

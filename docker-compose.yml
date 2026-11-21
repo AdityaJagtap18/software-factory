@@ -1,6 +1,10 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    # pgvector/pgvector:pg16 is a drop-in build of the official postgres:16
+    # image with the pgvector extension preinstalled (P4-3: vector storage
+    # for the RAG pipeline) -- same data directory format, so the existing
+    # sf_postgres_data volume carries over unchanged.
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: sf
       POSTGRES_PASSWORD: sf

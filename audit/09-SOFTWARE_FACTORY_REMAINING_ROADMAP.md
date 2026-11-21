@@ -91,10 +91,10 @@ the full change record and honest caveats.
 
 | Task ID | Feature | Objective | Current status |
 |---|---|---|---|
-| P4-1 | Resolve the search-mix design question | Explicitly decide graph vs. keyword vs. vector retrieval mix (currently an open question in the Decision Log) | UNDECIDED |
-| P4-2 | Document ingestion + chunking | Build the ingestion/chunking pipeline for the format(s) decided in P4-1 | NOT IMPLEMENTED |
-| P4-3 | Embedding + vector storage | Likely pgvector, given the existing PostgreSQL dependency | NOT IMPLEMENTED |
-| P4-4 | Retrieval + RAG pipeline | Wire retrieval into `task_execution.py`'s prompt construction | NOT IMPLEMENTED |
+| P4-1 | Resolve the search-mix design question | Explicitly decide graph vs. keyword vs. vector retrieval mix (currently an open question in the Decision Log) | **DONE** (2026-11-21) — local Ollama embeddings + pgvector, kept separate from the Neo4j graph; see `DECISION_REGISTER.md` |
+| P4-2 | Document ingestion + chunking | Build the ingestion/chunking pipeline for the format(s) decided in P4-1 | **DONE** (2026-11-21) — plain text/Markdown only, via `POST /projects/{id}/documents`; see `IMPLEMENTATION_STATE.md` |
+| P4-3 | Embedding + vector storage | Likely pgvector, given the existing PostgreSQL dependency | **DONE** (2026-11-21) — pgvector + HNSW cosine index; dev Postgres image swapped to `pgvector/pgvector:pg16` |
+| P4-4 | Retrieval + RAG pipeline | Wire retrieval into `task_execution.py`'s prompt construction | **DONE** (2026-11-21) — `document_retrieval.py` + `_build_prompt_with_rag_context`; `/documents/search` endpoint |
 
 - **Dependencies:** P4-1 must happen before P4-2–P4-4 are scheduled with real confidence — building a vector pipeline before the team has decided how it coexists with the Knowledge Graph risks duplicated or conflicting retrieval paths.
 - **Frontend changes:** wire the currently-mocked `knowledge-graph.component.ts`/`repository-intelligence.component.ts` to real data once a real backend exists (today they are 100% `MockDataService`).

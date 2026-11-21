@@ -51,6 +51,9 @@ def _setup_database():
 @pytest.fixture(autouse=True)
 def _clean_tables():
     yield
+    from app.core.rate_limit import reset as reset_rate_limit
+
+    reset_rate_limit()
     with engine.begin() as conn:
         for table in reversed(Base.metadata.sorted_tables):
             conn.execute(table.delete())

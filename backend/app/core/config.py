@@ -6,6 +6,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_prefix="SF_", extra="ignore")
 
+    # "development" (the default) is the only environment where the
+    # placeholder secrets below and the dev-login bypass are tolerated.
+    # Set SF_ENVIRONMENT=production (or staging, etc.) for any shared or
+    # non-local deployment -- this flips on the fail-fast checks in
+    # app/main.py and hard-disables dev-login regardless of the
+    # dev_quick_login_enabled flag below.
+    environment: str = "development"
     database_url: str = "postgresql+psycopg2://sf:sf@localhost:5433/software_factory"
     jwt_secret: str = "dev-secret-change-me"
     jwt_algorithm: str = "HS256"
@@ -27,8 +34,40 @@ class Settings(BaseSettings):
     # feature is off and /auth/dev-login always 404s.
     dev_quick_login_enabled: bool = False
     dev_quick_login_email: str = ""
+    gemini_api_key: str = ""
+
+    @property
+    def is_local_dev(self) -> bool:
+        return self.environment.lower() in ("development", "local", "dev")
+
+
+_PLACEHOLDER_JWT_SECRET = "dev-secret-change-me"
+_PLACEHOLDER_CREDENTIAL_KEY = "dev-credential-key-change-me"
+
+
+def _validate_non_local_settings(settings: Settings) -> None:
+    """Fail fast rather than silently run a shared/production deployment
+    with the insecure local-dev defaults (P0-1/P0-2 of the security
+    hygiene audit)."""
+    if settings.is_local_dev:
+        return
+    problems = []
+    if settings.jwt_secret == _PLACEHOLDER_JWT_SECRET:
+        problems.append("SF_JWT_SECRET is still the placeholder default")
+    if settings.credential_encryption_key == _PLACEHOLDER_CREDENTIAL_KEY:
+        problems.append("SF_CREDENTIAL_ENCRYPTION_KEY is still the placeholder default")
+    if settings.dev_quick_login_enabled:
+        problems.append("SF_DEV_QUICK_LOGIN_ENABLED is true")
+    if problems:
+        raise RuntimeError(
+            "Refusing to start with SF_ENVIRONMENT="
+            f"'{settings.environment}': {'; '.join(problems)}. "
+            "These are only safe in a local-dev environment."
+        )
 
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    settings = Settings()
+    _validate_non_local_settings(settings)
+    return settings

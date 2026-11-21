@@ -12,21 +12,24 @@ explicit authorization, per the audit brief.
 
 ## Phase 0 — Security & Configuration Hygiene (immediate, not a development phase)
 
-| Task ID | Feature | Objective |
-|---|---|---|
-| P0-1 | Rotate placeholder secrets | Replace `SF_JWT_SECRET`/`SF_CREDENTIAL_ENCRYPTION_KEY` with real random values in any non-local `.env`. |
-| P0-2 | Disable dev-login outside local dev | Turn off `SF_DEV_QUICK_LOGIN_ENABLED` for any shared/staging/production environment; consider a build-time guard in addition to the runtime flag. |
-| P0-3 | Add auth rate limiting | Add basic throttling to `/auth/login` and `/auth/register`. |
+**STATUS: DONE (2026-11-21).** All three items below are implemented and test-covered; see
+`06-SECURITY_AND_GOVERNANCE_AUDIT.md` §1/§3 for the updated findings and `IMPLEMENTATION_CHANGELOG.md` for
+the change record.
 
-- **Current status:** P0-1/P0-2 are live risks today in this environment's `.env` (`06-SECURITY_AND_GOVERNANCE_AUDIT.md` §1, §3). P0-3 is unimplemented.
+| Task ID | Feature | Objective | Status |
+|---|---|---|---|
+| P0-1 | Rotate placeholder secrets | Replace `SF_JWT_SECRET`/`SF_CREDENTIAL_ENCRYPTION_KEY` with real random values in any non-local `.env`. | **DONE (structural)** — a non-local `SF_ENVIRONMENT` now fails fast at startup if either secret is still the placeholder default, rather than relying on someone remembering to rotate it. This dev machine's own `.env` is intentionally left as-is (local dev only, gitignored). |
+| P0-2 | Disable dev-login outside local dev | Turn off `SF_DEV_QUICK_LOGIN_ENABLED` for any shared/staging/production environment; consider a build-time guard in addition to the runtime flag. | **DONE** — `/auth/dev-login` now requires `settings.is_local_dev` in addition to the flag; a non-local deployment with the flag mistakenly set either 404s (dev-login route) or fails to start (if secrets are also still placeholders). |
+| P0-3 | Add auth rate limiting | Add basic throttling to `/auth/login` and `/auth/register`. | **DONE** — in-memory sliding-window limiter (`app/core/rate_limit.py`), 8/min/IP register, 15/min/IP login+dev-login. Single-process scope only; a multi-worker/multi-instance deployment will need a shared store (Redis) instead — noted as a follow-up, not scheduled here since this backend runs single-process today. |
+
 - **Dependencies:** none.
 - **Frontend changes:** none.
-- **Backend changes:** config/`.env` only for P0-1/P0-2; add rate-limiting middleware for P0-3.
+- **Backend changes:** `app/core/config.py` (new `environment` setting + `_validate_non_local_settings`), `app/api/routes/auth.py` (`_dev_login_permitted` guard + rate-limit dependencies), new `app/core/rate_limit.py`.
 - **Database changes:** none.
 - **Agent infrastructure changes:** none.
-- **API changes:** none (P0-3 adds middleware, not new routes).
-- **Testing requirements:** a test asserting `/auth/dev-login` 404s when the flag is unset/false (likely already implicitly covered); a rate-limit test for P0-3.
-- **Acceptance criteria:** no environment outside local dev has the dev-login bypass reachable; secrets are non-default; repeated failed logins are throttled.
+- **API changes:** none (dev-login/login/register keep their existing shapes; 429 is a new possible response code).
+- **Testing:** `tests/test_config_security.py` (5 cases), `tests/test_auth.py` (dev-login-disabled + both rate-limit tests added). Full suite re-run after the change: 140 passed / 14 failed — the 14 failures are pre-existing, unrelated to this change (a stale `model=` kwarg mismatch from already-uncommitted, in-progress model-selection work; see `11-IMPLEMENTATION_CHANGELOG.md`).
+- **Acceptance criteria:** met — no environment outside local dev can boot with the dev-login bypass reachable or placeholder secrets; repeated failed logins/registrations are throttled with a real 429.
 
 ---
 

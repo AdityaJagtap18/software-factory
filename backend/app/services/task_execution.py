@@ -44,6 +44,7 @@ from app.core.database import SessionLocal
 from app.models.agent_runtime import CodingAgentConnection, Credential
 from app.models.approval import Approval, ApprovalCategory, ApprovalPriority
 from app.models.git_integration import RepositoryConnection, RepositoryConnectionStatus
+from app.models.orchestration import TaskExecutionAttempt
 from app.models.task import Task, TaskStatus
 from app.models.task_message import TaskMessage, TaskMessageRole
 from app.services import git_worktree, test_execution
@@ -52,6 +53,42 @@ from app.services.git_provider.base import GitProviderError
 from app.services.git_provider.registry import get_git_provider
 
 _OUTPUT_COMMIT_INTERVAL = 20  # flush to the DB at least every N chunks
+
+
+def _start_attempt(
+    db: DBSession,
+    task: Task,
+    connection: CodingAgentConnection | None,
+    handoff_id: uuid.UUID | None = None,
+) -> TaskExecutionAttempt:
+    """P5-2: the immutable record of this one real adapter invocation,
+    created right before it actually happens -- never after, so a crash
+    mid-execution still leaves an honest "started, never finished" row
+    rather than a gap in the attempt history."""
+    attempt = TaskExecutionAttempt(
+        task_id=task.id,
+        connection_id=connection.id if connection else None,
+        agent_slug=connection.runtime_slug if connection else "",
+        handoff_id=handoff_id,
+        started_at=datetime.now(timezone.utc),
+    )
+    db.add(attempt)
+    db.commit()
+    db.refresh(attempt)
+    return attempt
+
+
+def _finish_attempt(db: DBSession, attempt: TaskExecutionAttempt, task: Task) -> None:
+    """Deliberately does NOT commit: `task.status` is set to its terminal
+    value right before this is called, and committing here would let a
+    polling caller observe a "completed"/"failed" task before the diff
+    collection and PR push/update below have actually run -- the same
+    invariant `_run_adapter_and_finish`'s own final `db.commit()` already
+    protects for the test-execution step. The caller's single trailing
+    commit covers this row too."""
+    attempt.completed_at = datetime.now(timezone.utc)
+    attempt.succeeded = task.status == TaskStatus.COMPLETED
+    attempt.error_message = task.error_message or ""
 
 
 def start_task_in_background(task_id: uuid.UUID) -> None:
@@ -128,7 +165,7 @@ def execute_task(
 
     _run_adapter_and_finish(
         db, task, adapter, credential_value, _build_prompt_with_rag_context(db, task),
-        worktree, connection_record, extra_should_cancel,
+        worktree, connection_record, extra_should_cancel, agent_connection=connection,
     )
 
 
@@ -155,12 +192,19 @@ def _run_adapter_and_finish(
     worktree: "git_worktree.WorktreeResult | None",
     connection_record: RepositoryConnection | None,
     extra_should_cancel: Callable[[], bool] | None,
+    agent_connection: CodingAgentConnection | None = None,
+    handoff_id: uuid.UUID | None = None,
 ) -> None:
     """Shared tail of both a fresh task run and a follow-up turn: stream the
     adapter's real output into `task.output`, then (if there's a worktree)
     collect the real cumulative diff and push/open-or-update a real PR.
-    Leaves `task.status` as COMPLETED or FAILED. Caller owns the session."""
+    Leaves `task.status` as COMPLETED or FAILED. Caller owns the session.
+
+    P5-2: `agent_connection`/`handoff_id` are only for the
+    `TaskExecutionAttempt` audit row (who actually ran this, and whether it
+    was a resumed handoff) -- they never change execution behavior."""
     chunk_count = 0
+    attempt = _start_attempt(db, task, agent_connection, handoff_id)
 
     def on_chunk(text: str) -> None:
         nonlocal chunk_count
@@ -191,6 +235,7 @@ def _run_adapter_and_finish(
         task.status = TaskStatus.FAILED
         task.output = result.output or task.output
         task.error_message = result.error
+    _finish_attempt(db, attempt, task)
 
     if worktree is not None:
         try:
@@ -355,6 +400,7 @@ def execute_followup(
 
     _run_adapter_and_finish(
         db, task, adapter, credential_value, prompt, worktree, connection_record, extra_should_cancel,
+        agent_connection=connection,
     )
     if task.status == TaskStatus.COMPLETED:
         db.add(TaskMessage(task_id=task.id, role=TaskMessageRole.AGENT, content=task.output or ""))

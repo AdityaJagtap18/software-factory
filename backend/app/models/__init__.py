@@ -5,6 +5,12 @@ from app.models.audit import AuditLog
 from app.models.document import Document, DocumentChunk
 from app.models.git_integration import GitInstallation, RepositoryConnection, WebhookEvent
 from app.models.organization import Organization, OrganizationMember
+from app.models.orchestration import (
+    HandoffStatus,
+    ProviderRoutingPolicy,
+    TaskExecutionAttempt,
+    TaskHandoff,
+)
 from app.models.project import Project, ProjectMember, Workspace
 from app.models.review_comment import ReviewComment
 from app.models.session import Session
@@ -27,14 +33,18 @@ __all__ = [
     "Document",
     "DocumentChunk",
     "GitInstallation",
+    "HandoffStatus",
     "Organization",
     "OrganizationMember",
     "Project",
     "ProjectMember",
+    "ProviderRoutingPolicy",
     "RepositoryConnection",
     "ReviewComment",
     "Session",
     "Task",
+    "TaskExecutionAttempt",
+    "TaskHandoff",
     "TaskMessage",
     "TaskMessageRole",
     "TaskPriority",

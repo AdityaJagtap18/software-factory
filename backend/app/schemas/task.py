@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.models.task import TaskPriority, TaskStatus
 from app.models.task_message import TaskMessageRole
@@ -37,6 +37,20 @@ class TaskResponse(BaseModel):
     created_at: datetime
     workflow_id: UUID | None = None
     step_order: int | None = None
+    required_capability: str = ""
+    depends_on_step_orders: list[int] = []
+    max_retries: int = 0
+    retry_count: int = 0
+
+    @field_validator("depends_on_step_orders", mode="before")
+    @classmethod
+    def _none_means_no_explicit_deps(cls, value: list[int] | None) -> list[int]:
+        """The ORM column is nullable -- `None` means "no explicit
+        dependency declared" (implicit sequential default), distinct from
+        `[]` (explicit "depends on nothing"). The API response always
+        reports a concrete list; callers that care about the distinction
+        use the workflow-create request shape, not this response."""
+        return value if value is not None else []
     git_branch_name: str = ""
     git_base_branch: str = ""
     git_changed_files: list[str] = []

@@ -1,7 +1,7 @@
 """add_agent_registry
 
 Revision ID: 3c99bb5de7e0
-Revises: 51e63e34dee0
+Revises: f7a1b9c2e3d4
 Create Date: 2026-11-21 10:22:24.265614
 
 """
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 revision: str = '3c99bb5de7e0'
-down_revision: Union[str, None] = '51e63e34dee0'
+down_revision: Union[str, None] = 'f7a1b9c2e3d4'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

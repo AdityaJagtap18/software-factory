@@ -12,6 +12,7 @@ from app.api.routes import (
     git_integration,
     knowledge,
     organizations,
+    orchestration,
     presence,
     projects,
     tasks,
@@ -55,6 +56,7 @@ app.include_router(dashboard.router, prefix="/api/v1")
 app.include_router(git_integration.router, prefix="/api/v1")
 app.include_router(approvals.router, prefix="/api/v1")
 app.include_router(documents.router, prefix="/api/v1")
+app.include_router(orchestration.router, prefix="/api/v1")
 
 
 @app.get("/api/v1/health")

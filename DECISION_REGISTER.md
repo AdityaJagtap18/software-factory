@@ -6,6 +6,111 @@ entries at the top (newest first) as future phases make their own non-obvious ca
 
 ---
 
+### P5-1 — `depends_on_step_orders` is a nullable sentinel, not a plain list with a `[]` default
+**Decision:** `Task.depends_on_step_orders` is `list[int] | None`, defaulting to `None` — not
+`list[int]` defaulting to `[]`. `None` means "this step never declared any dependency at all," which
+the scheduler treats as the original implicit rule ("depends on every prior step," exactly the old
+sequential behavior) **and** never injects shared-context text into the step's prompt. An explicit
+`[]` means "this step genuinely depends on nothing," which opts it into the new parallel-scheduling
+path **and** opts it into shared-context injection for whatever it *does* depend on.
+**Why:** The first version of this feature used a plain `list`/`default_factory=list` column, so
+"never declared" and "explicitly declared as empty" were indistinguishable — both read back as `[]`.
+That collapsed the decision point the roadmap actually needs ("should this step's prompt get context
+injected") into the wrong trigger ("does this step have zero prior-step dependencies"), and it
+silently broke backward compatibility: every existing sequential workflow's steps got an unwanted
+"Context from prior workflow steps..." block prepended to their prompt, changing real agent prompts
+for workflows that never asked for this feature. Caught by `tests/test_workflows.py`'s existing exact-
+output assertions failing after the first implementation — not something a type checker or review
+would have caught, since `[]` is a perfectly valid value either way.
+**Implication:** Any future caller of the workflow-create API that wants "depends on nothing, run in
+round 1" must say so explicitly with `depends_on_step_orders: []`, not rely on omitting the field —
+omitting it keeps the old sequential/no-injection behavior. `TaskResponse.depends_on_step_orders`
+normalizes `None` back to `[]` for API consumers (see `app/schemas/task.py`'s validator) — a response
+reader cannot distinguish "sequential default" from "explicitly empty" from the response alone; that
+distinction only exists in the workflow-create request shape and the DB column itself.
+
+### P5-2/P5-3 — scope boundaries deliberately left out of the orchestration/handoff/routing work
+**Decision:** Built: real dependency-aware scheduling with genuine concurrent threads, real
+capability-based assignment with honest escalation, a real versioned handoff mechanism that resumes
+the actual git worktree under a different agent, and an org-scoped policy-controlled fallback chain
+used by both initial assignment and automatic retry-on-failure. Deliberately **not** built: native
+provider session resume (no adapter exposes one — see P5-2's `IMPLEMENTATION_STATE.md` entry),
+cost-based routing, continuous/background provider health monitoring or circuit-breaking, versioned or
+pinned model profiles, and B4 (graph-powered retrieval during execution).
+**Why:** None of the omitted items were literally asked for by the roadmap's P5-2/P5-3 one-line
+objectives beyond what's listed above, and B4 is hard-gated on a tool-calling mechanism in the agent
+runtime adapters that doesn't exist yet (every adapter today takes one flat prompt string, not an
+interactive loop that could call back into the knowledge graph mid-execution) — building B4 against
+that missing dependency would mean fabricating a shallow version of it, which this session's standing
+instruction (real implementation only) rules out.
+**Implication:** B4 needs its own design pass once/if a tool-calling adapter interface is built. Cost-
+based routing and health monitoring are real gaps if this platform needs to pick providers by price or
+avoid degraded ones automatically — flag explicitly if a future phase needs them; don't assume
+`ProviderRoutingPolicy`'s plain ordered list already covers that.
+
+### Alembic chain bug (second instance): `3c99bb5de7e0_add_agent_registry.py` pointed at an uncommitted revision
+**Decision:** Changed `3c99bb5de7e0_add_agent_registry.py`'s `down_revision` from `'51e63e34dee0'`
+(a migration that was never committed — it only exists in the main checkout's uncommitted
+model-selection work) to `'f7a1b9c2e3d4'` (`add_task_messages`, the real last committed migration at
+the time Agent Registry was built).
+**Why:** `alembic heads` raised `KeyError: '51e63e34dee0'` before any Phase 5 migration work could
+even run — the exact same root-cause class as the Phase 3 `main.py`/`repository_intelligence` bug:
+a migration was authored in the main checkout against a sibling file that was present on disk there
+but never actually committed. Verified the fix with `alembic heads` returning one clean head.
+**Implication:** This is now the **second** time an uncommitted-sibling-file bug has broken the
+committed tree in this exact way (main.py import, now a migration chain). Any future phase that adds
+a new model/migration/route in this split-checkout setup should double-check its own `down_revision`/
+imports resolve against **only the committed tree**, not whatever else happens to be on disk in the
+main checkout at authoring time.
+
+### P5-1 — test-environment-only RAG embedding bypass and the premature-commit race it uncovered
+**Decision:** `tests/test_orchestration.py` monkeypatches `app.services.embeddings.embed_text` to
+raise `EmbeddingError` immediately in every test that runs real task execution, rather than letting
+P4-4's RAG step make its real call to local Ollama. Separately, `task_execution.py::_finish_attempt`
+no longer calls `db.commit()` itself — the caller's single trailing commit (already there, for the
+test-execution step) covers it.
+**Why:** P4-4's RAG retrieval calls the real embedding model on *every* task execution regardless of
+whether the project has any documents — fine in production, but it made a timing-sensitive new test
+(proving two workflow steps really run concurrently via a thread barrier) flaky against an
+unreachable/slow local Ollama for a reason that had nothing to do with what the test was checking.
+Investigating that same flaky test surfaced a real, separate defect: `_finish_attempt` (new in this
+phase, for the `TaskExecutionAttempt` audit row) committed `task.status` to the database the moment
+the adapter returned — *before* the real git-diff collection and PR push/update that follow in
+`_run_adapter_and_finish`. That let a polling client (or, in the test, pytest's own per-test table
+truncation) observe a task as "completed"/"failed" while real work was still in flight, racing a
+concurrent writer against the same row (`StaleDataError: UPDATE... 0 were matched`). The surrounding
+code already documents this exact invariant for the test-execution step ("so a polling caller never
+observes a completed task whose PR section hasn't actually finished yet") — `_finish_attempt`'s own
+commit violated it for the new attempt-tracking column.
+**Implication:** `_finish_attempt` must stay commit-free; whoever touches `_run_adapter_and_finish`
+next should keep every status-affecting write behind its single trailing `db.commit()`, not add a new
+intermediate one. Any new test that runs real task execution and needs deterministic timing should
+call the same RAG-bypass pattern rather than relying on Ollama being reachable/fast in CI.
+
+### P5-1 — this sandboxed environment's OS thread scheduler can starve a genuinely runnable thread for ~20s
+**Decision:** The true-parallel-execution proof in `tests/test_orchestration.py` monkeypatches
+`threading.Thread.start` for the duration of that one test to add a tiny `time.sleep(0.01)` right
+after each real thread start (plus a lower `sys.setswitchinterval`), rather than relying on bare
+`threading.Thread`/`threading.Barrier` timing.
+**Why:** Confirmed via a watchdog sampling both worker threads' live Python frames every 0.5s: when
+the orchestrator's round dispatcher starts two real OS threads back-to-back with no intervening real
+syscall, this particular sandboxed environment can leave the second thread completely undispatched
+(not blocked on any lock or resource in the application — simply never scheduled onto a core) for
+upward of 20 real seconds, even though a bare two-thread `threading.Barrier` smoke test with no
+Postgres/FastAPI involved interleaves correctly in well under a millisecond. Adding a real blocking
+syscall (file I/O, or here a `time.sleep`) at any point early in either thread's path reliably fixed
+it every time it was tried; a pure Python-level yield (`sys.setswitchinterval` alone) did not. This is
+a scheduler-fairness artifact of the sandbox this session ran in, not a defect in
+`workflow_execution.py`'s round-based dispatch — the underlying scheduling logic (round computed as
+`ready=[StepA, StepB]`, two independent threads spawned, both genuinely reach the adapter call and
+complete) was confirmed correct via extensive tracing before this fix was applied.
+**Implication:** Don't "fix" this by touching `workflow_execution.py`'s production dispatch loop —
+there is nothing wrong with it. If this same test flakes again in some other environment, look first
+at whether that environment's OS thread scheduler behaves differently, not at the round-scheduling
+code. A future test that needs genuine OS-thread concurrency proof should budget for this kind of
+sandbox quirk (a real yield point early in each thread, a generous barrier timeout) rather than
+assuming bare `threading` primitives time out only when the code under test is genuinely sequential.
+
 ### P3-3/P3-4 — removed a broken `repository_intelligence` import from `main.py`; isolated test DB for this worktree
 **Decision:** Deleted the `repository_intelligence` import and `app.include_router(...)` call from
 `backend/app/main.py`. Also ran this pass's tests against a dedicated local Postgres database

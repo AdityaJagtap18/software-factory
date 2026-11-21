@@ -23,10 +23,10 @@ verbatim-equivalent to the roadmap's own table text — update both together if 
 | P4-2 | Document ingestion + chunking | Build ingestion/chunking pipeline for the P4-1 format(s) | DONE — plain text/Markdown content only (no PDF/DOCX/HTML) | `09` §Phase 4, `05` |
 | P4-3 | Embedding + vector storage | Likely pgvector | DONE — pgvector + HNSW cosine index, local Ollama `nomic-embed-text` | `09` §Phase 4, `05` |
 | P4-4 | Retrieval + RAG pipeline | Wire retrieval into `task_execution.py`'s prompt construction | DONE — `document_retrieval.py` + `_build_prompt_with_rag_context`, `/documents/search` endpoint | `09` §Phase 4, `05` |
-| P5-1 | Agent orchestration layer | Supervisor/Planner, shared workflow state, task contracts, assignment ranking/escalation | NOT IMPLEMENTED | `09` §Phase 5, `03` §B |
-| P5-2 | Agent replacement / handoff | Session-ID persistence, versioned handover, true resume | NOT IMPLEMENTED | `09` §Phase 5, `03` §B |
-| P5-3 | Provider routing & fallback | Multi-provider candidate selection with policy-controlled fallback | NOT IMPLEMENTED | `09` §Phase 5, `03` §C |
-| P5-4 | Graph-powered agent retrieval | Bounded, scoped, snapshot-pinned graph-retrieval tool callable during execution | NOT IMPLEMENTED (P3-2/P3-3 now both done — this is unblocked) | `09` §Phase 5, `04` §3.4 |
+| P5-1 | Agent orchestration layer | Supervisor/Planner, shared workflow state, task contracts, assignment ranking/escalation | **DONE** — `workflow_execution.py` round-based scheduler, real concurrent threads, `agent_assignment.py` capability matching, `Workflow.shared_context` | `09` §Phase 5, `03` §B |
+| P5-2 | Agent replacement / handoff | Session-ID persistence, versioned handover, true resume | **DONE, with an honest limitation** — real versioned `TaskHandoff` + immutable `TaskExecutionAttempt` log, resumes the real git worktree under a different agent; no adapter exposes a real session ID today, so `provider_session_id` is always `null` (context-based continuation, not native resume) | `09` §Phase 5, `03` §B |
+| P5-3 | Provider routing & fallback | Multi-provider candidate selection with policy-controlled fallback | **DONE, narrow scope** — `ProviderRoutingPolicy` ordered fallback chains per org/capability; no cost-based routing, health monitoring, or model-profile versioning | `09` §Phase 5, `03` §C |
+| P5-4 | Graph-powered agent retrieval | Bounded, scoped, snapshot-pinned graph-retrieval tool callable during execution | NOT IMPLEMENTED — needs a tool-calling mechanism in the agent runtime adapters that doesn't exist yet (every adapter still takes one flat prompt string) | `09` §Phase 5, `04` §3.4 |
 | P6-1 | Notifications | Backend model + delivery | NOT IMPLEMENTED | `09` §Phase 6, `01` §A |
 | P6-2 | Audit log viewer | Frontend surface for the already-real `AuditLog` data | NOT IMPLEMENTED (frontend); BACKEND ONLY today | `09` §Phase 6, `06` §8 |
 | P6-3 | Cost tracking & execution tracing | Parse/store provider usage fields; structured trace/span model | NOT IMPLEMENTED | `09` §Phase 6, `03` §C |
@@ -35,8 +35,11 @@ verbatim-equivalent to the roadmap's own table text — update both together if 
 ## Dependency notes (from `09`'s own sequencing)
 
 - P3-2 depends on P2-1/P2-2. P3-3 depended on P3-2 — both now done.
-- P5-4 was **hard-gated** on P3-2 and P3-3; both are done, so P5-4 can now be scheduled.
-- P5-1 depends on P2-4 (done, unblocked).
+- P5-4 was **hard-gated** on P3-2 and P3-3; both are done, so P5-4 can now be scheduled. It is now
+  additionally gated on a tool-calling mechanism in the agent runtime adapters, which does not exist
+  yet (see P5-4's row above) — not yet scheduled for that reason.
+- P5-1 depends on P2-4 (done, unblocked). P5-1 is now DONE. P5-2/P5-3 were built in the same pass as
+  P5-1 (they share the same `TaskExecutionAttempt`/connection-selection machinery).
 - P4-1 resolved; P4-2–P4-4 built on that decision (done).
 - Phase 6 items are fully independent/parallel to everything else.
 

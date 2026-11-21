@@ -62,6 +62,24 @@ class Task(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     step_order: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    # Phase 5 (P5-1): orchestration metadata, only meaningful for a
+    # workflow step (`workflow_id` set). `required_capability` drives
+    # capability-based auto-assignment when the step has no
+    # `coding_agent_connection_id` of its own (see
+    # `app/services/agent_assignment.py`). `depends_on_step_orders` is this
+    # step's EXPLICIT dependency set, by `step_order` within the same
+    # workflow -- `None` (not set at all) means "use the default", which
+    # `workflow_execution.py` resolves to "every prior step", exactly
+    # matching the strictly-sequential behavior every workflow had before
+    # this field existed. An explicit `[]` genuinely means "no
+    # dependencies" (free to run in the very first round, in parallel with
+    # any sibling); only a step with this field explicitly set (empty or
+    # not) can run in parallel with a sibling outside its declared set.
+    required_capability: Mapped[str] = mapped_column(String(200), default="", nullable=False)
+    depends_on_step_orders: Mapped[list | None] = mapped_column(JSON, default=None, nullable=True)
+    max_retries: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
     # Phase 14: when the project has a connected repository, a task runs
     # inside its own real, isolated Git worktree/branch rather than a bare
     # prompt with no codebase. These stay empty for a task with no

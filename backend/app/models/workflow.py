@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, Enum, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -47,5 +47,12 @@ class Workflow(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Phase 5 (P5-1): real "shared workflow state" (decision log's task
+    # contracts, minimally) -- a dict keyed by `str(step_order)`, written
+    # once a step finishes with {"status", "output", "git_changed_files"},
+    # so a later step's prompt can be composed with genuine knowledge of
+    # what earlier steps actually did, not just "trust the git worktree".
+    shared_context: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 
     project: Mapped["Project"] = relationship()

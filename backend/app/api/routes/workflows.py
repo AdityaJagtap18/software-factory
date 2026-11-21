@@ -49,6 +49,7 @@ def _to_response(db: DBSession, workflow: Workflow) -> WorkflowResponse:
         completed_at=workflow.completed_at,
         created_at=workflow.created_at,
         steps=_steps(db, workflow.id),
+        shared_context=workflow.shared_context or {},
     )
 
 
@@ -107,13 +108,25 @@ def create_workflow(
 ) -> WorkflowResponse:
     ctx.require_role(MANAGE_ROLES)
 
-    for step in payload.steps:
+    for order, step in enumerate(payload.steps):
         if step.coding_agent_connection_id is not None:
             connection = db.get(CodingAgentConnection, step.coding_agent_connection_id)
             if connection is None or connection.organization_id != ctx.project.organization_id:
                 raise HTTPException(
                     status.HTTP_400_BAD_REQUEST,
                     "coding_agent_connection_id does not belong to this project's organization",
+                )
+        # P5-1: a step may only depend on an earlier step -- never itself,
+        # never a later one, never an order that doesn't exist. Rejected
+        # up front so a bad dependency can never silently strand a step as
+        # NOT_STARTED forever (see workflow_execution.py's "no step ready"
+        # halt case).
+        for dep in step.depends_on_step_orders or []:
+            if not (0 <= dep < order):
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    f"step {order} declares an invalid dependency on step {dep} "
+                    "(must be an earlier step in this same workflow)",
                 )
 
     workflow = Workflow(
@@ -135,6 +148,9 @@ def create_workflow(
                 created_by_user_id=user.id,
                 workflow_id=workflow.id,
                 step_order=order,
+                required_capability=step.required_capability,
+                depends_on_step_orders=step.depends_on_step_orders,
+                max_retries=step.max_retries,
             )
         )
 

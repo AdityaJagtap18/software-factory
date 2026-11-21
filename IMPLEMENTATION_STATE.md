@@ -1,8 +1,8 @@
 # Implementation State — Ground Truth
 
-Last updated: 2026-11-21, after the Phase 4 commit. Update this file at the end of every milestone;
-it is the fast answer to "is X done" — check here before re-reading audit docs or re-grepping the
-codebase for status.
+Last updated: 2026-11-21, after the Phase 5 (B1/B2/B3) commit. Update this file at the end of every
+milestone; it is the fast answer to "is X done" — check here before re-reading audit docs or
+re-grepping the codebase for status.
 
 ## Phase status at a glance
 
@@ -13,7 +13,7 @@ codebase for status.
 | Phase 2 — Foundational Gaps | **DONE**, P2-3 intentionally partial (commit `c20000c`) |
 | Phase 3 — Core Product-Vision Gaps (Coding Workspace Depth) | **DONE** (commit `6f21376`, then P3-3/P3-4 commit `7d0071a`) |
 | Phase 4 — RAG / Document Knowledge | **DONE** (P4-1..P4-4, see below) |
-| Phase 5 — Multi-Agent Orchestration & Graph-Powered Retrieval | NOT STARTED |
+| Phase 5 — Multi-Agent Orchestration & Graph-Powered Retrieval | **PARTIAL** — P5-1/P5-2/P5-3 **DONE**, P5-4 (B4 graph-powered retrieval) **NOT STARTED** (see below) |
 | Phase 6 — Remaining Core-Platform Gaps | NOT STARTED |
 
 ## Environment note for whoever runs tests next
@@ -76,7 +76,19 @@ Not built in Phase 4: PDF/DOCX/HTML document ingestion, a reranking step, citati
 and were not wired to real document endpoints — only the backend RAG pipeline itself was built and
 wired into task execution).
 
-## Phase 5/6 — NOT STARTED
+## Phase 5 — PARTIAL (P5-1/P5-2/P5-3 done; P5-4 not started)
+
+| ID | Item | Status | Proof |
+|---|---|---|---|
+| P5-1 | Orchestration engine: dependency-aware scheduling, real parallel execution where safe, capability-based agent assignment, shared workflow state | **DONE** | `app/services/workflow_execution.py` rewritten as "the Factory Supervisor": round-based scheduler over a workflow's steps — a step becomes "ready" once every step in its dependency set has genuinely `COMPLETED`. Explicit `Task.depends_on_step_orders` (nullable `list[int]`, new column) opts a step into a *smaller* dependency set than "every prior step"; when two or more steps in the same round are ready, each runs in its own real thread + its own DB session (SQLAlchemy sessions aren't thread-safe) — genuine concurrent execution, not cosmetic reordering. `Task.required_capability` (new column) triggers real capability-based auto-assignment (`app/services/agent_assignment.py::select_connection`, matching `Agent.capabilities` from the Agent Registry) with an honest escalation error (step fails, never silently proceeds) when nothing eligible is connected. `Workflow.shared_context` (new JSON column) folds a real prior step's real output into a dependent step's prompt — **only** for steps that explicitly declare a dependency (`depends_on_step_orders is not None`), so a workflow using none of this is byte-for-byte unchanged from pre-Phase-5 behavior (all 10 pre-existing `test_workflows.py` tests pass unmodified). `tests/test_orchestration.py` (capability assignment success/honest-escalation, true parallel execution proven with a real multi-thread barrier rendezvous, shared-context injection, dependency-declaration validation). |
+| P5-2 | Agent replacement / resumable handoff | **DONE, with an honestly documented limitation** | `app/models/orchestration.py::TaskHandoff` (versioned handover package, immutable per handoff — a second handoff is a new row) + `TaskExecutionAttempt` (immutable per-real-adapter-invocation audit log). `app/services/handoff.py`: `build_handover_package` snapshots the task's real git diff/output/test results/review comments/conversation into a JSON package; `resume_task_with_handoff` resumes the **same real git worktree/branch** (`git_worktree.resume_worktree`) under a **different** connection/adapter, with a prompt built from that real package — a genuine continuation, not a stateless restart. `POST /projects/{id}/tasks/{id}/handoff` (human-triggered) and `GET .../handoffs`, `GET .../attempts`. **Limitation, matching `audit/03` B9**: no adapter (Claude Code/Codex/Gemini/Qwen CLI, or the HTTP adapters) exposes a real resumable session ID — every invocation is a fresh process/API call, so `TaskHandoff.package["provider_session_id"]` is always `null` with an explanatory docstring; this is the "context-based continuation" fallback path the roadmap explicitly allows, not native session resume. `tests/test_orchestration.py::test_human_triggered_handoff_resumes_the_real_worktree_with_a_different_agent` (Claude Code fails mid-task against a real git worktree → human hands off to Codex → Codex genuinely resumes the same worktree, sees the first agent's real partial file, completes — 2 real `TaskExecutionAttempt` rows, 1 real `TaskHandoff` row), plus a 409 test for handing off a currently-running task. |
+| P5-3 | Policy-controlled provider routing/fallback | **DONE, deliberately narrow scope** | `app/models/orchestration.py::ProviderRoutingPolicy` (org-scoped, optionally capability-scoped, ordered `fallback_chain` of runtime slugs). `agent_assignment.select_connection` consults the matching policy (capability-specific first, else the org-wide default) to order candidates, falling back to registry order when no policy exists. Used by both P5-1's auto-assignment and P5-1's automatic retry-on-failure (a failed step with `max_retries` set automatically creates an **automatic** `TaskHandoff` to the next eligible connection in the chain and resumes). `POST`/`GET`/`DELETE /organizations/{id}/routing-policies` (org-admin only to write). **Deliberately not built**: cost-based routing, continuous provider health monitoring/circuit-breaking, versioned/pinned model profiles — none of these were asked for by the roadmap's own P5-3 description beyond "policy-controlled... fallback chains," and bolting them on would be scope creep; see `DECISION_REGISTER.md`. `tests/test_orchestration.py::test_step_retries_with_automatic_fallback_to_a_different_connection`, `test_routing_policy_orders_the_fallback_chain`, `test_non_org_admin_cannot_create_routing_policy`. |
+| P5-4 (B4) | Graph-powered agent/context retrieval | **NOT STARTED** | Needs its own design pass — per `audit/03-AGENT_ORCHESTRATION_AUDIT.md`, this depends on a tool-calling mechanism in the agent runtime adapters that doesn't exist yet (today, every adapter gets one flat prompt string, not an interactive tool loop that could query the knowledge graph mid-execution). Deferred rather than half-built against a dependency that isn't there. |
+
+See `PRD_REQUIREMENT_INDEX.md` for the full task-ID table; see
+`audit/09-SOFTWARE_FACTORY_REMAINING_ROADMAP.md` §Phase 5/6 for objectives.
+
+## Phase 6 — NOT STARTED
 
 See `PRD_REQUIREMENT_INDEX.md` for the full task-ID table; see
 `audit/09-SOFTWARE_FACTORY_REMAINING_ROADMAP.md` §Phase 5/6 for objectives.
@@ -127,3 +139,9 @@ pre-existing *uncommitted* model-selection changes to `test_agent_runtimes.py`/`
 `test_workflows.py` (see the untouched list below); the committed test files at `6f21376`/`da5accb`
 never had this mismatch. 197 = 182 (Phase 4 baseline) + 8 new `test_code_ingestion.py` tests (P3-3)
 + 7 new `test_task_messages.py` tests (P3-4).
+
+**206 passed, 0 failed** (`pytest -q`, ~101s), after the Phase 5 (P5-1/P5-2/P5-3) pass, same isolated
+test database. 206 = 197 (P3-3/P3-4 baseline) + 9 new `tests/test_orchestration.py` tests. Verified
+with a clean drop/recreate of the test database immediately before the run (model/migration changes
+this phase added several columns and three new tables, and `conftest.py`'s `Base.metadata.create_all()`
+only creates missing tables — it never `ALTER`s an existing one with a new column).

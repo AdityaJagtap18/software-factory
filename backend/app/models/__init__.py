@@ -1,3 +1,4 @@
+from app.models.agent import Agent, AgentStatus
 from app.models.agent_runtime import CodingAgentConnection, Credential
 from app.models.audit import AuditLog
 from app.models.git_integration import GitInstallation, RepositoryConnection, WebhookEvent
@@ -10,6 +11,8 @@ from app.models.user import User
 from app.models.workflow import Workflow, WorkflowStatus
 
 __all__ = [
+    "Agent",
+    "AgentStatus",
     "AuditLog",
     "CodingAgentConnection",
     "Credential",

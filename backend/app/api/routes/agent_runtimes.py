@@ -4,18 +4,23 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session as DBSession
 
-from app.api.deps import require_org_admin, require_org_member
+from app.api.deps import get_current_user, require_org_admin, require_org_member
 from app.core.crypto import decrypt_value, encrypt_value
 from app.core.database import get_db
+from app.models.agent import Agent, AgentStatus
 from app.models.agent_runtime import CodingAgentConnection, ConnectionStatus, Credential
 from app.models.organization import OrganizationMember
+from app.models.user import User
 from app.schemas.agent_runtime import (
+    AgentResponse,
     CapabilitySchema,
     ConnectionCreate,
     ConnectionResponse,
+    ModelCatalogResponse,
     RuntimeCatalogEntry,
 )
 from app.services import audit
+from app.services.agent_registry import sync_agent_registry
 from app.services.agent_runtime.registry import all_adapters, get_adapter
 
 router = APIRouter(tags=["coding-agent-runtimes"])
@@ -40,6 +45,35 @@ def list_runtime_catalog() -> list[RuntimeCatalogEntry]:
         )
         for a in all_adapters()
     ]
+
+
+@router.get("/agents", response_model=list[AgentResponse])
+def list_agents(
+    user: User = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+) -> list[Agent]:
+    """Phase 2 (P2-4) Agent Registry: a platform-wide, read-only catalog of
+    known coding-agent runtimes, backed by a real `agents` table kept in
+    sync with the adapter registry (never a hand-maintained duplicate of
+    `/coding-agent-runtimes`). Any authenticated user may list it -- it is
+    non-sensitive platform metadata, the same trust level as
+    `/coding-agent-runtimes` itself."""
+    sync_agent_registry(db)
+    return db.query(Agent).order_by(Agent.slug).all()
+
+
+@router.get(
+    "/organizations/{organization_id}/coding-agent-runtimes/model-catalog",
+    response_model=ModelCatalogResponse,
+)
+def get_organization_model_catalog(
+    organization_id: uuid.UUID,
+    membership: OrganizationMember = Depends(require_org_member),
+    db: DBSession = Depends(get_db),
+) -> ModelCatalogResponse:
+    """Returns the dynamic ChatGPT-style model catalog for this organization."""
+    from app.services.model_catalog_service import get_model_catalog
+    return get_model_catalog(db, organization_id)
 
 
 def _connection_response(

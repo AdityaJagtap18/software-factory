@@ -44,21 +44,24 @@ the roadmap's starting point is explicit.
 
 ## Phase 2 — Foundational Gaps That Block Later Phases
 
-| Task ID | Feature | Objective | Current status |
-|---|---|---|---|
-| P2-1 | Graph Access Service | A dedicated module all Neo4j reads/writes pass through, deriving scope from authenticated identity | NOT IMPLEMENTED |
-| P2-2 | Knowledge graph schema | Constraints/indexes for existing + near-term node labels | NOT IMPLEMENTED |
-| P2-3 | Sandbox all local-CLI adapters | Route Claude Code/Codex/Gemini CLI/Qwen executions through the existing Docker isolation primitive | PARTIALLY IMPLEMENTED (Docker Sandbox adapter only) |
-| P2-4 | Agent Registry foundation | Minimal Agent entity (id/version/capabilities/status) to replace the current single-FK "connection" model | NOT IMPLEMENTED |
+**STATUS: DONE (2026-11-21), with P2-3 intentionally partial.** See `11-IMPLEMENTATION_CHANGELOG.md` for
+the full change record and honest caveats.
 
-- **Dependencies:** P2-1 and P2-2 should land before Phase 3's Git-integration ingestion work (P3-2) to avoid widening an ungated surface. P2-4 is a prerequisite for Phase 5's handoff work but independent of P2-1/P2-2/P2-3.
-- **Frontend changes:** none required for P2-1/P2-2/P2-3; P2-4 may need a minimal agent-list view later but not in this phase.
-- **Backend changes:** new `graph_access.py` module (P2-1); Neo4j constraint/index migration script (P2-2); adapter dispatch changes to route through `DockerSandboxAdapter`-style execution for local CLIs (P2-3); new `Agent`/`AgentVersion` model (P2-4, additive — does not need to replace `CodingAgentConnection` yet, can coexist).
-- **Database changes:** Neo4j schema only for P2-2; new Postgres table(s) for P2-4.
-- **Agent infrastructure changes:** P2-3 is the main one — changes how local-CLI adapters are invoked.
-- **API changes:** none required for P2-1/P2-2; P2-3 is transparent to the API; P2-4 may add a read-only `/agents` listing route.
-- **Testing requirements:** cross-tenant graph-access denial test (P2-1); schema-creation idempotency test (P2-2); a test proving a local-CLI task run is now sandboxed equivalently to Docker Sandbox (P2-3, e.g. network-isolation assertion).
-- **Acceptance criteria:** no caller can read/write graph data without going through the access service; Neo4j has real constraints/indexes; every coding-agent runtime (not just `docker_sandbox`) runs with network/resource isolation; a minimal Agent entity exists and is populated for at least the existing six adapters.
+| Task ID | Feature | Objective | Status |
+|---|---|---|---|
+| P2-1 | Graph Access Service | A dedicated module all Neo4j reads/writes pass through, deriving scope from authenticated identity | **DONE** — `app/services/graph_access.py`; `knowledge.py` routes and `knowledge_context.py` now go through it; no method on it accepts a caller-supplied project id (structurally enforced, tested). |
+| P2-2 | Knowledge graph schema | Constraints/indexes for existing + near-term node labels | **DONE** — `knowledge_graph.ensure_schema()` now also covers File/Directory/Class/Function/Module (previously only the six platform-entity labels had constraints); called at app startup via FastAPI lifespan, not just lazily on first sync/ingest. |
+| P2-3 | Sandbox all local-CLI adapters | Route Claude Code/Codex/Gemini CLI/Qwen executions through the existing Docker isolation primitive | **PARTIALLY DONE, honestly** — the sandboxed-execution *plumbing* is built and verified against a real Docker daemon (worktree mount, resource limits, real network reachability, real cancellation), and all four adapters are wired to use it. But it is **off by default everywhere** (`SF_*_SANDBOX_IMAGE` env vars, all empty) because no real Docker image with Claude Code/Codex/Gemini CLI/Qwen actually installed exists yet -- building and verifying four such images is its own scoped task, not done here. Until one is configured, each adapter keeps running directly on the host exactly as before (zero behavior change in any environment today). See changelog for why claiming more than this would be fabrication. |
+| P2-4 | Agent Registry foundation | Minimal Agent entity (id/version/capabilities/status) to replace the current single-FK "connection" model | **DONE (foundation only, as scoped)** — new `Agent` model + migration, `GET /agents` (any authenticated user), kept in sync with the adapter registry (`app/services/agent_registry.py::sync_agent_registry`); additive, does not replace `CodingAgentConnection`. No separate `AgentVersion` table yet (deliberately deferred, per the roadmap's own "minimal" framing). |
+
+- **Dependencies:** met as planned — P2-1/P2-2 landed before any further graph-ingestion surface widened.
+- **Frontend changes:** none made (none required).
+- **Backend changes:** `app/services/graph_access.py` (new); `knowledge_graph.ensure_schema()` extended + called from `app/main.py`'s lifespan (P2-2); `app/services/agent_runtime/adapters.py` sandboxed-CLI helpers + per-adapter wiring + four new `Settings` fields (P2-3); new `app/models/agent.py` + `app/services/agent_registry.py` + migration `3c99bb5de7e0` (P2-4).
+- **Database changes:** Neo4j constraints/indexes for P2-2; new `agents` Postgres table for P2-4.
+- **Agent infrastructure changes:** P2-3's dispatch changes land, but are inert until a real per-runtime sandbox image is configured (see its status note above).
+- **API changes:** none for P2-1/P2-2/P2-3; `GET /agents` added for P2-4.
+- **Testing:** `tests/test_graph_access.py` (cross-tenant data-level isolation + a structural no-project-id-parameter assertion); `tests/test_cli_sandboxing.py` (pure command-construction tests + two real-Docker tests proving the mechanism, including real network reachability and real cancellation + a wiring test proving the adapter only sandboxes when configured); `tests/test_agent_registry.py` (sync idempotency, deprecation-not-deletion, endpoint auth/shape).
+- **Acceptance criteria:** met for P2-1/P2-2/P2-4 as scoped. P2-3's acceptance criterion ("every coding-agent runtime runs with network/resource isolation") is **not yet met in practice** -- only the capability to do so is built and proven; closing it the rest of the way requires building and verifying four real CLI Docker images, explicitly called out as the next concrete step rather than left implicit.
 
 ---
 

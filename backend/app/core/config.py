@@ -35,6 +35,19 @@ class Settings(BaseSettings):
     dev_quick_login_enabled: bool = False
     dev_quick_login_email: str = ""
     gemini_api_key: str = ""
+    # Phase 2 (P2-3): per-runtime Docker image for sandboxed local-CLI
+    # execution, each with that runtime's real CLI pre-installed. Empty
+    # (the default) means "not yet built/configured" -- that adapter
+    # honestly keeps running directly on the backend host (today's only
+    # mode) rather than claiming sandboxing that doesn't exist. Setting
+    # one of these to a real image name switches that adapter to run
+    # inside Docker (filesystem-jailed to the task worktree, memory/CPU
+    # limited) for every future execution -- see
+    # `app/services/agent_runtime/adapters.py::_run_cli_prompt_streaming_sandboxed`.
+    claude_code_sandbox_image: str = ""
+    codex_sandbox_image: str = ""
+    gemini_cli_sandbox_image: str = ""
+    qwen_sandbox_image: str = ""
 
     @property
     def is_local_dev(self) -> bool:

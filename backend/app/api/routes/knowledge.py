@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session as DBSession
 
 from app.api.deps import ProjectContext, require_project_access
@@ -13,7 +13,7 @@ from app.schemas.knowledge import (
     KnowledgeGraphResponse,
     KnowledgeSyncResponse,
 )
-from app.services import knowledge_graph
+from app.services.graph_access import GraphAccessService
 
 router = APIRouter(tags=["knowledge"])
 
@@ -24,12 +24,12 @@ def sync_project_knowledge(
     ctx: ProjectContext = Depends(require_project_access),
     db: DBSession = Depends(get_db),
 ) -> KnowledgeSyncResponse:
-    """Pulls this project's real tasks, workflows, and coding-agent
+    """Pulls this project's real tasks, workflows, repositories, and coding-agent
     connections from Postgres and upserts them into Neo4j as real nodes
     and relationships. If Neo4j isn't reachable, this honestly reports
     `connected: false` with the real driver error -- never a fabricated
     success or a silently empty graph."""
-    result = knowledge_graph.sync_project(db, ctx.project)
+    result = GraphAccessService.from_project_context(ctx).sync_project(db)
     return KnowledgeSyncResponse(
         connected=result.connected,
         detail=result.detail,
@@ -42,9 +42,42 @@ def sync_project_knowledge(
 @router.get("/projects/{project_id}/knowledge/graph", response_model=KnowledgeGraphResponse)
 def get_project_knowledge_graph(
     project_id: uuid.UUID,
+    graph_type: str = Query("project", pattern="^(project|repository|all)$"),
     ctx: ProjectContext = Depends(require_project_access),
 ) -> KnowledgeGraphResponse:
-    result = knowledge_graph.get_project_graph(project_id)
+    graph_access = GraphAccessService.from_project_context(ctx)
+    if graph_type == "repository":
+        result = graph_access.get_repository_graph()
+    elif graph_type == "all":
+        p_res = graph_access.get_project_graph()
+        r_res = graph_access.get_repository_graph()
+        if not p_res.connected:
+            return KnowledgeGraphResponse(connected=False, detail=p_res.detail, nodes=[], edges=[])
+        seen_nodes = set()
+        merged_nodes = []
+        for n in p_res.nodes + r_res.nodes:
+            if n.id not in seen_nodes:
+                seen_nodes.add(n.id)
+                merged_nodes.append(n)
+        seen_edges = set()
+        merged_edges = []
+        for e in p_res.edges + r_res.edges:
+            key = (e.source, e.target, e.type)
+            if key not in seen_edges:
+                seen_edges.add(key)
+                merged_edges.append(e)
+        return KnowledgeGraphResponse(
+            connected=True,
+            detail="OK",
+            nodes=[
+                {"id": n.id, "type": n.type, "label": str(n.label), "properties": n.properties}
+                for n in merged_nodes
+            ],
+            edges=[{"source": e.source, "target": e.target, "type": e.type} for e in merged_edges],
+        )
+    else:
+        result = graph_access.get_project_graph()
+
     return KnowledgeGraphResponse(
         connected=result.connected,
         detail=result.detail,
@@ -61,18 +94,15 @@ def get_project_knowledge_graph(
 )
 def ingest_repository(
     project_id: uuid.UUID,
-    payload: IngestRepositoryRequest,
+    payload: IngestRepositoryRequest = IngestRepositoryRequest(),
     ctx: ProjectContext = Depends(require_project_access),
+    db: DBSession = Depends(get_db),
 ) -> IngestRepositoryResponse:
-    """Parses a real directory of source files already present on the
-    backend host and upserts real File/Function/Class nodes into Neo4j.
-    Restricted to project admins: this reads whatever filesystem path the
-    backend process can see, so it's an elevated operation, not a
-    read-only one. There is deliberately no remote-git-URL variant of
-    this endpoint -- that would let any caller make the backend fetch
-    arbitrary network locations."""
+    """Parses a real directory of source files or uses the connected repository
+    checkout, and upserts real File/Directory/Class/Function/Module nodes into Neo4j.
+    Restricted to project admins."""
     ctx.require_role({ProjectRole.PROJECT_ADMIN})
-    result = knowledge_graph.ingest_repository(ctx.project, payload.path)
+    result = GraphAccessService.from_project_context(ctx).ingest_repository(db, payload.path or "")
     return IngestRepositoryResponse(
         connected=result.connected,
         detail=result.detail,
@@ -89,7 +119,7 @@ def get_project_code_graph(
     project_id: uuid.UUID,
     ctx: ProjectContext = Depends(require_project_access),
 ) -> CodeGraphResponse:
-    result = knowledge_graph.get_code_graph(project_id)
+    result = GraphAccessService.from_project_context(ctx).get_code_graph()
     return CodeGraphResponse(
         connected=result.connected,
         detail=result.detail,

@@ -467,6 +467,8 @@ def ingest_repository(
     except code_ingestion.IngestionError as exc:
         return IngestResult(connected=False, detail=exc.message)
 
+    relationships = code_ingestion.compute_relationships(files)
+
     synced_at = datetime.now(timezone.utc)
     nodes_synced = 0
     relationships_synced = 0
@@ -558,34 +560,70 @@ def ingest_repository(
             relationships_synced += 2
 
             for symbol in code_file.symbols:
-                if symbol.kind == "import":
-                    session.run(
-                        """
-                        MATCH (f:File {project_id: $project_id, path: $path})
-                        MERGE (m:Module {project_id: $project_id, name: $name})
-                        MERGE (f)-[:IMPORTS]->(m)
-                        """,
-                        project_id=str(project.id),
-                        path=code_file.relative_path,
-                        name=symbol.name,
-                    )
-                    nodes_synced += 1
-                    relationships_synced += 1
-                else:
-                    label = "Class" if symbol.kind == "class" else "Function"
-                    session.run(
-                        f"""
-                        MATCH (f:File {{project_id: $project_id, path: $path}})
-                        MERGE (s:{label} {{project_id: $project_id, path: $path, name: $name, line: $line}})
-                        MERGE (f)-[:DEFINES]->(s)
-                        """,
-                        project_id=str(project.id),
-                        path=code_file.relative_path,
-                        name=symbol.name,
-                        line=symbol.line,
-                    )
-                    nodes_synced += 1
-                    relationships_synced += 1
+                label = "Class" if symbol.kind == "class" else "Function"
+                session.run(
+                    f"""
+                    MATCH (f:File {{project_id: $project_id, path: $path}})
+                    MERGE (s:{label} {{project_id: $project_id, path: $path, name: $name, line: $line}})
+                    MERGE (f)-[:DEFINES]->(s)
+                    """,
+                    project_id=str(project.id),
+                    path=code_file.relative_path,
+                    name=symbol.name,
+                    line=symbol.line,
+                )
+                nodes_synced += 1
+                relationships_synced += 1
+
+            # External module imports (P3-3): an import this repo cannot
+            # resolve to one of its own files becomes an external `Module`
+            # node, same as before the parser-adapter refactor. Same-repo
+            # (relative) imports are handled below via `DEPENDS_ON` instead,
+            # since those point at a real `File` we already have.
+            for imp in code_file.imports:
+                if imp.relative:
+                    continue
+                session.run(
+                    """
+                    MATCH (f:File {project_id: $project_id, path: $path})
+                    MERGE (m:Module {project_id: $project_id, name: $name})
+                    MERGE (f)-[:IMPORTS]->(m)
+                    """,
+                    project_id=str(project.id),
+                    path=code_file.relative_path,
+                    name=imp.module,
+                )
+                nodes_synced += 1
+                relationships_synced += 1
+
+        # Same-repo import resolution (P3-3): File-DEPENDS_ON->File.
+        for from_path, to_path in relationships.depends_on:
+            session.run(
+                """
+                MATCH (a:File {project_id: $project_id, path: $from_path})
+                MATCH (b:File {project_id: $project_id, path: $to_path})
+                MERGE (a)-[:DEPENDS_ON]->(b)
+                """,
+                project_id=str(project.id),
+                from_path=from_path,
+                to_path=to_path,
+            )
+            relationships_synced += 1
+
+        # Test-to-code mapping (P3-3): File-TESTS->File, derived from the
+        # test file's own naming convention (test_foo.py -> foo.py, etc.).
+        for test_path, target_path in relationships.tests:
+            session.run(
+                """
+                MATCH (a:File {project_id: $project_id, path: $test_path})
+                MATCH (b:File {project_id: $project_id, path: $target_path})
+                MERGE (a)-[:TESTS]->(b)
+                """,
+                project_id=str(project.id),
+                test_path=test_path,
+                target_path=target_path,
+            )
+            relationships_synced += 1
 
     return IngestResult(
         connected=True,
@@ -763,11 +801,15 @@ def get_repository_graph(project_id, repo_id=None) -> GraphResult:
             OPTIONAL MATCH (r)-[:HAS_FILE]->(f:File)
             OPTIONAL MATCH (f)-[:DEFINES]->(s)
             OPTIONAL MATCH (f)-[:IMPORTS]->(m:Module)
+            OPTIONAL MATCH (f)-[:DEPENDS_ON]->(dep:File)
+            OPTIONAL MATCH (f)-[:TESTS]->(target:File)
             WITH [
                 CASE WHEN r IS NOT NULL AND d IS NOT NULL THEN {source: coalesce(r.id, r.full_name), target: d.path, type: 'CONTAINS'} END,
                 CASE WHEN r IS NOT NULL AND f IS NOT NULL THEN {source: coalesce(r.id, r.full_name), target: f.path, type: 'HAS_FILE'} END,
                 CASE WHEN f IS NOT NULL AND s IS NOT NULL THEN {source: f.path, target: labels(s)[0] + ':' + s.name, type: 'DEFINES'} END,
-                CASE WHEN f IS NOT NULL AND m IS NOT NULL THEN {source: f.path, target: 'Module:' + m.name, type: 'IMPORTS'} END
+                CASE WHEN f IS NOT NULL AND m IS NOT NULL THEN {source: f.path, target: 'Module:' + m.name, type: 'IMPORTS'} END,
+                CASE WHEN f IS NOT NULL AND dep IS NOT NULL THEN {source: f.path, target: dep.path, type: 'DEPENDS_ON'} END,
+                CASE WHEN f IS NOT NULL AND target IS NOT NULL THEN {source: f.path, target: target.path, type: 'TESTS'} END
             ] AS rels
             UNWIND rels AS rel
             WITH DISTINCT rel

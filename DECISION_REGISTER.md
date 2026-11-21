@@ -6,6 +6,33 @@ entries at the top (newest first) as future phases make their own non-obvious ca
 
 ---
 
+### P3-3/P3-4 — removed a broken `repository_intelligence` import from `main.py`; isolated test DB for this worktree
+**Decision:** Deleted the `repository_intelligence` import and `app.include_router(...)` call from
+`backend/app/main.py`. Also ran this pass's tests against a dedicated local Postgres database
+(`sf_worktree_p3`) instead of the shared `software_factory_test` database.
+**Why:** The committed `main.py` (as of the Phase 4 commit, `da5accb`) imports
+`app.api.routes.repository_intelligence` — a module that was never committed; it only exists as
+pre-existing, *uncommitted* work sitting in the separate main checkout at
+`C:\Users\Admin\Desktop\Software Factory`. On a clean checkout of this branch (this worktree), that
+import fails and the app cannot boot at all — no route works, no test can run, nothing. This is a
+real regression in the committed tree (most likely a staging mistake in an earlier phase commit,
+done from the main checkout where the uncommitted file happened to also be present on disk), not a
+design choice to revisit. Per this session's explicit instruction to leave the main checkout's
+uncommitted work untouched, the fix only ever removes the dangling reference in the committed file;
+the uncommitted `repository_intelligence.py`/model/schema files themselves were not read, modified,
+or committed. Separately, the shared Postgres test database already has a `tasks.knowledge_context
+NOT NULL` column applied directly by the main checkout's own uncommitted Alembic migration — this
+worktree's `Task` model has no such column, so any test inserting a `Task` against that shared DB
+fails with a `NotNullViolation` that has nothing to do with this phase's own changes. Pointing
+`SF_TEST_DATABASE_URL` at a fresh, separate database sidesteps that contamination without touching
+the shared DB's schema (which the other checkout's in-progress work may still depend on).
+**Implication:** Whoever next commits the `repository_intelligence` feature for real must re-add its
+import/`include_router` line to `main.py` as part of that same commit (not rely on it silently still
+being there). Any other worktree/session hitting the same `knowledge_context` `NotNullViolation`
+against the shared test DB should also point `SF_TEST_DATABASE_URL` at its own database rather than
+"fixing" the shared one's schema — that schema belongs to whichever session is actively building the
+uncommitted model-selection/repository-intelligence work.
+
 ### P4-1 — the RAG search-mix decision: local Ollama embeddings + pgvector, kept separate from the Neo4j graph
 **Decision:** Resolved the roadmap's open "what search mix" question (P4-1) as: (1) document scope
 limited to plain text/Markdown submitted directly as API content — no PDF/DOCX/HTML parsing was

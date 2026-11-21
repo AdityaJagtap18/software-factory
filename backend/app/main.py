@@ -14,7 +14,6 @@ from app.api.routes import (
     organizations,
     presence,
     projects,
-    repository_intelligence,
     tasks,
     workflows,
 )
@@ -52,7 +51,6 @@ app.include_router(tasks.router, prefix="/api/v1")
 app.include_router(workflows.router, prefix="/api/v1")
 app.include_router(presence.router, prefix="/api/v1")
 app.include_router(knowledge.router, prefix="/api/v1")
-app.include_router(repository_intelligence.router, prefix="/api/v1")
 app.include_router(dashboard.router, prefix="/api/v1")
 app.include_router(git_integration.router, prefix="/api/v1")
 app.include_router(approvals.router, prefix="/api/v1")

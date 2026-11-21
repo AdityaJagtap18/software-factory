@@ -11,10 +11,28 @@ codebase for status.
 | Phase 0 — Security & Configuration Hygiene | **DONE** (commit `89a9f51`) |
 | Phase 1 — Already Delivered (the pre-audit baseline itself) | DONE (nothing to schedule — context only) |
 | Phase 2 — Foundational Gaps | **DONE**, P2-3 intentionally partial (commit `c20000c`) |
-| Phase 3 — Core Product-Vision Gaps (Coding Workspace Depth) | **MOSTLY DONE** (commit `6f21376`) — P3-3 not done, P3-4 unverified |
+| Phase 3 — Core Product-Vision Gaps (Coding Workspace Depth) | **DONE** (commit `6f21376`, then P3-3/P3-4 commit TBD) |
 | Phase 4 — RAG / Document Knowledge | **DONE** (P4-1..P4-4, see below) |
 | Phase 5 — Multi-Agent Orchestration & Graph-Powered Retrieval | NOT STARTED |
 | Phase 6 — Remaining Core-Platform Gaps | NOT STARTED |
+
+## Environment note for whoever runs tests next
+
+The committed branch (as of `98b73ce`) does not boot on a clean checkout: `backend/app/main.py`
+imported a `repository_intelligence` route module that was never committed (it only exists as
+pre-existing *uncommitted* work in the separate main checkout — see the section below). Fixed by
+removing that import/`include_router` call from `main.py` in this pass; the uncommitted
+`repository_intelligence.py` itself was not touched. If/when that module is actually committed,
+re-add the import.
+
+Also: the shared Postgres test database (`software_factory_test` on `localhost:5433`) already has
+a `tasks.knowledge_context NOT NULL` column applied directly against it by the main checkout's
+*uncommitted* migration — this clean worktree's `Task` model doesn't define that column, so any
+test that inserts a `Task` fails with a `NotNullViolation` against that shared DB. Worked around for
+this pass by pointing `SF_TEST_DATABASE_URL` at a separate local database
+(`postgresql+psycopg2://sf:sf@localhost:5433/sf_worktree_p3`) instead of the shared one. Do the same
+in any worktree whose Postgres schema doesn't match the shared test DB's current (possibly
+uncommitted-migration-contaminated) state.
 
 ## Phase 0 — DONE (commit `89a9f51`)
 
@@ -33,14 +51,14 @@ codebase for status.
 | P2-3 | Sandbox all local-CLI adapters | **PARTIAL by design** — plumbing built and Docker-verified (`tests/test_cli_sandboxing.py`), but off by default (`SF_*_SANDBOX_IMAGE` all empty — no real per-CLI Docker image exists yet). Zero behavior change today. |
 | P2-4 | Agent Registry foundation | `app/models/agent.py`, `app/services/agent_registry.py`, `GET /agents`. `tests/test_agent_registry.py` |
 
-## Phase 3 — MOSTLY DONE (commit `6f21376`)
+## Phase 3 — DONE (commit `6f21376`, then P3-3/P3-4 commit TBD)
 
 | ID | Item | Status | Proof |
 |---|---|---|---|
 | P3-1 | Test execution | **DONE** | `app/services/test_runner.py` + `test_execution.py`, model `test_run.py`. `tests/test_test_runner.py`, `tests/test_task_test_runs.py`. Verified live in browser (real pytest + npm runs, including a genuine Windows `npm.cmd` failure). |
 | P3-2 | Repository KG ↔ Git integration (commit SHA) | **DONE** | `knowledge_graph.py::_git_head_sha`. `tests/test_code_ingestion.py::test_ingest_repository_records_real_commit_sha` |
-| P3-3 | Repository KG extraction breadth (imports/deps/test-mapping, parser-adapter framework) | **NOT DONE** | Still only `File-DEFINES->Class/Function`; no `CALLS`/`DEPENDS_ON`/`TESTS`/`MODIFIES` relationships exist. See `audit/04-REPOSITORY_KNOWLEDGE_GRAPH_AUDIT.md` §3.2 for the full gap list and proposed sequence. |
-| P3-4 | Multi-turn conversation (`TaskMessage`) | **UNVERIFIED** | Roadmap doc's own note: "Appears already implemented from an earlier, separately-committed change — not re-verified or re-scoped as part of this Phase 3 pass; re-check before relying on this status." `TaskMessage` model/routes/composer UI all exist in the tree, but this was not independently confirmed working end-to-end during Phase 3. |
+| P3-3 | Repository KG extraction breadth (imports/deps/test-mapping, parser-adapter framework) | **DONE — VERIFIED** | `app/services/code_ingestion.py`: `LanguageAdapter` ABC + `PythonAdapter`/`TypeScriptJavaScriptAdapter` registered in `_ADAPTERS` (the parser-adapter framework); each adapter now also extracts real imports (Python `ast.Import`/`ImportFrom`, TS/JS regex). `compute_relationships()` resolves same-repo relative imports to real files (`DEPENDS_ON`) and maps recognized test-file naming conventions to their target file (`TESTS`); `knowledge_graph.ingest_repository` writes both as real Neo4j relationships (external/unresolved imports still become `Module`+`IMPORTS`, unchanged). `tests/test_code_ingestion.py` (13 tests: adapter unit tests + a full ingest→Neo4j→`GET /knowledge/graph?graph_type=repository` round trip asserting the real `DEPENDS_ON`/`TESTS` edges come back). Deliberately out of scope per the roadmap's own sequencing: `CALLS` (call-graph) and endpoint/DB-model extraction — both explicitly deferred in `audit/04` §"Proposed implementation sequence" step 5. |
+| P3-4 | Multi-turn conversation (`TaskMessage`) | **DONE — VERIFIED (backend)** | Independently re-verified end-to-end this pass — no defects found in the existing implementation (`app/services/task_execution.py::execute_followup`/`app/api/routes/tasks.py` messages routes), only a prior total absence of test coverage. New `tests/test_task_messages.py` (7 tests): message persistence/ordering on a fresh task; a real two-turn round trip against a real git worktree (start → real file change → follow-up → worktree genuinely resumed, second real file added, real `AGENT` message recorded, `GET /messages` returns both turns in order); honest `SYSTEM`-message failure when there's no workspace to resume; 409 on a followup while already running; 403 for a viewer role and for a non-project-member; 401 unauthenticated. Frontend wiring (Task Center composer/UI) was not re-audited in this pass — backend is the verified scope. |
 | P3-5 | Review comments | **DONE** | `app/models/review_comment.py`, routes in `tasks.py`. `tests/test_review_comments.py`. Verified live in browser. |
 | P3-6 | Planning & Approval gate | **DONE (Approval half only)** | `app/models/approval.py`, `app/api/routes/approvals.py`. `tests/test_approvals.py`. Verified live in browser. **No `Plan` entity was built** — there is no planning-gate-before-execution step, only post-hoc approval of an already-opened PR. |
 
@@ -100,3 +118,12 @@ broken just because it's uncommitted, and do not fold fixing it into an unrelate
 failures are the same pre-existing set above — zero regressions from any phase's own work. (Phase 3
 baseline was 172 passed, 14 failed at commit `6f21376`; the 10 additional passing tests are exactly
 what Phase 4 added.)
+
+**197 passed, 0 failed** (`pytest -q`, ~95s), in this clean worktree after the P3-3/P3-4 pass
+(against `SF_TEST_DATABASE_URL=...sf_worktree_p3`, see the environment note above). The "same 14
+failures" set from previous phases is **not reproducible in a clean worktree** — those 14
+`fake_streaming()` signature-mismatch failures only exist in the main checkout, caused by its own
+pre-existing *uncommitted* model-selection changes to `test_agent_runtimes.py`/`test_tasks.py`/
+`test_workflows.py` (see the untouched list below); the committed test files at `6f21376`/`da5accb`
+never had this mismatch. 197 = 182 (Phase 4 baseline) + 8 new `test_code_ingestion.py` tests (P3-3)
++ 7 new `test_task_messages.py` tests (P3-4).

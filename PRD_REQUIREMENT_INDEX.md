@@ -15,8 +15,8 @@ verbatim-equivalent to the roadmap's own table text — update both together if 
 | P2-4 | Agent Registry foundation | Minimal Agent entity (id/version/capabilities/status) | DONE (foundation only) | `09` §Phase 2, `03` §B |
 | P3-1 | Test execution | Real test-runner integration surfaced in "Test Results" UI | DONE | `09` §Phase 3, `01` §D |
 | P3-2 | Repository KG ↔ Git integration | Wire graph ingestion to real `RepositoryConnection`/worktree, record commit SHA | DONE | `09` §Phase 3, `04` §3.2 |
-| P3-3 | Repository KG extraction breadth | Imports/dependencies/test-mapping relationships via a parser-adapter framework | NOT IMPLEMENTED | `09` §Phase 3, `04` §3.2/3.6 |
-| P3-4 | Multi-turn conversation | `TaskMessage` model + route + UI wiring for follow-ups | Appears already implemented (earlier, separate change) — NOT RE-VERIFIED | `09` §Phase 3, `01` §D |
+| P3-3 | Repository KG extraction breadth | Imports/dependencies/test-mapping relationships via a parser-adapter framework | **DONE — VERIFIED** (commit TBD) | `09` §Phase 3, `04` §3.2/3.6 |
+| P3-4 | Multi-turn conversation | `TaskMessage` model + route + UI wiring for follow-ups | **DONE — VERIFIED** (backend; commit TBD) | `09` §Phase 3, `01` §D |
 | P3-5 | Review comments | `ReviewComment` model + CRUD routes + UI wiring | DONE | `09` §Phase 3, `01` §D |
 | P3-6 | Planning & Approval gate | `Plan` entity + `Approval` model/route; replace mocked frontend Approvals | DONE (Approval half only; no `Plan` entity) | `09` §Phase 3, `06` §9 |
 | P4-1 | Resolve the search-mix design question | Decide graph vs. keyword vs. vector retrieval mix | DONE — local Ollama embeddings + pgvector, kept separate from the Neo4j graph (see `DECISION_REGISTER.md`) | `09` §Phase 4, `05` (Bottom line) |
@@ -26,7 +26,7 @@ verbatim-equivalent to the roadmap's own table text — update both together if 
 | P5-1 | Agent orchestration layer | Supervisor/Planner, shared workflow state, task contracts, assignment ranking/escalation | NOT IMPLEMENTED | `09` §Phase 5, `03` §B |
 | P5-2 | Agent replacement / handoff | Session-ID persistence, versioned handover, true resume | NOT IMPLEMENTED | `09` §Phase 5, `03` §B |
 | P5-3 | Provider routing & fallback | Multi-provider candidate selection with policy-controlled fallback | NOT IMPLEMENTED | `09` §Phase 5, `03` §C |
-| P5-4 | Graph-powered agent retrieval | Bounded, scoped, snapshot-pinned graph-retrieval tool callable during execution | NOT IMPLEMENTED (hard-gated on P3-2/P3-3) | `09` §Phase 5, `04` §3.4 |
+| P5-4 | Graph-powered agent retrieval | Bounded, scoped, snapshot-pinned graph-retrieval tool callable during execution | NOT IMPLEMENTED (P3-2/P3-3 now both done — this is unblocked) | `09` §Phase 5, `04` §3.4 |
 | P6-1 | Notifications | Backend model + delivery | NOT IMPLEMENTED | `09` §Phase 6, `01` §A |
 | P6-2 | Audit log viewer | Frontend surface for the already-real `AuditLog` data | NOT IMPLEMENTED (frontend); BACKEND ONLY today | `09` §Phase 6, `06` §8 |
 | P6-3 | Cost tracking & execution tracing | Parse/store provider usage fields; structured trace/span model | NOT IMPLEMENTED | `09` §Phase 6, `03` §C |
@@ -34,8 +34,8 @@ verbatim-equivalent to the roadmap's own table text — update both together if 
 
 ## Dependency notes (from `09`'s own sequencing)
 
-- P3-2 depends on P2-1/P2-2. P3-3 depends on P3-2 (done, so P3-3 is now unblocked).
-- P5-4 is **hard-gated** on P3-2 and P3-3 — do not schedule it before P3-3 lands.
+- P3-2 depends on P2-1/P2-2. P3-3 depended on P3-2 — both now done.
+- P5-4 was **hard-gated** on P3-2 and P3-3; both are done, so P5-4 can now be scheduled.
 - P5-1 depends on P2-4 (done, unblocked).
 - P4-1 resolved; P4-2–P4-4 built on that decision (done).
 - Phase 6 items are fully independent/parallel to everything else.

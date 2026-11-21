@@ -15,8 +15,8 @@ verbatim-equivalent to the roadmap's own table text — update both together if 
 | P2-4 | Agent Registry foundation | Minimal Agent entity (id/version/capabilities/status) | DONE (foundation only) | `09` §Phase 2, `03` §B |
 | P3-1 | Test execution | Real test-runner integration surfaced in "Test Results" UI | DONE | `09` §Phase 3, `01` §D |
 | P3-2 | Repository KG ↔ Git integration | Wire graph ingestion to real `RepositoryConnection`/worktree, record commit SHA | DONE | `09` §Phase 3, `04` §3.2 |
-| P3-3 | Repository KG extraction breadth | Imports/dependencies/test-mapping relationships via a parser-adapter framework | **DONE — VERIFIED** (commit TBD) | `09` §Phase 3, `04` §3.2/3.6 |
-| P3-4 | Multi-turn conversation | `TaskMessage` model + route + UI wiring for follow-ups | **DONE — VERIFIED** (backend; commit TBD) | `09` §Phase 3, `01` §D |
+| P3-3 | Repository KG extraction breadth | Imports/dependencies/test-mapping relationships via a parser-adapter framework | **DONE — VERIFIED** (commit `7d0071a`) | `09` §Phase 3, `04` §3.2/3.6 |
+| P3-4 | Multi-turn conversation | `TaskMessage` model + route + UI wiring for follow-ups | **DONE — VERIFIED** (backend; commit `7d0071a`) | `09` §Phase 3, `01` §D |
 | P3-5 | Review comments | `ReviewComment` model + CRUD routes + UI wiring | DONE | `09` §Phase 3, `01` §D |
 | P3-6 | Planning & Approval gate | `Plan` entity + `Approval` model/route; replace mocked frontend Approvals | DONE (Approval half only; no `Plan` entity) | `09` §Phase 3, `06` §9 |
 | P4-1 | Resolve the search-mix design question | Decide graph vs. keyword vs. vector retrieval mix | DONE — local Ollama embeddings + pgvector, kept separate from the Neo4j graph (see `DECISION_REGISTER.md`) | `09` §Phase 4, `05` (Bottom line) |

@@ -11,7 +11,7 @@ codebase for status.
 | Phase 0 — Security & Configuration Hygiene | **DONE** (commit `89a9f51`) |
 | Phase 1 — Already Delivered (the pre-audit baseline itself) | DONE (nothing to schedule — context only) |
 | Phase 2 — Foundational Gaps | **DONE**, P2-3 intentionally partial (commit `c20000c`) |
-| Phase 3 — Core Product-Vision Gaps (Coding Workspace Depth) | **DONE** (commit `6f21376`, then P3-3/P3-4 commit TBD) |
+| Phase 3 — Core Product-Vision Gaps (Coding Workspace Depth) | **DONE** (commit `6f21376`, then P3-3/P3-4 commit `7d0071a`) |
 | Phase 4 — RAG / Document Knowledge | **DONE** (P4-1..P4-4, see below) |
 | Phase 5 — Multi-Agent Orchestration & Graph-Powered Retrieval | NOT STARTED |
 | Phase 6 — Remaining Core-Platform Gaps | NOT STARTED |
@@ -51,7 +51,7 @@ uncommitted-migration-contaminated) state.
 | P2-3 | Sandbox all local-CLI adapters | **PARTIAL by design** — plumbing built and Docker-verified (`tests/test_cli_sandboxing.py`), but off by default (`SF_*_SANDBOX_IMAGE` all empty — no real per-CLI Docker image exists yet). Zero behavior change today. |
 | P2-4 | Agent Registry foundation | `app/models/agent.py`, `app/services/agent_registry.py`, `GET /agents`. `tests/test_agent_registry.py` |
 
-## Phase 3 — DONE (commit `6f21376`, then P3-3/P3-4 commit TBD)
+## Phase 3 — DONE (commit `6f21376`, then P3-3/P3-4 commit `7d0071a`)
 
 | ID | Item | Status | Proof |
 |---|---|---|---|

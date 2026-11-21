@@ -1,6 +1,6 @@
 # Implementation State — Ground Truth
 
-Last updated: 2026-11-21, after the Phase 6 (P6-1/P6-2/P6-3/P6-4) commit `PENDING_PHASE6_SHA`. Update this file at the end of every
+Last updated: 2026-11-21, after the Phase 6 (P6-1/P6-2/P6-3/P6-4) commit `83e3f5d`. Update this file at the end of every
 milestone; it is the fast answer to "is X done" — check here before re-reading audit docs or
 re-grepping the codebase for status.
 
@@ -14,7 +14,7 @@ re-grepping the codebase for status.
 | Phase 3 — Core Product-Vision Gaps (Coding Workspace Depth) | **DONE** (commit `6f21376`, then P3-3/P3-4 commit `7d0071a`) |
 | Phase 4 — RAG / Document Knowledge | **DONE** (P4-1..P4-4, see below) |
 | Phase 5 — Multi-Agent Orchestration & Graph-Powered Retrieval | **PARTIAL** — P5-1/P5-2/P5-3 **DONE** (commit `2b70be9`), P5-4 (B4 graph-powered retrieval) **NOT STARTED** (see below) |
-| Phase 6 — Remaining Core-Platform Gaps | **DONE** — P6-1/P6-2/P6-3/P6-4 (commit `PENDING_PHASE6_SHA`) |
+| Phase 6 — Remaining Core-Platform Gaps | **DONE** — P6-1/P6-2/P6-3/P6-4 (commit `83e3f5d`) |
 
 ## Environment note for whoever runs tests next
 
@@ -154,7 +154,7 @@ this phase added several columns and three new tables, and `conftest.py`'s `Base
 only creates missing tables — it never `ALTER`s an existing one with a new column).
 
 **222 passed, 0 failed** (`pytest -q`, ~106s), after the Phase 6 (P6-1/P6-2/P6-3/P6-4) commit
-`PENDING_PHASE6_SHA`, same isolated `sf_worktree_p3` test database, dropped and recreated fresh before
+`83e3f5d`, same isolated `sf_worktree_p3` test database, dropped and recreated fresh before
 the run (this phase also added columns to existing tables). 222 = 206 (Phase 5 baseline) + 16 new tests
 across `tests/test_notifications.py` (4), `tests/test_audit_log.py` (3), `tests/test_cost_tracking.py`
 (3), `tests/test_safety.py` (6). Re-ran the full suite twice in a row with identical results (222/222

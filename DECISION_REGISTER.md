@@ -6,6 +6,44 @@ entries at the top (newest first) as future phases make their own non-obvious ca
 
 ---
 
+### P6-3 — `TaskExecutionSpan` rides along on existing commits, never commits on its own
+**Decision:** The `_span` context manager (`app/services/task_execution.py`) adds its row to the
+session and sets its own `started_at`/`completed_at`/`succeeded`, but never calls `db.commit()`
+itself — it relies entirely on whichever commit the surrounding code already does next.
+**Why:** The first implementation had `_span` commit on entry and on exit. Since `task.status` is
+set as a plain in-memory attribute well before any of the worktree-pipeline phases run, and SQLAlchemy
+commits the *whole* session (not just the span row), that extra commit flushed `task.status =
+COMPLETED/FAILED` to the database far earlier than before this phase — immediately when the next
+span started, not once the real diff-collection/PR-push/test-run work actually finished. That made a
+polling caller observe a "terminal" task while real background work was still in flight, which raced
+against `tests/conftest.py`'s per-test table-truncation fixture and surfaced as `ObjectDeletedError`
+in the background thread for every test exercising the real git-worktree path (9 failures on first
+full-suite run). Removing the extra commits restored the exact original commit timing; the span rows
+still persist correctly because a commit already existed downstream in every code path (the function's
+unconditional trailing `db.commit()`, or `test_execution.run_tests_for_task`'s own commit).
+**Implication:** Any future addition inside `_run_adapter_and_finish`'s worktree block must not add its
+own `db.commit()` unless it genuinely intends to make `task.status` (or anything else already pending
+in that session) visible early — the single shared session there is intentionally "dirty" with
+not-yet-visible state for most of the function's body.
+
+### P6-3/P5-2 — found and fixed a second, narrower instance of the same early-commit race in `handoff.py`
+**Decision:** `resume_task_with_handoff` now sets `handoff.status = HandoffStatus.RESUMED` *before*
+calling `task_execution._run_adapter_and_finish`, not after — so it rides along in that same function's
+trailing commit instead of a separate, later one.
+**Why:** `_run_adapter_and_finish` already commits `task.status` as terminal before returning. The
+previous code then set `handoff.status = RESUMED` and committed *again*, afterward. That gap was a
+genuine (if narrow) pre-existing race — not introduced by P6-3's own code, but exposed by the small
+timing shift P6-3's safety-scanning and span bookkeeping added to the same thread: a caller polling
+`task.status` could see the task already terminal and immediately `GET` the handoff list before the
+second commit landed, reading `status: "pending"` on a handoff that had, in fact, already resumed and
+finished. Confirmed as a real pre-existing race (not a one-off): re-ran
+`test_human_triggered_handoff_resumes_the_real_worktree_with_a_different_agent` five times before the
+fix (1 failure in 3 runs) and five times after (0 failures in 5 runs).
+**Implication:** Any state that a polling caller is expected to read as consistent with a task's
+terminal status must be set *before* the commit that makes that status visible, not in a follow-up
+commit — this is the same invariant `_finish_attempt`'s own docstring already documents for the
+attempt row itself.
+
 ### P5-1 — `depends_on_step_orders` is a nullable sentinel, not a plain list with a `[]` default
 **Decision:** `Task.depends_on_step_orders` is `list[int] | None`, defaulting to `None` — not
 `list[int]` defaulting to `[]`. `None` means "this step never declared any dependency at all," which

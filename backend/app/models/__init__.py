@@ -4,11 +4,13 @@ from app.models.approval import Approval, ApprovalCategory, ApprovalPriority, Ap
 from app.models.audit import AuditLog
 from app.models.document import Document, DocumentChunk
 from app.models.git_integration import GitInstallation, RepositoryConnection, WebhookEvent
+from app.models.notification import Notification
 from app.models.organization import Organization, OrganizationMember
 from app.models.orchestration import (
     HandoffStatus,
     ProviderRoutingPolicy,
     TaskExecutionAttempt,
+    TaskExecutionSpan,
     TaskHandoff,
 )
 from app.models.project import Project, ProjectMember, Workspace
@@ -34,6 +36,7 @@ __all__ = [
     "DocumentChunk",
     "GitInstallation",
     "HandoffStatus",
+    "Notification",
     "Organization",
     "OrganizationMember",
     "Project",
@@ -44,6 +47,7 @@ __all__ = [
     "Session",
     "Task",
     "TaskExecutionAttempt",
+    "TaskExecutionSpan",
     "TaskHandoff",
     "TaskMessage",
     "TaskMessageRole",

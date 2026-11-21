@@ -61,6 +61,7 @@ class TaskResponse(BaseModel):
     git_base_branch_protected: bool = False
     git_required_status_checks: list[str] = []
     git_required_approving_reviews: int = 0
+    safety_flags: list[dict] = []
 
     model_config = {"from_attributes": True}
 

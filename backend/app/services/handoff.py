@@ -275,13 +275,18 @@ def resume_task_with_handoff(
     )
     db.commit()
 
+    # Set before the call below, not after: `_run_adapter_and_finish` does
+    # its own trailing commit that makes `task.status` visible to a
+    # polling caller as terminal. Committing `handoff.status` in a
+    # separate, later commit would let that caller observe a terminal
+    # task whose handoff still reads "pending" -- a real, if narrow, race
+    # this fixes by letting both land in the same commit.
+    handoff.status = HandoffStatus.RESUMED
+
     task_execution._run_adapter_and_finish(
         db, task, adapter, credential_value, prompt, worktree, connection_record,
         extra_should_cancel, agent_connection=connection, handoff_id=handoff.id,
     )
-
-    handoff.status = HandoffStatus.RESUMED
-    db.commit()
 
     if task.status == TaskStatus.COMPLETED:
         db.add(TaskMessage(task_id=task.id, role=TaskMessageRole.AGENT, content=task.output or ""))

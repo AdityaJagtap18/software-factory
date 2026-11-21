@@ -117,4 +117,12 @@ class Task(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     git_required_status_checks: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     git_required_approving_reviews: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
+    # Phase 6 (P6-4): real findings from scanning this task's own prompt
+    # (including any RAG context pulled from ingested documents, which are
+    # semi-untrusted) for prompt-injection patterns, and its own real
+    # output for secret-shaped strings -- see `app/services/safety.py`.
+    # Each entry is `{"kind": "prompt_injection"|"output_secret", "detail": str}`.
+    # Empty unless a real scan actually matched something; never fabricated.
+    safety_flags: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+
     project: Mapped["Project"] = relationship()

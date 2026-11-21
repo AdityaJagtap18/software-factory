@@ -7,7 +7,12 @@ from app.api.deps import ProjectContext, get_current_user, require_org_admin, re
 from app.core.database import get_db
 from app.models.agent_runtime import CodingAgentConnection
 from app.models.organization import OrganizationMember
-from app.models.orchestration import ProviderRoutingPolicy, TaskExecutionAttempt, TaskHandoff
+from app.models.orchestration import (
+    ProviderRoutingPolicy,
+    TaskExecutionAttempt,
+    TaskExecutionSpan,
+    TaskHandoff,
+)
 from app.models.project import ProjectRole
 from app.models.task import Task, TaskStatus
 from app.models.user import User
@@ -15,6 +20,7 @@ from app.schemas.orchestration import (
     ProviderRoutingPolicyCreate,
     ProviderRoutingPolicyResponse,
     TaskExecutionAttemptResponse,
+    TaskExecutionSpanResponse,
     TaskHandoffCreate,
     TaskHandoffResponse,
 )
@@ -119,6 +125,33 @@ def list_task_execution_attempts(
         db.query(TaskExecutionAttempt)
         .filter(TaskExecutionAttempt.task_id == task_id)
         .order_by(TaskExecutionAttempt.started_at.asc())
+        .all()
+    )
+
+
+@router.get(
+    "/projects/{project_id}/tasks/{task_id}/spans",
+    response_model=list[TaskExecutionSpanResponse],
+)
+def list_task_execution_spans(
+    project_id: uuid.UUID,
+    task_id: uuid.UUID,
+    ctx: ProjectContext = Depends(require_project_access),
+    db: DBSession = Depends(get_db),
+) -> list[TaskExecutionSpanResponse]:
+    """P6-3: the structured trace -- every real, timed phase of every real
+    attempt this task has ever had, across its whole attempt history."""
+    _get_task_or_404(db, project_id, task_id)
+    attempt_ids = [
+        row[0]
+        for row in db.query(TaskExecutionAttempt.id).filter(TaskExecutionAttempt.task_id == task_id).all()
+    ]
+    if not attempt_ids:
+        return []
+    return (
+        db.query(TaskExecutionSpan)
+        .filter(TaskExecutionSpan.attempt_id.in_(attempt_ids))
+        .order_by(TaskExecutionSpan.started_at.asc())
         .all()
     )
 

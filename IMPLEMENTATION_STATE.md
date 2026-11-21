@@ -1,6 +1,6 @@
 # Implementation State — Ground Truth
 
-Last updated: 2026-11-21, after the Phase 5 (P5-1/P5-2/P5-3) commit `2b70be9`. Update this file at the end of every
+Last updated: 2026-11-21, after the Phase 6 (P6-1/P6-2/P6-3/P6-4) commit `PENDING_PHASE6_SHA`. Update this file at the end of every
 milestone; it is the fast answer to "is X done" — check here before re-reading audit docs or
 re-grepping the codebase for status.
 
@@ -14,7 +14,7 @@ re-grepping the codebase for status.
 | Phase 3 — Core Product-Vision Gaps (Coding Workspace Depth) | **DONE** (commit `6f21376`, then P3-3/P3-4 commit `7d0071a`) |
 | Phase 4 — RAG / Document Knowledge | **DONE** (P4-1..P4-4, see below) |
 | Phase 5 — Multi-Agent Orchestration & Graph-Powered Retrieval | **PARTIAL** — P5-1/P5-2/P5-3 **DONE** (commit `2b70be9`), P5-4 (B4 graph-powered retrieval) **NOT STARTED** (see below) |
-| Phase 6 — Remaining Core-Platform Gaps | NOT STARTED |
+| Phase 6 — Remaining Core-Platform Gaps | **DONE** — P6-1/P6-2/P6-3/P6-4 (commit `PENDING_PHASE6_SHA`) |
 
 ## Environment note for whoever runs tests next
 
@@ -88,7 +88,14 @@ wired into task execution).
 See `PRD_REQUIREMENT_INDEX.md` for the full task-ID table; see
 `audit/09-SOFTWARE_FACTORY_REMAINING_ROADMAP.md` §Phase 5/6 for objectives.
 
-## Phase 6 — NOT STARTED
+## Phase 6 — DONE (P6-1/P6-2/P6-3/P6-4)
+
+| ID | Item | Status | Proof |
+|---|---|---|---|
+| P6-1 | Notifications: backend model + delivery | **DONE** | `app/models/notification.py::Notification` (real, durable row per genuine event — never a placeholder feed). `app/services/notifications.py`: `create_notification` writes the row and best-effort pushes it live over a per-user WebSocket (`NotificationManager`, mirroring `app/services/presence.py`'s exact pattern), bridging from a background execution thread to the app's real asyncio loop via `asyncio.run_coroutine_threadsafe` (the loop is bound once at FastAPI startup in `main.py`'s `_lifespan`). Hooked into `task_execution.py::_run_adapter_and_finish` so a task's creator is notified the moment it genuinely reaches COMPLETED or FAILED (best-effort: a delivery problem never overturns the task's own real result). `GET /notifications`, `GET /notifications/unread-count`, `POST /notifications/{id}/read`, `WS /notifications/ws` (`app/api/routes/notifications.py`). Frontend: the existing (previously static, mock) bell icon in `app-shell.component.ts/html` now reads real unread-count/notification data via `core/org/notification.service.ts` and marks-read on click. `tests/test_notifications.py` (completed/failed task notifies creator with the real error text, mark-read, unread-count, cross-user 404). |
+| P6-2 | Audit log viewer: a real read surface over the already-real `AuditLog` data | **DONE** | The write path (`app/services/audit.py::record`, called from 7+ route modules) already existed and needed no changes. Added `GET /organizations/{id}/audit-logs` (`app/api/routes/audit_log.py`, org-member read access, filterable by `action`/`target_type`, paginated) — the audit trail had **zero** API/frontend consumer before this (`audit/06-SECURITY_AND_GOVERNANCE_AUDIT.md` §8). New Angular feature `frontend/src/app/features/audit-log/` (`AuditLogComponent` + `AuditLogService`), routed at `/audit-log`, added to the sidebar nav — a real table over real rows, with action/target-type filter inputs; writing is never exposed (every row is only ever the honest side effect of a real action elsewhere). `tests/test_audit_log.py` (a real org-creation event is readable and filterable; non-members get 403). |
+| P6-3 | Cost tracking & execution tracing | **DONE, honest about what has real data** | **Usage**: `ExecutionResult.usage: dict` (new field, `app/services/agent_runtime/base.py`) — populated only by adapters whose own API genuinely returns token/duration accounting. Of the seven runtime adapters, only `OllamaAdapter`'s real `/api/generate` final streamed chunk actually reports this (`prompt_eval_count`/`eval_count`/duration fields) — every local-CLI adapter (Claude Code/Codex/Gemini CLI/Qwen) wraps a bare subprocess with no token-accounting API to ask, so their `usage` stays `{}`, never estimated. Stored on the real per-invocation `TaskExecutionAttempt.usage` (new JSON column), surfaced on the existing `GET .../attempts` endpoint. **Tracing**: new `app/models/orchestration.py::TaskExecutionSpan` — one row per real, already-happening phase of an attempt (`adapter_execution`, `diff_collection`, `pr_push`, `test_execution`), timed around work this backend already does (never a synthetic/estimated duration). New `GET /projects/{id}/tasks/{id}/spans`. `tests/test_cost_tracking.py` (real usage recorded when the adapter provides it, empty `{}` when it genuinely doesn't, spans recorded with real start/end timestamps). |
+| P6-4 | Prompt injection / output safety | **DONE, heuristic static scanning — not an LLM judge** | `app/services/safety.py`: `scan_prompt_for_injection` (regex over well-known injection phrasing — "ignore previous instructions," "reveal the system prompt," etc.) applied to RAG context pulled from ingested project documents before it's handed to an agent (`task_execution.py::_build_prompt_with_rag_context`) — documents are semi-untrusted (whatever a user uploaded). A match is recorded on `Task.safety_flags` (new JSON column) and in the audit log (`task.prompt_injection_flagged`); the real instruction is never dropped or rewritten, only a safety note is prepended telling the agent to treat the retrieved block as data, not instructions. `scan_output_for_secrets` (regex for credential-shaped strings — AWS keys, PEM private-key headers, generic API-key assignments, GitHub/Slack tokens) applied to an agent's real completed output; a match is flagged on `Task.safety_flags` but the recorded output is **never** altered or redacted — this project's standing rule against rewriting a real result applies to safety findings too — and the matched value itself is withheld from the finding's own detail text. `tests/test_safety.py` (pure pattern-matching unit tests + end-to-end: a task whose agent output contains a fake credential is flagged without the output being rewritten and without the secret appearing in the flag). **Deliberately not built**: an LLM-judge-based scan (itself promptinjectable, and a second real model call per task — out of scope for this pass) and automatic output redaction (would itself be a form of fabricating/altering a real result). |
 
 See `PRD_REQUIREMENT_INDEX.md` for the full task-ID table; see
 `audit/09-SOFTWARE_FACTORY_REMAINING_ROADMAP.md` §Phase 5/6 for objectives.
@@ -145,3 +152,15 @@ test database. 206 = 197 (P3-3/P3-4 baseline) + 9 new `tests/test_orchestration.
 with a clean drop/recreate of the test database immediately before the run (model/migration changes
 this phase added several columns and three new tables, and `conftest.py`'s `Base.metadata.create_all()`
 only creates missing tables — it never `ALTER`s an existing one with a new column).
+
+**222 passed, 0 failed** (`pytest -q`, ~106s), after the Phase 6 (P6-1/P6-2/P6-3/P6-4) commit
+`PENDING_PHASE6_SHA`, same isolated `sf_worktree_p3` test database, dropped and recreated fresh before
+the run (this phase also added columns to existing tables). 222 = 206 (Phase 5 baseline) + 16 new tests
+across `tests/test_notifications.py` (4), `tests/test_audit_log.py` (3), `tests/test_cost_tracking.py`
+(3), `tests/test_safety.py` (6). Re-ran the full suite twice in a row with identical results (222/222
+both times) given this phase's own prior flakiness investigation (see `DECISION_REGISTER.md`'s two new
+P6-3 entries) — the first full-suite run surfaced 9 real, reproducible failures caused by this phase's
+own `TaskExecutionSpan` commit timing, and a 10th, genuinely pre-existing but previously-latent race in
+`handoff.py`; both are now fixed in the production code itself, not papered over in the tests.
+Frontend: `npx ng build` succeeds with the new `audit-log` feature and the notification-service wiring
+(only pre-existing, unrelated SCSS budget warnings, zero TypeScript errors).

@@ -37,6 +37,19 @@ class TaskExecutionAttemptResponse(BaseModel):
     completed_at: datetime | None
     succeeded: bool | None
     error_message: str
+    usage: dict = {}
+
+    model_config = {"from_attributes": True}
+
+
+class TaskExecutionSpanResponse(BaseModel):
+    id: UUID
+    attempt_id: UUID
+    name: str
+    started_at: datetime
+    completed_at: datetime | None
+    succeeded: bool | None
+    detail: str
 
     model_config = {"from_attributes": True}
 

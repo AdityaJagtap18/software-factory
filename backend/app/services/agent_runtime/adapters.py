@@ -919,6 +919,7 @@ def _run_ollama_prompt_streaming(
     cwd: str | None = None,
 ) -> ExecutionResult:
     collected: list[str] = []
+    usage: dict = {}
     target_model = model or "qwen3:14b"
     system_prompt = (
         "You are an expert AI software engineer. You are working in a Git repository.\n"
@@ -961,6 +962,21 @@ def _run_ollama_prompt_streaming(
                         collected.append(text)
                         on_chunk(text)
                     if chunk_json.get("done", False):
+                        # P6-3: Ollama's final streamed chunk genuinely
+                        # includes these fields -- real counts/durations
+                        # the server itself computed, not an estimate.
+                        usage = {
+                            k: chunk_json[k]
+                            for k in (
+                                "prompt_eval_count",
+                                "eval_count",
+                                "total_duration",
+                                "load_duration",
+                                "prompt_eval_duration",
+                                "eval_duration",
+                            )
+                            if k in chunk_json
+                        }
                         break
                 except Exception:
                     continue
@@ -973,7 +989,7 @@ def _run_ollama_prompt_streaming(
     if cwd and Path(cwd).exists():
         _apply_generated_files_to_worktree(cwd, full_output)
 
-    return ExecutionResult(succeeded=True, output=full_output[:_MAX_OUTPUT_CHARS])
+    return ExecutionResult(succeeded=True, output=full_output[:_MAX_OUTPUT_CHARS], usage=usage)
 
 
 class OllamaAdapter(CodingAgentRuntimeAdapter):

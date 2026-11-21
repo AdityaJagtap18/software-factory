@@ -27,10 +27,10 @@ verbatim-equivalent to the roadmap's own table text — update both together if 
 | P5-2 | Agent replacement / handoff | Session-ID persistence, versioned handover, true resume | **DONE, with an honest limitation** — real versioned `TaskHandoff` + immutable `TaskExecutionAttempt` log, resumes the real git worktree under a different agent; no adapter exposes a real session ID today, so `provider_session_id` is always `null` (context-based continuation, not native resume) | `09` §Phase 5, `03` §B |
 | P5-3 | Provider routing & fallback | Multi-provider candidate selection with policy-controlled fallback | **DONE, narrow scope** — `ProviderRoutingPolicy` ordered fallback chains per org/capability; no cost-based routing, health monitoring, or model-profile versioning | `09` §Phase 5, `03` §C |
 | P5-4 | Graph-powered agent retrieval | Bounded, scoped, snapshot-pinned graph-retrieval tool callable during execution | NOT IMPLEMENTED — needs a tool-calling mechanism in the agent runtime adapters that doesn't exist yet (every adapter still takes one flat prompt string) | `09` §Phase 5, `04` §3.4 |
-| P6-1 | Notifications | Backend model + delivery | NOT IMPLEMENTED | `09` §Phase 6, `01` §A |
-| P6-2 | Audit log viewer | Frontend surface for the already-real `AuditLog` data | NOT IMPLEMENTED (frontend); BACKEND ONLY today | `09` §Phase 6, `06` §8 |
-| P6-3 | Cost tracking & execution tracing | Parse/store provider usage fields; structured trace/span model | NOT IMPLEMENTED | `09` §Phase 6, `03` §C |
-| P6-4 | Prompt injection / output safety | Output-scanning step before task output is persisted/displayed | NOT IMPLEMENTED | `09` §Phase 6, `06` §4/§10 |
+| P6-1 | Notifications | Backend model + delivery | **DONE** — real `Notification` row per genuine task-completed/-failed event + best-effort live WebSocket push, mirroring `presence.py`'s pattern; frontend bell wired to real data | `09` §Phase 6, `01` §A |
+| P6-2 | Audit log viewer | Frontend surface for the already-real `AuditLog` data | **DONE** — `GET /organizations/{id}/audit-logs` read endpoint + new `audit-log` Angular feature | `09` §Phase 6, `06` §8 |
+| P6-3 | Cost tracking & execution tracing | Parse/store provider usage fields; structured trace/span model | **DONE, honest about real-data availability** — `ExecutionResult.usage` populated only where an adapter's own API genuinely reports it (Ollama only; every local-CLI adapter stays `{}`); new `TaskExecutionSpan` model traces real timed phases (adapter execution, diff collection, PR push, test run) | `09` §Phase 6, `03` §C |
+| P6-4 | Prompt injection / output safety | Output-scanning step before task output is persisted/displayed | **DONE, heuristic static scanning** — `app/services/safety.py` regex-scans RAG context for injection phrasing before it reaches the prompt, and an agent's real output for credential-shaped strings; flags only, never rewrites/redacts the real output | `09` §Phase 6, `06` §4/§10 |
 
 ## Dependency notes (from `09`'s own sequencing)
 
@@ -41,7 +41,7 @@ verbatim-equivalent to the roadmap's own table text — update both together if 
 - P5-1 depends on P2-4 (done, unblocked). P5-1 is now DONE. P5-2/P5-3 were built in the same pass as
   P5-1 (they share the same `TaskExecutionAttempt`/connection-selection machinery).
 - P4-1 resolved; P4-2–P4-4 built on that decision (done).
-- Phase 6 items are fully independent/parallel to everything else.
+- Phase 6 items were fully independent/parallel to everything else, and are now all DONE.
 
 ## Source docs key
 

@@ -58,6 +58,35 @@ class TaskExecutionAttempt(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     succeeded: Mapped[bool | None] = mapped_column(Boolean, nullable=True)  # null while still running
     error_message: Mapped[str] = mapped_column(Text, default="", nullable=False)
 
+    # P6-3: real provider usage fields, when the adapter's execution result
+    # actually returned any (see `ExecutionResult.usage` in
+    # `app/services/agent_runtime/base.py`) -- empty `{}` for every adapter
+    # that genuinely has nothing to report (every local-CLI adapter today),
+    # never a fabricated estimate.
+    usage: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+
+
+class TaskExecutionSpan(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """P6-3: a structured trace span over one real, already-happening phase
+    of an attempt's execution (worktree preparation, the adapter
+    invocation itself, diff collection, PR push/open, the test run) --
+    timestamps taken around work this backend already does, never a
+    synthetic/estimated duration. `attempt_id` ties every span back to the
+    single `TaskExecutionAttempt` it belongs to, so a task's full
+    execution trace is reconstructable as the ordered attempts, each with
+    its ordered spans."""
+
+    __tablename__ = "task_execution_spans"
+
+    attempt_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("task_execution_attempts.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    succeeded: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    detail: Mapped[str] = mapped_column(Text, default="", nullable=False)
+
 
 class HandoffStatus(str, enum.Enum):
     PENDING = "pending"  # created, not yet resumed

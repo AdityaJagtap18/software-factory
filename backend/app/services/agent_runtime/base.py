@@ -47,6 +47,13 @@ class ExecutionResult:
     succeeded: bool
     output: str = ""
     error: str = ""
+    # P6-3: real usage/cost fields the runtime's own API genuinely
+    # returned (e.g. Ollama's `/api/generate` final chunk reports real
+    # `prompt_eval_count`/`eval_count`/duration fields). Empty `{}` for
+    # every adapter that has nothing real to report -- a bare subprocess
+    # CLI has no token-accounting API to ask, so this is never estimated
+    # or fabricated for those.
+    usage: dict = field(default_factory=dict)
 
 
 class CodingAgentRuntimeAdapter(ABC):

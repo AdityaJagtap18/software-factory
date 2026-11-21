@@ -44,7 +44,7 @@ codebase for status.
 | P3-5 | Review comments | **DONE** | `app/models/review_comment.py`, routes in `tasks.py`. `tests/test_review_comments.py`. Verified live in browser. |
 | P3-6 | Planning & Approval gate | **DONE (Approval half only)** | `app/models/approval.py`, `app/api/routes/approvals.py`. `tests/test_approvals.py`. Verified live in browser. **No `Plan` entity was built** — there is no planning-gate-before-execution step, only post-hoc approval of an already-opened PR. |
 
-## Phase 4 — DONE (commit `<PHASE4_COMMIT_SHA>`)
+## Phase 4 — DONE (commit `da5accb`)
 
 | ID | Item | Proof |
 |---|---|---|
@@ -96,7 +96,7 @@ broken just because it's uncommitted, and do not fold fixing it into an unrelate
 
 ## Last full test-suite result
 
-**182 passed, 14 failed** (`pytest -q`, ~229s), as of commit `<PHASE4_COMMIT_SHA>` (Phase 4). The 14
+**182 passed, 14 failed** (`pytest -q`, ~229s), as of commit `da5accb` (Phase 4). The 14
 failures are the same pre-existing set above — zero regressions from any phase's own work. (Phase 3
 baseline was 172 passed, 14 failed at commit `6f21376`; the 10 additional passing tests are exactly
 what Phase 4 added.)

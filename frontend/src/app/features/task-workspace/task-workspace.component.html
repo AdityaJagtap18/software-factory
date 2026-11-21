@@ -250,7 +250,20 @@
 
           <section class="sf-card">
             <div class="sf-panel-title"><h3>Test Results</h3></div>
-            <div class="sf-empty tcr-side__empty">Not configured — no test runner is integrated yet.</div>
+            @if (loadingTestRuns()) {
+              <div class="sf-empty tcr-side__empty">Loading…</div>
+            } @else if (latestTestRun(); as run) {
+              <div class="pw-info" style="padding:0 18px 14px;">
+                <div class="pw-info__row"><span class="label">Framework</span><span class="sf-pill">{{ run.framework }}</span></div>
+                @if (run.ran) {
+                  <div class="pw-info__row"><span class="label">Result</span><span class="sf-badge" [class]="run.failed > 0 ? 'sf-badge--red' : 'sf-badge--green'">{{ run.passed }}/{{ run.total }} passed</span></div>
+                } @else {
+                  <div class="pw-info__row"><span class="label">Result</span><span class="sf-badge sf-badge--gray">Not run</span></div>
+                }
+              </div>
+            } @else {
+              <div class="sf-empty tcr-side__empty">No test runs yet. Use the Test Results tab to run this task's suite.</div>
+            }
           </section>
 
           <section class="sf-card">
@@ -304,18 +317,98 @@
 
       <section class="sf-card tcr-comments">
         <div class="sf-tabs tcr-comments__tabs">
-          <button type="button" class="sf-tab active">Review Comments</button>
-          <button type="button" class="sf-tab">Suggested Improvements</button>
+          <button type="button" class="sf-tab active">Review Comments ({{ comments().length }})</button>
         </div>
-        <div class="sf-empty tcr-side__empty">Review comments aren't supported yet — there's no backend model for them.</div>
+        @if (loadingComments()) {
+          <div class="sf-empty tcr-side__empty">Loading comments…</div>
+        } @else if (comments().length === 0) {
+          <div class="sf-empty tcr-side__empty">No review comments yet.</div>
+        } @else {
+          <div class="tcr-comments__list">
+            @for (c of comments(); track c.id) {
+              <div class="tcr-comment" [class.tcr-comment--resolved]="c.resolved">
+                <div class="tcr-comment__head">
+                  @if (c.file_path) {
+                    <code class="tcr-comment__path">{{ c.file_path }}@if (c.line_number) {:{{ c.line_number }}}</code>
+                  }
+                  <span class="tcr-comment__time">{{ c.created_at | date: 'short' }}</span>
+                  @if (c.resolved) {
+                    <span class="sf-badge sf-badge--green">Resolved</span>
+                  }
+                </div>
+                <p class="tcr-comment__body">{{ c.body }}</p>
+                @if (!c.resolved) {
+                  <button
+                    type="button"
+                    class="sf-btn"
+                    [disabled]="resolvingCommentId() === c.id"
+                    (click)="resolveComment(c)"
+                  >
+                    {{ resolvingCommentId() === c.id ? 'Resolving…' : 'Mark Resolved' }}
+                  </button>
+                }
+              </div>
+            }
+          </div>
+        }
+        <form class="tcr-comments__composer" (ngSubmit)="submitComment()">
+          <textarea
+            rows="2"
+            placeholder="{{ selectedDiffFile() ? 'Comment on ' + selectedDiffFile()!.path + '…' : 'Leave a review comment…' }}"
+            [value]="commentDraft()"
+            (input)="commentDraft.set($any($event.target).value)"
+            [disabled]="submittingComment()"
+          ></textarea>
+          <button class="sf-btn sf-btn--primary" type="submit" [disabled]="submittingComment() || !commentDraft().trim()">
+            {{ submittingComment() ? 'Posting…' : 'Comment' }}
+          </button>
+        </form>
       </section>
     }
   }
 
   @if (tab() === 'tests') {
     <section class="sf-card">
-      <div class="sf-panel-title"><h3>Test Results</h3></div>
-      <div class="sf-empty">Not configured — this task's runtime doesn't run a test suite yet.</div>
+      <div class="sf-panel-title">
+        <h3>Test Results</h3>
+        <button type="button" class="sf-btn" [disabled]="triggeringTestRun()" (click)="triggerTestRun()">
+          {{ triggeringTestRun() ? 'Running…' : 'Run Tests' }}
+        </button>
+      </div>
+      @if (testRunError()) {
+        <p class="apr-detail-sub" style="color:var(--sf-danger, #d64545);">{{ testRunError() }}</p>
+      }
+      @if (loadingTestRuns()) {
+        <div class="sf-empty">Loading test runs…</div>
+      } @else if (testRuns().length === 0) {
+        <div class="sf-empty">No test runs yet for this task. Click "Run Tests" to run its real test suite against this task's worktree.</div>
+      } @else {
+        <div class="tcr-comments__list" style="padding: 12px 18px;">
+          @for (run of testRuns(); track run.id) {
+            <div class="tcr-comment">
+              <div class="tcr-comment__head">
+                <span class="sf-pill">{{ run.framework }}</span>
+                @if (!run.ran) {
+                  <span class="sf-badge sf-badge--gray">Not run</span>
+                } @else if (run.failed > 0) {
+                  <span class="sf-badge sf-badge--red">{{ run.failed }} failed</span>
+                } @else {
+                  <span class="sf-badge sf-badge--green">All passed</span>
+                }
+                @if (run.ran) {
+                  <span class="value">{{ run.passed }}/{{ run.total }} passed</span>
+                }
+                <span class="tcr-comment__time">{{ run.created_at | date: 'short' }}</span>
+              </div>
+              @if (run.error) {
+                <p class="tcr-comment__body">{{ run.error }}</p>
+              } @else if (run.output) {
+                <pre class="tcr-logs" style="padding: 8px; max-height: 240px; overflow: auto;">{{ run.output }}</pre>
+              }
+            </div>
+          }
+        </div>
+      }
     </section>
   }
 

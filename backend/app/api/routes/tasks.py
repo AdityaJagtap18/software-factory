@@ -11,10 +11,14 @@ from app.core.database import SessionLocal, get_db
 from app.models.agent_runtime import CodingAgentConnection
 from app.models.git_integration import RepositoryConnection, RepositoryConnectionStatus
 from app.models.project import Project, ProjectRole
+from app.models.review_comment import ReviewComment
 from app.models.task import Task, TaskStatus
 from app.models.task_message import TaskMessage, TaskMessageRole
+from app.models.test_run import TestRun
 from app.models.user import User
 from app.schemas.git_integration import MergePullRequestResult
+from app.schemas.review_comment import ReviewCommentCreate, ReviewCommentResponse
+from app.schemas.test_run import TestRunResponse
 from app.schemas.task import (
     MyTaskResponse,
     TaskCreate,
@@ -24,7 +28,7 @@ from app.schemas.task import (
     TaskResponse,
     TaskUpdate,
 )
-from app.services import audit
+from app.services import audit, test_execution
 from app.services.access import visible_project_ids
 from app.services.git_provider.base import GitProviderError
 from app.services.git_provider.registry import get_git_provider
@@ -420,3 +424,114 @@ def delete_task(
     task = _get_task_or_404(db, project_id, task_id)
     db.delete(task)
     db.commit()
+
+
+@router.get(
+    "/projects/{project_id}/tasks/{task_id}/review-comments",
+    response_model=list[ReviewCommentResponse],
+)
+def list_review_comments(
+    project_id: uuid.UUID,
+    task_id: uuid.UUID,
+    ctx: ProjectContext = Depends(require_project_access),
+    db: DBSession = Depends(get_db),
+) -> list[ReviewComment]:
+    """Real review comments left on this task's actual diff/output -- never
+    mock data (see the task-workspace diff viewer, which previously had no
+    backend model for this at all)."""
+    _get_task_or_404(db, project_id, task_id)
+    return (
+        db.query(ReviewComment)
+        .filter(ReviewComment.task_id == task_id)
+        .order_by(ReviewComment.created_at.asc())
+        .all()
+    )
+
+
+@router.post(
+    "/projects/{project_id}/tasks/{task_id}/review-comments",
+    response_model=ReviewCommentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_review_comment(
+    project_id: uuid.UUID,
+    task_id: uuid.UUID,
+    payload: ReviewCommentCreate,
+    user: User = Depends(get_current_user),
+    ctx: ProjectContext = Depends(require_project_access),
+    db: DBSession = Depends(get_db),
+) -> ReviewComment:
+    _get_task_or_404(db, project_id, task_id)
+    comment = ReviewComment(
+        project_id=project_id,
+        task_id=task_id,
+        author_user_id=user.id,
+        body=payload.body,
+        file_path=payload.file_path,
+        line_number=payload.line_number,
+    )
+    db.add(comment)
+    db.commit()
+    db.refresh(comment)
+    return comment
+
+
+@router.post(
+    "/projects/{project_id}/tasks/{task_id}/review-comments/{comment_id}/resolve",
+    response_model=ReviewCommentResponse,
+)
+def resolve_review_comment(
+    project_id: uuid.UUID,
+    task_id: uuid.UUID,
+    comment_id: uuid.UUID,
+    ctx: ProjectContext = Depends(require_project_access),
+    db: DBSession = Depends(get_db),
+) -> ReviewComment:
+    ctx.require_role(MANAGE_ROLES)
+    _get_task_or_404(db, project_id, task_id)
+    comment = db.get(ReviewComment, comment_id)
+    if comment is None or comment.task_id != task_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Review comment not found")
+    comment.resolved = True
+    db.commit()
+    db.refresh(comment)
+    return comment
+
+
+@router.get("/projects/{project_id}/tasks/{task_id}/test-runs", response_model=list[TestRunResponse])
+def list_test_runs(
+    project_id: uuid.UUID,
+    task_id: uuid.UUID,
+    ctx: ProjectContext = Depends(require_project_access),
+    db: DBSession = Depends(get_db),
+) -> list[TestRun]:
+    """Real test-suite runs against this task's worktree (P3-1) -- never
+    mock data. Most recent first."""
+    _get_task_or_404(db, project_id, task_id)
+    return (
+        db.query(TestRun)
+        .filter(TestRun.task_id == task_id)
+        .order_by(TestRun.created_at.desc())
+        .all()
+    )
+
+
+@router.post(
+    "/projects/{project_id}/tasks/{task_id}/test-runs",
+    response_model=TestRunResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def trigger_test_run(
+    project_id: uuid.UUID,
+    task_id: uuid.UUID,
+    ctx: ProjectContext = Depends(require_project_access),
+    db: DBSession = Depends(get_db),
+) -> TestRun:
+    """Runs this task's real, detected test suite right now, against its
+    existing worktree on disk -- not a fresh clone, not a simulated result."""
+    ctx.require_role(MANAGE_ROLES)
+    task = _get_task_or_404(db, project_id, task_id)
+    try:
+        return test_execution.run_tests_for_task(db, task)
+    except test_execution.NoWorktreeError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc

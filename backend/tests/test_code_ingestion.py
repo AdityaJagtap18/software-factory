@@ -1,3 +1,5 @@
+import subprocess
+
 import pytest
 
 from app.services import code_ingestion, knowledge_graph
@@ -91,6 +93,44 @@ def test_ingest_repository_round_trip(client, tmp_path):
     files = {f["path"]: f for f in graph["files"]}
     assert "math_utils.py" in files
     assert files["math_utils.py"]["symbols"][0]["name"] == "add"
+
+
+@requires_neo4j
+def test_ingest_repository_records_real_commit_sha(client, tmp_path):
+    """P3-2: the Repository node's commit_sha must be the real `git rev-parse
+    HEAD` of the ingested checkout -- never fabricated or left blank when the
+    directory genuinely is a git repo."""
+    (tmp_path / "math_utils.py").write_text("def add(a, b):\n    return a + b\n")
+    subprocess.run(["git", "init"], cwd=str(tmp_path), check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-c", "user.email=t@example.com", "-c", "user.name=t", "add", "."],
+        cwd=str(tmp_path),
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-m", "init"],
+        cwd=str(tmp_path),
+        check=True,
+        capture_output=True,
+    )
+    expected_sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=str(tmp_path), check=True, capture_output=True, text=True
+    ).stdout.strip()
+
+    alice = _register_and_login(client, "alice@example.com", "Alice")
+    _org, project = _project(client, alice)
+
+    r = client.post(
+        f"/api/v1/projects/{project['id']}/knowledge/ingest-repository",
+        json={"path": str(tmp_path)},
+        headers=alice,
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["connected"] is True
+    assert body["commit_sha"] == expected_sha
+    assert body["commit_sha"] != ""
 
 
 @requires_neo4j

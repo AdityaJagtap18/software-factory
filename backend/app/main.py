@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import (
     agent_runtimes,
+    approvals,
     auth,
     dashboard,
     git_integration,
@@ -53,6 +54,7 @@ app.include_router(knowledge.router, prefix="/api/v1")
 app.include_router(repository_intelligence.router, prefix="/api/v1")
 app.include_router(dashboard.router, prefix="/api/v1")
 app.include_router(git_integration.router, prefix="/api/v1")
+app.include_router(approvals.router, prefix="/api/v1")
 
 
 @app.get("/api/v1/health")

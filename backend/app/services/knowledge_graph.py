@@ -140,6 +140,7 @@ class IngestResult:
     nodes_synced: int = 0
     relationships_synced: int = 0
     synced_at: datetime | None = None
+    commit_sha: str = ""
 
 
 def sync_project(db: DBSession, project: Project) -> SyncResult:
@@ -390,6 +391,26 @@ def _sync_connected_repo_checkout(rc: RepositoryConnection) -> Path:
     return repo_dir
 
 
+def _git_head_sha(repo_dir: Path) -> str:
+    """Real `git rev-parse HEAD` in `repo_dir` -- never fabricated. Returns
+    "" if the directory isn't a real checkout or the command fails, so a
+    caller can honestly record "unknown" rather than a guessed SHA (P3-2:
+    commit-level provenance for what was actually ingested)."""
+    try:
+        proc = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=str(repo_dir),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    if proc.returncode != 0:
+        return ""
+    return proc.stdout.strip()
+
+
 def ingest_repository(
     project: Project,
     root_path: str = "",
@@ -419,6 +440,7 @@ def ingest_repository(
                 .first()
             )
 
+    commit_sha = ""
     if not root_path:
         if repo_conn is None:
             return IngestResult(
@@ -428,11 +450,17 @@ def ingest_repository(
         try:
             repo_dir = _sync_connected_repo_checkout(repo_conn)
             root_path = str(repo_dir)
+            commit_sha = _git_head_sha(repo_dir)
         except Exception as exc:  # noqa: BLE001
             return IngestResult(
                 connected=False,
                 detail=f"Could not retrieve repository checkout for '{repo_conn.full_name}': {exc}",
             )
+    else:
+        # An explicit local path was given directly (admin-supplied, not
+        # necessarily a git checkout at all) -- still record a real SHA if
+        # it happens to be one, rather than fabricating.
+        commit_sha = _git_head_sha(Path(root_path))
 
     try:
         files = code_ingestion.scan_directory(Path(root_path))
@@ -473,13 +501,15 @@ def ingest_repository(
             SET r.full_name = $full_name,
                 r.project_id = $project_id,
                 r.default_branch = $default_branch,
-                r.synced_at = $synced_at
+                r.synced_at = $synced_at,
+                r.commit_sha = $commit_sha
             MERGE (p)-[:HAS_REPOSITORY]->(r)
             """,
             project_id=str(project.id),
             repo_id=repo_id,
             full_name=repo_name,
             default_branch=default_branch,
+            commit_sha=commit_sha,
             synced_at=synced_at.isoformat(),
         )
         nodes_synced += 1
@@ -565,6 +595,7 @@ def ingest_repository(
         nodes_synced=nodes_synced,
         relationships_synced=relationships_synced,
         synced_at=synced_at,
+        commit_sha=commit_sha,
     )
 
 

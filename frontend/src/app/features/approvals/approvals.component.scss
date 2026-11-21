@@ -116,6 +116,12 @@
   border-top: 1px solid var(--sf-border);
 }
 
+.apr-empty {
+  padding: 14px 18px;
+  font-size: 12.5px;
+  color: var(--sf-text-tertiary);
+}
+
 @media (max-width: 1150px) {
   .apr-grid { grid-template-columns: 1fr; }
 }

@@ -111,6 +111,7 @@ def ingest_repository(
         nodes_synced=result.nodes_synced,
         relationships_synced=result.relationships_synced,
         synced_at=result.synced_at,
+        commit_sha=result.commit_sha,
     )
 
 

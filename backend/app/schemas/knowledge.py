@@ -32,7 +32,7 @@ class KnowledgeGraphResponse(BaseModel):
 
 
 class IngestRepositoryRequest(BaseModel):
-    path: str
+    path: str = ""
 
 
 class CodeSymbolSchema(BaseModel):
@@ -55,6 +55,7 @@ class IngestRepositoryResponse(BaseModel):
     nodes_synced: int = 0
     relationships_synced: int = 0
     synced_at: datetime | None = None
+    commit_sha: str = ""
 
 
 class CodeGraphResponse(BaseModel):

@@ -42,10 +42,11 @@ from sqlalchemy.orm import Session as DBSession
 from app.core.crypto import decrypt_value
 from app.core.database import SessionLocal
 from app.models.agent_runtime import CodingAgentConnection, Credential
+from app.models.approval import Approval, ApprovalCategory, ApprovalPriority
 from app.models.git_integration import RepositoryConnection, RepositoryConnectionStatus
 from app.models.task import Task, TaskStatus
 from app.models.task_message import TaskMessage, TaskMessageRole
-from app.services import git_worktree
+from app.services import git_worktree, test_execution
 from app.services.agent_runtime.registry import get_adapter
 from app.services.git_provider.base import GitProviderError
 from app.services.git_provider.registry import get_git_provider
@@ -213,6 +214,17 @@ def _run_adapter_and_finish(
                     task.git_pr_url = pr.url
                     task.git_pr_number = pr.number
                     task.git_pr_state = pr.state
+                    db.add(
+                        Approval(
+                            project_id=task.project_id,
+                            category=ApprovalCategory.CODE_CHANGE,
+                            title="Pull Request Creation",
+                            subtitle=f"{task.title} (#{pr.number})",
+                            priority=ApprovalPriority.HIGH,
+                            task_id=task.id,
+                            requested_by_user_id=task.created_by_user_id,
+                        )
+                    )
                     try:
                         protection = provider.get_branch_protection(
                             connection_record.installation.external_installation_id,
@@ -232,6 +244,17 @@ def _run_adapter_and_finish(
             except (git_worktree.WorktreeError, GitProviderError) as exc:
                 note = f"Task output recorded, but could not open/update the pull request: {exc.detail}"
                 task.error_message = f"{task.error_message} ({note})" if task.error_message else note
+
+        # P3-1: a real test-suite run against this task's own worktree,
+        # whatever framework it actually uses -- never simulated. Runs
+        # last, after the PR itself is already opened/updated, so a
+        # polling caller never observes a "completed" task whose PR
+        # section hasn't actually finished yet (run_tests_for_task does
+        # its own commit).
+        try:
+            test_execution.run_tests_for_task(db, task)
+        except test_execution.NoWorktreeError:
+            pass
     db.commit()
 
 

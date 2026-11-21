@@ -8,6 +8,9 @@ import { TaskService } from '../../core/org/task.service';
 import { TaskDiff, TaskMessage } from '../../core/org/task.models';
 import { DiffFile, parseUnifiedDiff } from '../../shared/diff/diff-parser';
 import { GitIntegrationService } from '../../core/org/git-integration.service';
+import { ReviewCommentService } from '../../core/org/review-comment.service';
+import { ApiReviewComment } from '../../core/org/review-comment.models';
+import { TestRunService } from '../../core/org/test-run.service';
 
 export type TaskWorkspaceTab = 'conversation' | 'changes' | 'tests' | 'quality' | 'artifacts' | 'logs';
 
@@ -22,6 +25,8 @@ export type TaskWorkspaceTab = 'conversation' | 'changes' | 'tests' | 'quality' 
 export class TaskWorkspaceComponent {
   private readonly taskService = inject(TaskService);
   private readonly gitService = inject(GitIntegrationService);
+  private readonly reviewCommentService = inject(ReviewCommentService);
+  private readonly testRunService = inject(TestRunService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
 
@@ -53,6 +58,21 @@ export class TaskWorkspaceComponent {
   readonly selectedDiffPath = signal<string | null>(null);
   readonly diffExpanded = signal(false);
   readonly copiedPath = signal<string | null>(null);
+
+  readonly comments = this.reviewCommentService.comments;
+  readonly loadingComments = signal(false);
+  readonly commentDraft = signal('');
+  readonly submittingComment = signal(false);
+  readonly resolvingCommentId = signal<string | null>(null);
+  private loadedCommentsForTaskId: string | null = null;
+
+  readonly testRuns = this.testRunService.runs;
+  readonly loadingTestRuns = signal(false);
+  readonly triggeringTestRun = signal(false);
+  readonly testRunError = signal('');
+  private loadedTestRunsForTaskId: string | null = null;
+
+  readonly latestTestRun = computed(() => this.testRuns()[0] ?? null);
 
   readonly messages = signal<TaskMessage[]>([]);
   readonly loadingMessages = signal(false);
@@ -96,7 +116,12 @@ export class TaskWorkspaceComponent {
       const tab = this.tab();
       if (!task) return;
       if (tab === 'conversation') this.ensureMessagesLoaded();
-      if (tab === 'changes') this.ensureDiffLoaded();
+      if (tab === 'changes') {
+        this.ensureDiffLoaded();
+        this.ensureCommentsLoaded();
+        this.ensureTestRunsLoaded();
+      }
+      if (tab === 'tests') this.ensureTestRunsLoaded();
     });
 
     // A follow-up run finishing (via the real SSE stream in TaskService)
@@ -110,8 +135,10 @@ export class TaskWorkspaceComponent {
       if (prev === 'running' && task.status !== 'running') {
         this.loadedMessagesForTaskId = null;
         this.loadedDiffForTaskId = null;
+        this.loadedTestRunsForTaskId = null;
         if (this.tab() === 'conversation') this.ensureMessagesLoaded();
         if (this.tab() === 'changes') this.ensureDiffLoaded();
+        if (this.tab() === 'tests') this.ensureTestRunsLoaded();
       }
     });
   }
@@ -122,8 +149,13 @@ export class TaskWorkspaceComponent {
 
   setTab(tab: TaskWorkspaceTab): void {
     this.tab.set(tab);
-    if (tab === 'changes') this.ensureDiffLoaded();
+    if (tab === 'changes') {
+      this.ensureDiffLoaded();
+      this.ensureCommentsLoaded();
+      this.ensureTestRunsLoaded();
+    }
     if (tab === 'conversation') this.ensureMessagesLoaded();
+    if (tab === 'tests') this.ensureTestRunsLoaded();
   }
 
   private ensureMessagesLoaded(): void {
@@ -203,6 +235,75 @@ export class TaskWorkspaceComponent {
         this.loadedDiffForTaskId = task.id;
       },
       error: () => this.loadingDiff.set(false)
+    });
+  }
+
+  private ensureCommentsLoaded(): void {
+    const task = this.selectedTask();
+    if (!task) return;
+    if (this.loadedCommentsForTaskId === task.id) return;
+    this.loadingComments.set(true);
+    this.reviewCommentService.listForTask(task.project_id, task.id).subscribe({
+      next: () => {
+        this.loadingComments.set(false);
+        this.loadedCommentsForTaskId = task.id;
+      },
+      error: () => this.loadingComments.set(false)
+    });
+  }
+
+  submitComment(): void {
+    const task = this.selectedTask();
+    const body = this.commentDraft().trim();
+    if (!task || !body || this.submittingComment()) return;
+    this.submittingComment.set(true);
+    const file = this.selectedDiffFile();
+    this.reviewCommentService
+      .create(task.project_id, task.id, { body, file_path: file?.path ?? '' })
+      .subscribe({
+        next: () => {
+          this.commentDraft.set('');
+          this.submittingComment.set(false);
+        },
+        error: () => this.submittingComment.set(false)
+      });
+  }
+
+  resolveComment(comment: ApiReviewComment): void {
+    const task = this.selectedTask();
+    if (!task || this.resolvingCommentId()) return;
+    this.resolvingCommentId.set(comment.id);
+    this.reviewCommentService.resolve(task.project_id, task.id, comment.id).subscribe({
+      next: () => this.resolvingCommentId.set(null),
+      error: () => this.resolvingCommentId.set(null)
+    });
+  }
+
+  private ensureTestRunsLoaded(): void {
+    const task = this.selectedTask();
+    if (!task) return;
+    if (this.loadedTestRunsForTaskId === task.id) return;
+    this.loadingTestRuns.set(true);
+    this.testRunService.listForTask(task.project_id, task.id).subscribe({
+      next: () => {
+        this.loadingTestRuns.set(false);
+        this.loadedTestRunsForTaskId = task.id;
+      },
+      error: () => this.loadingTestRuns.set(false)
+    });
+  }
+
+  triggerTestRun(): void {
+    const task = this.selectedTask();
+    if (!task || this.triggeringTestRun()) return;
+    this.triggeringTestRun.set(true);
+    this.testRunError.set('');
+    this.testRunService.trigger(task.project_id, task.id).subscribe({
+      next: () => this.triggeringTestRun.set(false),
+      error: (err) => {
+        this.triggeringTestRun.set(false);
+        this.testRunError.set(err?.error?.detail || 'Could not run tests for this task.');
+      }
     });
   }
 

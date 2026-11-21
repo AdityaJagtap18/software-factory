@@ -8,95 +8,115 @@
       <p>Review and authorize key actions from the Software Factory</p>
     </div>
   </div>
+  @if (projects().length > 1) {
+    <div class="sf-page-header__actions" style="display:flex; align-items:center; gap:10px;">
+      <label for="aprProjectSelect" style="font-size:12px; font-weight:600; color:var(--sf-text-secondary); margin:0;">Project:</label>
+      <select
+        id="aprProjectSelect"
+        class="sf-btn"
+        style="padding:6px 12px; font-size:13px; min-width:200px;"
+        [value]="selectedProjectId()"
+        (change)="selectProject($any($event.target).value)"
+      >
+        @for (p of projects(); track p.id) {
+          <option [value]="p.id">{{ p.name }}</option>
+        }
+      </select>
+    </div>
+  }
 </div>
 
 <div class="sf-stat-grid">
-  <div class="sf-stat-card sf-stat-card--blue"><div class="sf-stat-card__icon"><sf-icon name="navigation/approvals" /></div><div><div class="sf-stat-card__label">Pending Approvals</div><div class="sf-stat-card__value">{{ approvals().length }}</div></div></div>
-  <div class="sf-stat-card sf-stat-card--green"><div class="sf-stat-card__icon"><sf-icon name="status/success" /></div><div><div class="sf-stat-card__label">Approved (This Week)</div><div class="sf-stat-card__value">14</div></div></div>
-  <div class="sf-stat-card sf-stat-card--amber"><div class="sf-stat-card__icon"><sf-icon name="status/error" /></div><div><div class="sf-stat-card__label">Rejected (This Week)</div><div class="sf-stat-card__value">2</div></div></div>
-  <div class="sf-stat-card sf-stat-card--violet"><div class="sf-stat-card__icon"><sf-icon name="navigation/monitoring" /></div><div><div class="sf-stat-card__label">Avg Review Time</div><div class="sf-stat-card__value">12 min</div></div></div>
-  <div class="sf-stat-card sf-stat-card--green"><div class="sf-stat-card__icon"><sf-icon name="navigation/monitoring" /></div><div><div class="sf-stat-card__label">Automation Rate</div><div class="sf-stat-card__value">76% <span class="sf-stat-card__delta up">↑ +8%</span></div></div></div>
+  <div class="sf-stat-card sf-stat-card--blue"><div class="sf-stat-card__icon"><sf-icon name="navigation/approvals" /></div><div><div class="sf-stat-card__label">Pending Approvals</div><div class="sf-stat-card__value">{{ pending().length }}</div></div></div>
+  <div class="sf-stat-card sf-stat-card--green"><div class="sf-stat-card__icon"><sf-icon name="status/success" /></div><div><div class="sf-stat-card__label">Approved</div><div class="sf-stat-card__value">{{ approvedCount() }}</div></div></div>
+  <div class="sf-stat-card sf-stat-card--amber"><div class="sf-stat-card__icon"><sf-icon name="status/error" /></div><div><div class="sf-stat-card__label">Rejected</div><div class="sf-stat-card__value">{{ rejectedCount() }}</div></div></div>
 </div>
+
+@if (!loaded()) {
+  <div class="sf-card" style="padding:24px;">Loading approvals…</div>
+} @else {
 
 <div class="sf-tabs">
   <button type="button" class="sf-tab" [class.active]="tab() === 'all'" (click)="tab.set('all')">All Approvals</button>
-  <button type="button" class="sf-tab" [class.active]="tab() === 'code'" (click)="tab.set('code')"><sf-icon name="workspace/code-diff" /> Code Changes</button>
-  <button type="button" class="sf-tab" [class.active]="tab() === 'workflow'" (click)="tab.set('workflow')"><sf-icon name="navigation/workflows" /> Workflow Runs</button>
-  <button type="button" class="sf-tab" [class.active]="tab() === 'knowledge'" (click)="tab.set('knowledge')"><sf-icon name="navigation/knowledge" /> Knowledge Updates</button>
-  <button type="button" class="sf-tab" [class.active]="tab() === 'prompt'" (click)="tab.set('prompt')"><sf-icon name="navigation/artifacts" /> Prompt Changes</button>
-  <button type="button" class="sf-tab" [class.active]="tab() === 'model'" (click)="tab.set('model')"><sf-icon name="navigation/providers" /> Model &amp; Agent Actions</button>
-  <button type="button" class="sf-tab" [class.active]="tab() === 'access'" (click)="tab.set('access')"><sf-icon name="navigation/settings" /> Access &amp; Security</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'code_change'" (click)="tab.set('code_change')"><sf-icon name="workspace/code-diff" /> Code Changes</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'workflow_run'" (click)="tab.set('workflow_run')"><sf-icon name="navigation/workflows" /> Workflow Runs</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'knowledge_update'" (click)="tab.set('knowledge_update')"><sf-icon name="navigation/knowledge" /> Knowledge Updates</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'prompt_change'" (click)="tab.set('prompt_change')"><sf-icon name="navigation/artifacts" /> Prompt Changes</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'model_action'" (click)="tab.set('model_action')"><sf-icon name="navigation/providers" /> Model &amp; Agent Actions</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'access_security'" (click)="tab.set('access_security')"><sf-icon name="navigation/settings" /> Access &amp; Security</button>
 </div>
 
 <div class="apr-grid">
   <section class="sf-card">
-    <div class="sf-panel-title"><h3>Approval Requests ({{ approvals().length }})</h3></div>
+    <div class="sf-panel-title"><h3>Approval Requests ({{ visible().length }})</h3></div>
     <div class="apr-list">
-      @for (a of approvals(); track a.id) {
-        <button type="button" class="apr-list__item" [class.active]="a.id === selected().id" (click)="select(a)">
-          <sf-icon [name]="a.icon" />
+      @if (visible().length === 0) {
+        <div class="apr-empty">No pending approvals in this category.</div>
+      }
+      @for (a of visible(); track a.id) {
+        <button type="button" class="apr-list__item" [class.active]="selected() && a.id === selected()!.id" (click)="select(a)">
+          <sf-icon [name]="categoryIcon(a.category)" />
           <div>
             <div class="apr-list__title">{{ a.title }} <span class="sf-badge" [class]="'sf-badge--' + priorityTone(a.priority)">{{ a.priority }}</span></div>
             <div class="apr-list__subtitle">{{ a.subtitle }}</div>
-            <div class="apr-list__tags"><span class="sf-pill">{{ a.category }}</span> <span class="sf-pill">{{ a.project }}</span></div>
+            <div class="apr-list__tags"><span class="sf-pill">{{ categoryLabel(a.category) }}</span></div>
           </div>
-          <span class="apr-list__time">{{ a.timestamp }}</span>
+          <span class="apr-list__time">{{ a.created_at | date: 'short' }}</span>
         </button>
       }
     </div>
 
-    <div class="sf-panel-title" style="border-top:1px solid var(--sf-border);"><h3>Recent Decisions</h3><a class="view-all">View All →</a></div>
+    <div class="sf-panel-title" style="border-top:1px solid var(--sf-border);"><h3>Recent Decisions</h3></div>
     <div class="apr-decisions">
-      @for (d of recentDecisions; track d.title) {
+      @if (decided().length === 0) {
+        <div class="apr-empty">No decisions recorded yet.</div>
+      }
+      @for (d of decided(); track d.id) {
         <div class="apr-decisions__row">
-          <span><sf-icon [name]="d.status === 'Approved' ? 'status/success' : 'status/error'" /> {{ d.title }}</span>
-          <span class="sf-badge" [class]="d.status === 'Approved' ? 'sf-badge--green' : 'sf-badge--red'">{{ d.status }}</span>
-          <span class="apr-decisions__time">{{ d.timestamp }}</span>
+          <span><sf-icon [name]="d.status === 'approved' ? 'status/success' : 'status/error'" /> {{ d.title }}</span>
+          <span class="sf-badge" [class]="d.status === 'approved' ? 'sf-badge--green' : 'sf-badge--red'">{{ d.status }}</span>
+          <span class="apr-decisions__time">{{ d.decided_at | date: 'short' }}</span>
         </div>
       }
     </div>
   </section>
 
   <section class="sf-card">
-    <div class="sf-panel-title">
-      <h3><sf-icon [name]="selected().icon" /> {{ selected().title }}</h3>
-      <span class="sf-badge" [class]="'sf-badge--' + priorityTone(selected().priority)">{{ selected().priority }} Priority</span>
-    </div>
-    <p class="apr-detail-sub">{{ selected().subtitle }}</p>
-    <div class="sf-tabs" style="margin:0 18px 10px;border:none;padding:0;">
-      <button type="button" class="sf-tab active">Details</button>
-      <button type="button" class="sf-tab">Changes</button>
-      <button type="button" class="sf-tab">Tests</button>
-      <button type="button" class="sf-tab">Quality &amp; Security</button>
-      <button type="button" class="sf-tab">Impact Analysis</button>
-    </div>
+    @if (selected()) {
+      <div class="sf-panel-title">
+        <h3><sf-icon [name]="categoryIcon(selected()!.category)" /> {{ selected()!.title }}</h3>
+        <span class="sf-badge" [class]="'sf-badge--' + priorityTone(selected()!.priority)">{{ selected()!.priority }} Priority</span>
+      </div>
+      <p class="apr-detail-sub">{{ selected()!.subtitle }}</p>
 
-    <div class="apr-detail-grid">
-      <div>
-        <h4>Summary</h4>
-        <p>This action requires explicit authorization per the factory's governance policy before it can proceed.</p>
-        <h4>Request Details</h4>
-        <div class="pw-info" style="padding:0;">
-          <div class="pw-info__row"><span class="label">Project</span><span class="value">{{ selected().project }}</span></div>
-          <div class="pw-info__row"><span class="label">Category</span><span class="sf-pill">{{ selected().category }}</span></div>
-          <div class="pw-info__row"><span class="label">Requested</span><span class="value">{{ selected().timestamp }}</span></div>
+      <div class="apr-detail-grid">
+        <div>
+          <h4>Summary</h4>
+          <p>This action requires explicit authorization per the factory's governance policy before it can proceed.</p>
+          <h4>Request Details</h4>
+          <div class="pw-info" style="padding:0;">
+            <div class="pw-info__row"><span class="label">Category</span><span class="sf-pill">{{ categoryLabel(selected()!.category) }}</span></div>
+            <div class="pw-info__row"><span class="label">Requested</span><span class="value">{{ selected()!.created_at | date: 'medium' }}</span></div>
+            @if (selected()!.task_id) {
+              <div class="pw-info__row"><span class="label">Task</span><a class="value link" [routerLink]="['/tasks', selected()!.task_id]">View task →</a></div>
+            }
+          </div>
         </div>
       </div>
-      <div>
-        <h4>Validation Results</h4>
-        <div class="pw-info" style="padding:0;">
-          <div class="pw-info__row"><span class="label">Unit Tests</span><span class="value link">14 / 14 ✓</span></div>
-          <div class="pw-info__row"><span class="label">Integration Tests</span><span class="value link">4 / 4 ✓</span></div>
-          <div class="pw-info__row"><span class="label">Code Quality</span><span class="sf-badge sf-badge--green">A</span></div>
-          <div class="pw-info__row"><span class="label">Security Scan</span><span class="sf-badge sf-badge--green">No Issues</span></div>
-        </div>
-      </div>
-    </div>
 
-    <div class="apr-actions">
-      <button class="sf-btn sf-btn--success" type="button"><sf-icon name="status/success" /> Approve &amp; Create PR</button>
-      <button class="sf-btn sf-btn--danger" type="button">Reject</button>
-      <button class="sf-btn" type="button">Request Changes</button>
-    </div>
+      @if (decisionError()) {
+        <p class="apr-detail-sub" style="color:var(--sf-danger, #d64545);">{{ decisionError() }}</p>
+      }
+
+      <div class="apr-actions">
+        <button class="sf-btn sf-btn--success" type="button" [disabled]="deciding()" (click)="decide('approved')"><sf-icon name="status/success" /> Approve</button>
+        <button class="sf-btn sf-btn--danger" type="button" [disabled]="deciding()" (click)="decide('rejected')">Reject</button>
+        <button class="sf-btn" type="button" [disabled]="deciding()" (click)="decide('changes_requested')">Request Changes</button>
+      </div>
+    } @else {
+      <div class="apr-empty" style="padding:24px;">Select an approval request to review its details.</div>
+    }
   </section>
 </div>
+
+}

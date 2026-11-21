@@ -69,12 +69,12 @@ the full change record and honest caveats.
 
 | Task ID | Feature | Objective | Current status |
 |---|---|---|---|
-| P3-1 | Test execution | Real test-runner integration, surfaced in the existing "Test Results" UI slot | NOT IMPLEMENTED |
-| P3-2 | Repository KG ↔ Git integration | Wire graph ingestion to real `RepositoryConnection`/worktree, record commit SHA | NOT IMPLEMENTED |
+| P3-1 | Test execution | Real test-runner integration, surfaced in the existing "Test Results" UI slot | **DONE** (2026-11-21) — real pytest/npm detection + execution against the task's own worktree; see changelog |
+| P3-2 | Repository KG ↔ Git integration | Wire graph ingestion to real `RepositoryConnection`/worktree, record commit SHA | **DONE** (2026-11-21) — `commit_sha` now a real `git rev-parse HEAD`, stored on the `Repository` node and in the API response; see changelog |
 | P3-3 | Repository KG extraction breadth | Add imports/dependencies/test-mapping relationships via a parser-adapter framework | NOT IMPLEMENTED (file/top-level-symbol only today) |
-| P3-4 | Multi-turn conversation | A `TaskMessage` model + route + UI wiring for follow-up instructions | NOT IMPLEMENTED |
-| P3-5 | Review comments | A `ReviewComment` model + CRUD routes + UI wiring (diff viewer already has per-line structure to anchor to) | NOT IMPLEMENTED |
-| P3-6 | Planning & Approval gate | A `Plan` entity and an `Approval` model/route; replace the mocked frontend Approvals screen with real data | NOT IMPLEMENTED (backend) / MOCKED (frontend) |
+| P3-4 | Multi-turn conversation | A `TaskMessage` model + route + UI wiring for follow-up instructions | Appears already implemented from an earlier, separately-committed change (`TaskMessage` model, routes, and composer UI all exist) — not re-verified or re-scoped as part of this Phase 3 pass; re-check before relying on this status |
+| P3-5 | Review comments | A `ReviewComment` model + CRUD routes + UI wiring (diff viewer already has per-line structure to anchor to) | **DONE** (2026-11-21) — real model/routes, wired into the real task-workspace diff viewer; see changelog |
+| P3-6 | Planning & Approval gate | A `Plan` entity and an `Approval` model/route; replace the mocked frontend Approvals screen with real data | **DONE** (2026-11-21) for the Approval half — real model/routes/RBAC, frontend no longer uses `MockDataService`; a `Plan` entity was **not** built (no planning-gate-before-execution flow exists yet, only post-hoc approval of an already-opened PR); see changelog |
 
 - **Dependencies:** P3-2 depends on P2-1/P2-2 (Phase 2). P3-3 depends on P3-2. P3-4 depends on some session-resume capability per adapter (see Phase 4, but a simpler "append to prompt and re-run" version can ship without full session resume — note this explicitly as a scoped-down interim approach if full resume isn't ready). P3-1 should reuse the sandboxing pattern from P2-3.
 - **Frontend changes:** P3-1 wires the existing "Not configured" slot to real data; P3-4 enables the currently-`disabled` composer; P3-5 adds comment UI anchored to diff lines; P3-6 replaces `MockDataService` usage in `approvals.component.ts` with real API calls.

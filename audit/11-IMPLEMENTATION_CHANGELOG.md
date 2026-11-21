@@ -5,6 +5,112 @@ it happened. Each entry: what changed, why, how it was verified. Newest first.
 
 ---
 
+## 2026-11-21 — Phase 3: Real Test Execution, Approvals, Review Comments, Commit Provenance (P3-1, P3-2, P3-5, P3-6)
+
+**Why:** Phase 2 closed the graph-access/sandboxing/registry gaps. The roadmap's own next tier was the
+set of features the UI already presented chrome for but had no real backend behind — a "Test Results" tab
+that said "not configured," a Review Comments panel that said "no backend model," an Approvals page running
+entirely on `MockDataService`, and an ingest response with no record of which commit was actually indexed.
+Per the standing mandate ("never mark unverified features as working"), each of these was picked up and
+built for real rather than left as an honest placeholder.
+
+**P3-2 — Commit-level provenance for knowledge ingestion:**
+- `backend/app/services/knowledge_graph.py`: new `_git_head_sha()` runs a real `git rev-parse HEAD` against
+  the checkout being ingested (connected-repo checkout, or an explicit local path) and returns `""` rather
+  than a fabricated value when the directory isn't a real git checkout or the command fails. The resulting
+  `commit_sha` is stored on the Neo4j `Repository` node and returned in `IngestResult`/`IngestRepositoryResponse`.
+- Test: `backend/tests/test_code_ingestion.py::test_ingest_repository_records_real_commit_sha` — creates an
+  actual git repo via `subprocess`, computes the expected SHA via `git rev-parse HEAD` itself, and asserts
+  the API response matches exactly (not just "non-empty").
+
+**P3-6 — Approvals (real governance decision records):**
+- New `Approval` model/table (`backend/app/models/approval.py`, migration `b29fb772b61d`): category
+  (code_change/workflow_run/knowledge_update/prompt_change/model_action/access_security), status
+  (pending/approved/rejected/changes_requested), priority, optional task link, requester/decider, decision
+  note and timestamp.
+- New `backend/app/api/routes/approvals.py`: list (optional status filter), create, and `/decide` (requires
+  `PROJECT_ADMIN`/`DEVELOPER`; 409 if already decided; 400 if the decision itself is `pending`; records a
+  real `audit.record(...)` entry).
+- `backend/app/services/task_execution.py`: when a task's pull request is actually opened, a real
+  `Approval` row (category `code_change`, priority `high`) is created for it — deliberately *not* a
+  duplicate of the existing real PR-merge action in `tasks.py`, to avoid two sources of truth for the same
+  Git action.
+- Frontend: `approval.models.ts`/`approval.service.ts` (new), and a complete rewrite of
+  `features/approvals/approvals.component.ts/.html/.scss` — it previously ran entirely on
+  `MockDataService`/`ApprovalRequest`; it now lists/decides real approvals for a selected project, with
+  live-updating pending/approved/rejected counts.
+- Tests: `backend/tests/test_approvals.py` (6 cases, including one that opens a real PR against a seeded
+  git remote and asserts a real `Approval` row was created for it).
+- Verified end-to-end in the browser: created an approval via the real API, approved it through the UI,
+  confirmed it moved to "Recent Decisions" with the stat counters updating live.
+
+**P3-5 — Review Comments (wired into the real task-workspace diff viewer):**
+- New `ReviewComment` model/table (`backend/app/models/review_comment.py`, migration `8ae92ba4ae6a`):
+  project/task/author, body, optional file path + line number, resolved flag.
+- New routes on `backend/app/api/routes/tasks.py`: list, create (any project member), and `/resolve`
+  (requires `PROJECT_ADMIN`/`DEVELOPER`; 404 if the comment doesn't belong to the task).
+- Wired into the **real** task-workspace diff viewer (`task-workspace.component.ts/.html/.scss`) — explicitly
+  not the separate, still-mock-only `code-review.component.ts`, which stays out of scope. New
+  `review-comment.models.ts`/`review-comment.service.ts`; the "Review Comments" panel previously said
+  "aren't supported yet — there's no backend model for them," and now lists real comments (with file path,
+  timestamp, resolved badge) and posts new ones against the currently selected diff file.
+- Tests: `backend/tests/test_review_comments.py` (4 cases, including that a viewer can comment but not
+  resolve).
+- Verified end-to-end in the browser: posted a real comment on a completed task's `README.md`, saw it
+  render, marked it resolved, confirmed the badge updated.
+
+**P3-1 — Real test execution:**
+- New `backend/app/services/test_runner.py`: detects pytest (via `pytest.ini`/`setup.cfg`/`test_*.py`) or
+  npm (via `package.json`) in a task's worktree and actually runs it (`python -m pytest -q` /
+  `npm test --silent`, `npm.cmd` on Windows since `CreateProcess` can't resolve `.cmd` files the way a
+  POSIX shell resolves `PATH`), with a 120s timeout. Anything else honestly reports
+  `framework="none", ran=False` rather than fabricating a result.
+- New `TestRun` model/table (migration `55ce85427eb0`) and `backend/app/services/test_execution.py`
+  (`run_tests_for_task`, used both by a new POST route and automatically after a task completes).
+- New routes on `tasks.py`: list test runs, and a manual `/test-runs` trigger (409 if the task has no
+  worktree).
+- `task_execution.py`: the automatic post-completion test run is placed **last**, immediately before the
+  function's own final `db.commit()` — after the PR open/push block, not before it. (See Errors/fixes below
+  for why this ordering matters.)
+- Frontend: `test-run.models.ts`/`test-run.service.ts`; the "Tests" tab (previously "not configured — this
+  task's runtime doesn't run a test suite yet") now lists real runs with framework/pass-fail badges and
+  output, plus a "Run Tests" button; the sidebar "Test Results" panel shows the latest run's summary.
+- Tests: `backend/tests/test_test_runner.py` (7 cases, including a real passing and a real failing pytest
+  suite) and `backend/tests/test_task_test_runs.py` (2 cases, including a real worktree-seeded run).
+- Verified end-to-end in the browser (two rounds): first attempt against a real Node task hit a genuine
+  `WinError 2` (before the `npm.cmd` fix), with the honest error message rendering correctly in the UI;
+  after the fix, re-ran and got a real `npm test` execution (failing honestly because `node_modules` isn't
+  installed for that task's worktree — correctly left as a real result, not "fixed").
+
+**Errors and fixes found during this phase's own live verification (not pre-existing):**
+- A race condition: the automatic test-run hook originally ran *before* the PR-open/push section in
+  `_run_adapter_and_finish` and did its own intermediate `db.commit()`. Since `task.status` had already
+  been set to `COMPLETED` earlier in the function, that intermediate commit prematurely persisted
+  "completed" to the database while the PR section was still executing in the same background thread,
+  so a polling caller could observe "completed" before the PR fields were populated. Fixed by moving the
+  hook to run last, right before the function's own final commit.
+- A monkeypatch-binding bug: `test_execution.py` initially did `from app.services.git_worktree import
+  _worktree_root` and called it directly, which doesn't see test fixtures' `monkeypatch.setattr(git_worktree,
+  "_worktree_root", ...)` (a different module's name binding). Fixed by calling `git_worktree._worktree_root()`
+  via the module reference.
+- The Windows `npm.cmd` issue described above under P3-1.
+
+**Verification:**
+- Full suite re-run after this phase: **172 passed, 14 failed, 218.79s** — the exact same 14 pre-existing,
+  unrelated failures as the Phase 0/2 baseline (`TypeError: fake_streaming() got an unexpected keyword
+  argument 'model'`, from already-uncommitted model-selection work elsewhere in the tree), confirming zero
+  regressions; the 20 additional passing tests are exactly the new tests this phase added.
+- Every one of the four features above was also verified by hand in a real running browser session against
+  the real backend (not just unit/integration tests) — see each section above.
+
+**Roadmap status:** P3-1, P3-2, P3-5, P3-6 are **DONE**. Not touched in this phase: P3-3/P3-4 (repository
+KG↔Git wiring breadth, quality/security scanning) — the "Quality & Security" panel remains an honest
+"not configured" placeholder. All pre-existing, unrelated uncommitted work in the tree (model-catalog
+service, repository-intelligence indexing, the model-picker/agent-reassignment UI, the model-kwarg mismatch
+behind the 14 pre-existing test failures) was left untouched and uncommitted, exactly as found.
+
+---
+
 ## 2026-11-21 — Phase 2: Foundational Gaps (P2-1 Graph Access Service, P2-2 schema, P2-3 CLI sandboxing plumbing, P2-4 Agent Registry)
 
 **Why:** The roadmap's own sequencing put this immediately after Phase 0, and flagged it as blocking later

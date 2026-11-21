@@ -1,6 +1,6 @@
 # Implementation State — Ground Truth
 
-Last updated: 2026-11-21, after the Phase 5 (B1/B2/B3) commit. Update this file at the end of every
+Last updated: 2026-11-21, after the Phase 5 (P5-1/P5-2/P5-3) commit `2b70be9`. Update this file at the end of every
 milestone; it is the fast answer to "is X done" — check here before re-reading audit docs or
 re-grepping the codebase for status.
 
@@ -13,7 +13,7 @@ re-grepping the codebase for status.
 | Phase 2 — Foundational Gaps | **DONE**, P2-3 intentionally partial (commit `c20000c`) |
 | Phase 3 — Core Product-Vision Gaps (Coding Workspace Depth) | **DONE** (commit `6f21376`, then P3-3/P3-4 commit `7d0071a`) |
 | Phase 4 — RAG / Document Knowledge | **DONE** (P4-1..P4-4, see below) |
-| Phase 5 — Multi-Agent Orchestration & Graph-Powered Retrieval | **PARTIAL** — P5-1/P5-2/P5-3 **DONE**, P5-4 (B4 graph-powered retrieval) **NOT STARTED** (see below) |
+| Phase 5 — Multi-Agent Orchestration & Graph-Powered Retrieval | **PARTIAL** — P5-1/P5-2/P5-3 **DONE** (commit `2b70be9`), P5-4 (B4 graph-powered retrieval) **NOT STARTED** (see below) |
 | Phase 6 — Remaining Core-Platform Gaps | NOT STARTED |
 
 ## Environment note for whoever runs tests next
@@ -140,7 +140,7 @@ pre-existing *uncommitted* model-selection changes to `test_agent_runtimes.py`/`
 never had this mismatch. 197 = 182 (Phase 4 baseline) + 8 new `test_code_ingestion.py` tests (P3-3)
 + 7 new `test_task_messages.py` tests (P3-4).
 
-**206 passed, 0 failed** (`pytest -q`, ~101s), after the Phase 5 (P5-1/P5-2/P5-3) pass, same isolated
+**206 passed, 0 failed** (`pytest -q`, ~101s), after the Phase 5 (P5-1/P5-2/P5-3) commit `2b70be9`, same isolated
 test database. 206 = 197 (P3-3/P3-4 baseline) + 9 new `tests/test_orchestration.py` tests. Verified
 with a clean drop/recreate of the test database immediately before the run (model/migration changes
 this phase added several columns and three new tables, and `conftest.py`'s `Base.metadata.create_all()`

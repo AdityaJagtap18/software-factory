@@ -36,6 +36,8 @@ export class LoginComponent {
   quickLoginName = signal('');
   quickLoggingIn = signal(false);
 
+  readonly currentYear = new Date().getFullYear();
+
   readonly title = computed(() => (this.isRegister() ? 'Create your workspace' : 'Welcome back'));
   readonly subtitle = computed(() =>
     this.isRegister()

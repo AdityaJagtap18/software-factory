@@ -7,13 +7,19 @@
   <div class="sf-empty">Loading…</div>
 } @else if (workflows().length === 0) {
   <div class="sf-page-header">
-    <div>
-      <h1>Workflows</h1>
-      <p>Real multi-step workflows across every project you have access to.</p>
+    <div class="sf-page-header__title-group">
+      <span class="sf-page-header__icon tone-violet"><sf-icon name="navigation/workflows" /></span>
+      <div>
+        <h1>Workflows</h1>
+        <p>Real multi-step workflows across every project you have access to.</p>
+      </div>
     </div>
   </div>
-  <div class="sf-empty">
-    No workflows yet. Open a <a routerLink="/projects">project</a> and create one from its Workflows tab.
+  <div class="sf-card sf-empty" style="padding:48px; text-align:center;">
+    <sf-icon name="navigation/workflows" style="width:36px; height:36px; color:var(--sf-violet-600); margin-bottom:12px;" />
+    <h3>No workflows yet</h3>
+    <p>Open a project and create one from its Workflows tab.</p>
+    <a class="sf-btn sf-btn--primary" style="margin-top:12px;" routerLink="/projects">Browse projects</a>
   </div>
 } @else if (selectedWorkflow()) {
   <div class="sf-page-header">

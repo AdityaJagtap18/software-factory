@@ -210,6 +210,8 @@ textarea {
   padding: 16px 18px;
   border-radius: var(--sf-radius-lg);
   border: 1px solid var(--sf-border);
+  background: var(--sf-surface);
+  box-shadow: var(--sf-shadow-sm);
 
   &__icon {
     width: 42px;
@@ -219,10 +221,12 @@ textarea {
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    background: var(--sf-surface-muted);
 
     svg {
       width: 20px;
       height: 20px;
+      color: var(--sf-text-secondary);
     }
   }
 
@@ -253,21 +257,16 @@ textarea {
     }
   }
 
-  &--blue {
-    background: #eef4ff;
-    .sf-stat-card__icon { background: #dbe8ff; svg { color: var(--sf-blue-600); } }
+  // Semantic tints: use only when the count itself carries meaning
+  // (e.g. an approved/rejected total), never for decorative variety.
+  &--positive {
+    .sf-stat-card__icon { background: #e3f6e8; svg { color: var(--sf-green-600); } }
   }
-  &--violet {
-    background: #f1f0ff;
-    .sf-stat-card__icon { background: #e3e0ff; svg { color: var(--sf-violet-600); } }
+  &--negative {
+    .sf-stat-card__icon { background: #fde8e8; svg { color: var(--sf-red-600); } }
   }
-  &--green {
-    background: #effaf1;
-    .sf-stat-card__icon { background: #d9f4df; svg { color: var(--sf-green-600); } }
-  }
-  &--amber {
-    background: #fff8ed;
-    .sf-stat-card__icon { background: #ffecc7; svg { color: var(--sf-amber-600); } }
+  &--warning {
+    .sf-stat-card__icon { background: #fdf1dc; svg { color: var(--sf-amber-600); } }
   }
 }
 

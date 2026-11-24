@@ -15,17 +15,18 @@
       }
     </div>
     <button class="sf-btn" type="button" [class.on]="autoRefresh()" (click)="autoRefresh.set(!autoRefresh())">
-      <sf-icon name="navigation/workflows" /> Auto Refresh ({{ autoRefresh() ? '30s' : 'Off' }})
+      @if (autoRefresh()) { <span class="mon-live-dot"></span> }
+      Auto refresh ({{ autoRefresh() ? '30s' : 'off' }})
     </button>
   </div>
 </div>
 
 <div class="sf-stat-grid">
-  <div class="sf-stat-card sf-stat-card--blue"><div class="sf-stat-card__icon"><sf-icon name="navigation/workflows" /></div><div><div class="sf-stat-card__label">Task Executions</div><div class="sf-stat-card__value">127 <span class="sf-stat-card__delta up">↑ +18%</span></div></div></div>
-  <div class="sf-stat-card sf-stat-card--green"><div class="sf-stat-card__icon"><sf-icon name="status/success" /></div><div><div class="sf-stat-card__label">Success Rate</div><div class="sf-stat-card__value">92.1% <span class="sf-stat-card__delta up">↑ +4.3pp</span></div></div></div>
-  <div class="sf-stat-card sf-stat-card--amber"><div class="sf-stat-card__icon"><sf-icon name="navigation/monitoring" /></div><div><div class="sf-stat-card__label">Avg. Execution Time</div><div class="sf-stat-card__value">4 min 32 sec <span class="sf-stat-card__delta down">↓ -28%</span></div></div></div>
-  <div class="sf-stat-card sf-stat-card--violet"><div class="sf-stat-card__icon"><sf-icon name="navigation/providers" /></div><div><div class="sf-stat-card__label">Total Cost (LLM)</div><div class="sf-stat-card__value">₹218.40 <span class="sf-stat-card__delta down">↓ -21%</span></div></div></div>
-  <div class="sf-stat-card sf-stat-card--green"><div class="sf-stat-card__icon"><sf-icon name="navigation/agents" /></div><div><div class="sf-stat-card__label">Active Agents</div><div class="sf-stat-card__value">6 / 8</div></div></div>
+  <div class="sf-stat-card"><div class="sf-stat-card__icon"><sf-icon name="navigation/workflows" /></div><div><div class="sf-stat-card__label">Task Executions</div><div class="sf-stat-card__value">127 <span class="sf-stat-card__delta up">↑ +18%</span></div></div></div>
+  <div class="sf-stat-card"><div class="sf-stat-card__icon"><sf-icon name="status/success" /></div><div><div class="sf-stat-card__label">Success Rate</div><div class="sf-stat-card__value">92.1% <span class="sf-stat-card__delta up">↑ +4.3pp</span></div></div></div>
+  <div class="sf-stat-card"><div class="sf-stat-card__icon"><sf-icon name="navigation/monitoring" /></div><div><div class="sf-stat-card__label">Avg. Execution Time</div><div class="sf-stat-card__value">4 min 32 sec <span class="sf-stat-card__delta down">↓ -28%</span></div></div></div>
+  <div class="sf-stat-card"><div class="sf-stat-card__icon"><sf-icon name="navigation/providers" /></div><div><div class="sf-stat-card__label">Total Cost (LLM)</div><div class="sf-stat-card__value">₹218.40 <span class="sf-stat-card__delta down">↓ -21%</span></div></div></div>
+  <div class="sf-stat-card"><div class="sf-stat-card__icon"><sf-icon name="navigation/agents" /></div><div><div class="sf-stat-card__label">Active Agents</div><div class="sf-stat-card__value">6 / 8</div></div></div>
 </div>
 
 <div class="sf-tabs">

@@ -27,9 +27,9 @@
 </div>
 
 <div class="sf-stat-grid">
-  <div class="sf-stat-card sf-stat-card--blue"><div class="sf-stat-card__icon"><sf-icon name="navigation/approvals" /></div><div><div class="sf-stat-card__label">Pending Approvals</div><div class="sf-stat-card__value">{{ pending().length }}</div></div></div>
-  <div class="sf-stat-card sf-stat-card--green"><div class="sf-stat-card__icon"><sf-icon name="status/success" /></div><div><div class="sf-stat-card__label">Approved</div><div class="sf-stat-card__value">{{ approvedCount() }}</div></div></div>
-  <div class="sf-stat-card sf-stat-card--amber"><div class="sf-stat-card__icon"><sf-icon name="status/error" /></div><div><div class="sf-stat-card__label">Rejected</div><div class="sf-stat-card__value">{{ rejectedCount() }}</div></div></div>
+  <div class="sf-stat-card"><div class="sf-stat-card__icon"><sf-icon name="navigation/approvals" /></div><div><div class="sf-stat-card__label">Pending Approvals</div><div class="sf-stat-card__value">{{ pending().length }}</div></div></div>
+  <div class="sf-stat-card sf-stat-card--positive"><div class="sf-stat-card__icon"><sf-icon name="status/success" /></div><div><div class="sf-stat-card__label">Approved</div><div class="sf-stat-card__value">{{ approvedCount() }}</div></div></div>
+  <div class="sf-stat-card sf-stat-card--negative"><div class="sf-stat-card__icon"><sf-icon name="status/error" /></div><div><div class="sf-stat-card__label">Rejected</div><div class="sf-stat-card__value">{{ rejectedCount() }}</div></div></div>
 </div>
 
 @if (!loaded()) {

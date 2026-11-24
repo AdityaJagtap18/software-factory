@@ -28,9 +28,18 @@
 }
 
 .sf-btn.on {
-  background: var(--sf-green-100);
-  border-color: var(--sf-green-600);
-  color: var(--sf-green-600);
+  background: var(--sf-surface-muted);
+  border-color: var(--sf-border-strong);
+  color: var(--sf-text-primary);
+}
+
+.mon-live-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--sf-green-600);
+  margin-right: 6px;
 }
 
 .mon-grid {

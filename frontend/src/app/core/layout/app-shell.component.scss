@@ -80,7 +80,7 @@
     }
 
     &.active {
-      background: linear-gradient(90deg, rgba(116, 103, 255, 0.35), rgba(36, 120, 232, 0.28));
+      background: rgba(116, 103, 255, 0.28);
       color: #fff;
     }
   }
@@ -101,11 +101,17 @@
     border-top: 1px solid rgba(255, 255, 255, 0.1);
   }
 
+  &__copyright {
+    margin-top: 12px;
+    font-size: 11px;
+    color: #6b739a;
+    text-align: center;
+  }
+
   &__org-label {
     display: block;
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+    font-size: 12px;
+    font-weight: 500;
     color: #8792b8;
     margin-bottom: 8px;
     padding: 0 4px;
@@ -166,7 +172,7 @@
 
     &--primary {
       border: none;
-      background: linear-gradient(90deg, var(--sf-violet-600), var(--sf-blue-600));
+      background: var(--sf-violet-600);
       color: #fff;
     }
   }

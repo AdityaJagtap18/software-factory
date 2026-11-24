@@ -31,6 +31,7 @@ export class AppShellComponent implements OnInit {
 
   readonly navItems = NAV_ITEMS;
   readonly approvalsPending = this.data.approvals;
+  readonly currentYear = new Date().getFullYear();
 
   readonly currentUser = this.auth.currentUser;
   readonly organizations = this.orgService.organizations;

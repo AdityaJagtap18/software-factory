@@ -233,12 +233,95 @@ export class MockDataService {
   ]);
 
   readonly prompts = signal<PromptVersion[]>([
-    { id: 'PR-1', agent: 'Coding Agent', name: 'Coding Agent – Implementation', description: 'Generates, modifies and refactors code with...', version: 'v2.3', status: 'Published', icon: 'agents/coding-agent', updatedAt: '16 Nov 2026, 11:24 AM', owner: 'Aditya Jagtap', evalScore: 0.91 },
-    { id: 'PR-2', agent: 'Planning Agent', name: 'Planning Agent – Task Decomposition', description: 'Breaks down a high-level requirement into...', version: 'v1.8', status: 'Published', icon: 'agents/planning-agent', updatedAt: '14 Nov 2026, 06:02 PM', owner: 'Aditya Jagtap', evalScore: 0.89 },
-    { id: 'PR-3', agent: 'Review Agent', name: 'Review Agent – Code Review', description: 'Reviews code for quality, security and best...', version: 'v2.1', status: 'Published', icon: 'agents/review-agent', updatedAt: '13 Nov 2026, 09:40 AM', owner: 'Aditya Jagtap', evalScore: 0.93 },
-    { id: 'PR-4', agent: 'QA Agent', name: 'QA Agent – Test Generation', description: 'Creates unit, integration and edge case tests...', version: 'v1.6', status: 'In Review', icon: 'agents/testing-agent', updatedAt: '12 Nov 2026, 03:15 PM', owner: 'Aditya Jagtap', evalScore: 0.86 },
-    { id: 'PR-5', agent: 'Documentation Agent', name: 'Documentation Agent', description: 'Generates technical and API documentation...', version: 'v1.4', status: 'Published', icon: 'agents/documentation-agent', updatedAt: '10 Nov 2026, 08:00 AM', owner: 'Aditya Jagtap', evalScore: 0.88 },
-    { id: 'PR-6', agent: 'Knowledge Agent', name: 'Knowledge Agent – RAG', description: 'Answers project and engineering queries usi...', version: 'v2.0', status: 'Published', icon: 'navigation/knowledge', updatedAt: '05 Nov 2026, 03:17 PM', owner: 'Aditya Jagtap', evalScore: 0.9 }
+    {
+      id: 'PR-1', agent: 'Coding Agent', name: 'Coding Agent – Implementation', description: 'Generates, modifies and refactors code with...', version: 'v2.3', status: 'Published', icon: 'agents/coding-agent', updatedAt: '16 Nov 2026, 11:24 AM', owner: 'Aditya Jagtap', evalScore: 0.91,
+      body: `You are a Senior Software Engineer in the Software Factory.
+Your task is to implement, modify, or refactor code based on the given requirement.
+
+### Context
+- Project: {{project_name}}
+- Repository: {{repository}}
+
+### Instructions
+1. Understand the requirement and relevant context from the repository.
+2. Identify impacted files using the repository knowledge graph.
+3. Implement the changes following project coding standards.
+4. Write or update unit and integration tests.
+5. Update documentation (if applicable).`
+    },
+    {
+      id: 'PR-2', agent: 'Planning Agent', name: 'Planning Agent – Task Decomposition', description: 'Breaks down a high-level requirement into...', version: 'v1.8', status: 'Published', icon: 'agents/planning-agent', updatedAt: '14 Nov 2026, 06:02 PM', owner: 'Aditya Jagtap', evalScore: 0.89,
+      body: `You are a Planning Agent in the Software Factory.
+Break the following requirement down into an ordered list of concrete, independently executable tasks.
+
+### Context
+- Project: {{project_name}}
+- Repository: {{repository}}
+
+### Instructions
+1. Clarify the goal and constraints of the requirement.
+2. Split it into the smallest set of sequential tasks that deliver it.
+3. Note dependencies between tasks.
+4. Flag anything that needs human approval before work starts.`
+    },
+    {
+      id: 'PR-3', agent: 'Review Agent', name: 'Review Agent – Code Review', description: 'Reviews code for quality, security and best...', version: 'v2.1', status: 'Published', icon: 'agents/review-agent', updatedAt: '13 Nov 2026, 09:40 AM', owner: 'Aditya Jagtap', evalScore: 0.93,
+      body: `You are a Review Agent in the Software Factory.
+Review the diff for this task for correctness, security and maintainability.
+
+### Context
+- Project: {{project_name}}
+- Repository: {{repository}}
+
+### Instructions
+1. Check the change against the stated requirement.
+2. Flag correctness bugs, security issues and missing tests.
+3. Flag anything that violates project coding standards.
+4. Keep feedback specific and actionable, with file and line references.`
+    },
+    {
+      id: 'PR-4', agent: 'QA Agent', name: 'QA Agent – Test Generation', description: 'Creates unit, integration and edge case tests...', version: 'v1.6', status: 'In Review', icon: 'agents/testing-agent', updatedAt: '12 Nov 2026, 03:15 PM', owner: 'Aditya Jagtap', evalScore: 0.86,
+      body: `You are a QA Agent in the Software Factory.
+Write tests for the change described below.
+
+### Context
+- Project: {{project_name}}
+- Repository: {{repository}}
+
+### Instructions
+1. Cover the happy path and the realistic edge cases.
+2. Add regression tests for any bug being fixed.
+3. Use the project's existing test framework and conventions.
+4. Report coverage gaps you could not close.`
+    },
+    {
+      id: 'PR-5', agent: 'Documentation Agent', name: 'Documentation Agent', description: 'Generates technical and API documentation...', version: 'v1.4', status: 'Published', icon: 'agents/documentation-agent', updatedAt: '10 Nov 2026, 08:00 AM', owner: 'Aditya Jagtap', evalScore: 0.88,
+      body: `You are a Documentation Agent in the Software Factory.
+Write or update documentation for the change described below.
+
+### Context
+- Project: {{project_name}}
+- Repository: {{repository}}
+
+### Instructions
+1. Update the README or relevant docs affected by the change.
+2. Document new or changed APIs, configs and CLI flags.
+3. Keep examples runnable and consistent with the current code.`
+    },
+    {
+      id: 'PR-6', agent: 'Knowledge Agent', name: 'Knowledge Agent – RAG', description: 'Answers project and engineering queries usi...', version: 'v2.0', status: 'Published', icon: 'navigation/knowledge', updatedAt: '05 Nov 2026, 03:17 PM', owner: 'Aditya Jagtap', evalScore: 0.9,
+      body: `You are a Knowledge Agent in the Software Factory.
+Answer the question below using only real knowledge retrieved from this project's knowledge graph.
+
+### Context
+- Project: {{project_name}}
+- Repository: {{repository}}
+
+### Instructions
+1. Retrieve relevant entities and relationships before answering.
+2. Cite the files or nodes the answer is based on.
+3. Say plainly when the knowledge graph has no answer, instead of guessing.`
+    }
   ]);
 
   readonly providers = signal<ProviderConnection[]>([

@@ -538,14 +538,18 @@ td.link {
   inset: 0;
   background: rgba(13, 18, 38, 0.5);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
+  overflow-y: auto;
+  padding: 32px 16px;
   z-index: 100;
 }
 
 .org-modal {
   width: 400px;
   max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
   background: var(--sf-surface);
   border-radius: var(--sf-radius-lg);
   padding: 24px;
@@ -571,7 +575,8 @@ td.link {
   }
 
   input,
-  select {
+  select,
+  textarea {
     width: 100%;
     border: 1px solid var(--sf-border-strong);
     border-radius: var(--sf-radius-sm);
@@ -596,6 +601,12 @@ td.link {
       opacity: 0.6;
       cursor: not-allowed;
     }
+  }
+
+  textarea {
+    resize: vertical;
+    min-height: 90px;
+    line-height: 1.5;
   }
 
   select:not([size]),

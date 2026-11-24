@@ -22,21 +22,6 @@ export class PromptsComponent {
     return this.prompts().filter((p) => !term || p.name.toLowerCase().includes(term));
   });
 
-  readonly promptBody = `You are a Senior Software Engineer in the Software Factory.
-Your task is to implement, modify, or refactor code based on the given requirement.
-
-### Context
-- Project: {{project_name}}
-- Repository: {{repository}}
-- Tech Stack: {{tech_stack}}
-
-### Instructions
-1. Understand the requirement and relevant context from the repository.
-2. Identify impacted files using the repository knowledge graph.
-3. Implement the changes following project coding standards.
-4. Write or update unit and integration tests.
-5. Update documentation (if applicable).`;
-
   readonly versionHistory = [
     { version: 'v2.3', status: 'Published', date: '16 Nov 2026, 11:24 AM' },
     { version: 'v2.2', status: 'In Review', date: '14 Nov 2026, 09:10 AM' },

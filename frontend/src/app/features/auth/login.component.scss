@@ -176,18 +176,6 @@
     }
   }
 
-  &__oauth {
-    width: 100%;
-    justify-content: center;
-    margin-bottom: 10px;
-    padding: 11px;
-
-    &:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-  }
-
   &__error {
     background: var(--sf-red-100);
     color: var(--sf-red-600);

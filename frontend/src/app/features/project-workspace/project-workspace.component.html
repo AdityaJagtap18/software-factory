@@ -187,8 +187,16 @@
           <label for="taskTitle">Title</label>
           <input id="taskTitle" type="text" placeholder="e.g. Fix null pointer on empty password" [value]="newTaskTitle()" (input)="newTaskTitle.set($any($event.target).value)" />
 
+          <label for="taskPrompt">Prompt template (optional)</label>
+          <select id="taskPrompt" [value]="newTaskPromptId()" (change)="applyPromptTemplate($any($event.target).value)">
+            <option value="">No template — write description manually</option>
+            @for (p of prompts(); track p.id) {
+              <option [value]="p.id">{{ p.name }} ({{ p.version }})</option>
+            }
+          </select>
+
           <label for="taskDesc">Description</label>
-          <input id="taskDesc" type="text" placeholder="What should the agent do?" [value]="newTaskDescription()" (input)="newTaskDescription.set($any($event.target).value)" />
+          <textarea id="taskDesc" rows="6" placeholder="What should the agent do?" [value]="newTaskDescription()" (input)="newTaskDescription.set($any($event.target).value)"></textarea>
 
           @if (repositoryConnections().length > 0) {
             <label for="taskBranch">Base branch</label>

@@ -86,9 +86,11 @@ export class ProjectWorkspaceComponent implements OnDestroy {
   readonly branchComparison = signal<BranchComparison | null>(null);
   readonly comparisonError = signal('');
 
+  readonly prompts = this.data.prompts;
   readonly showCreateTask = signal(false);
   readonly newTaskTitle = signal('');
   readonly newTaskDescription = signal('');
+  readonly newTaskPromptId = signal('');
   readonly newTaskConnectionId = signal('');
   readonly newTaskSelectedModel = signal('');
   readonly newTaskExecutionRuntime = signal('');
@@ -185,9 +187,10 @@ export class ProjectWorkspaceComponent implements OnDestroy {
     }
   }
 
-  openCreateTask() {
+  openCreateTask(promptId?: string) {
     this.newTaskTitle.set('');
     this.newTaskDescription.set('');
+    this.newTaskPromptId.set('');
     this.newTaskSelectedModel.set('');
     this.newTaskExecutionRuntime.set('');
     const firstConnected = this.connectedAgents()[0];
@@ -195,6 +198,9 @@ export class ProjectWorkspaceComponent implements OnDestroy {
     this.newTaskBaseBranch.set('');
     this.newTaskBranches.set([]);
     this.showCreateTask.set(true);
+    if (promptId) {
+      this.applyPromptTemplate(promptId);
+    }
     const project = this.project();
     const connection = this.repositoryConnections().find((c) => c.project_id === project?.id);
     if (project && connection) {
@@ -216,6 +222,22 @@ export class ProjectWorkspaceComponent implements OnDestroy {
         },
         error: () => this.loadingNewTaskBranches.set(false)
       });
+    }
+  }
+
+  applyPromptTemplate(promptId: string) {
+    this.newTaskPromptId.set(promptId);
+    if (!promptId) return;
+    const prompt = this.prompts().find((p) => p.id === promptId);
+    if (!prompt) return;
+    const project = this.project();
+    const connection = this.repositoryConnections().find((c) => c.project_id === project?.id);
+    const body = prompt.body
+      .replace(/{{\s*project_name\s*}}/g, project?.name ?? '')
+      .replace(/{{\s*repository\s*}}/g, connection?.full_name ?? '');
+    this.newTaskDescription.set(body);
+    if (!this.newTaskTitle()) {
+      this.newTaskTitle.set(prompt.name);
     }
   }
 

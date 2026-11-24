@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 from app.models.task import TaskPriority, TaskStatus
 from app.models.task_message import TaskMessageRole
@@ -13,6 +13,8 @@ class TaskCreate(BaseModel):
     priority: TaskPriority = TaskPriority.MEDIUM
     coding_agent_connection_id: UUID | None = None
     base_branch: str = ""
+    selected_model: str = ""
+    execution_runtime: str = ""
 
 
 class TaskUpdate(BaseModel):
@@ -20,6 +22,8 @@ class TaskUpdate(BaseModel):
     description: str | None = None
     priority: TaskPriority | None = None
     coding_agent_connection_id: UUID | None = None
+    selected_model: str | None = None
+    execution_runtime: str | None = None
 
 
 class TaskResponse(BaseModel):
@@ -37,20 +41,6 @@ class TaskResponse(BaseModel):
     created_at: datetime
     workflow_id: UUID | None = None
     step_order: int | None = None
-    required_capability: str = ""
-    depends_on_step_orders: list[int] = []
-    max_retries: int = 0
-    retry_count: int = 0
-
-    @field_validator("depends_on_step_orders", mode="before")
-    @classmethod
-    def _none_means_no_explicit_deps(cls, value: list[int] | None) -> list[int]:
-        """The ORM column is nullable -- `None` means "no explicit
-        dependency declared" (implicit sequential default), distinct from
-        `[]` (explicit "depends on nothing"). The API response always
-        reports a concrete list; callers that care about the distinction
-        use the workflow-create request shape, not this response."""
-        return value if value is not None else []
     git_branch_name: str = ""
     git_base_branch: str = ""
     git_changed_files: list[str] = []
@@ -61,7 +51,10 @@ class TaskResponse(BaseModel):
     git_base_branch_protected: bool = False
     git_required_status_checks: list[str] = []
     git_required_approving_reviews: int = 0
-    safety_flags: list[dict] = []
+    knowledge_context: dict = Field(default_factory=dict)
+    selected_model: str = ""
+    execution_runtime: str = ""
+    execution_history: list[dict] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 
@@ -81,6 +74,8 @@ class TaskDiffResponse(BaseModel):
 
 class TaskMessageCreate(BaseModel):
     content: str = Field(min_length=1, max_length=10_000)
+    selected_model: str | None = None
+    coding_agent_connection_id: UUID | None = None
 
 
 class TaskMessageResponse(BaseModel):
@@ -89,5 +84,7 @@ class TaskMessageResponse(BaseModel):
     role: TaskMessageRole
     content: str
     created_at: datetime
+    model_id: str = ""
+    runtime_slug: str = ""
 
     model_config = {"from_attributes": True}

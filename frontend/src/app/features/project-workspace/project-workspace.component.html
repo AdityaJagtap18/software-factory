@@ -112,8 +112,11 @@
           <thead><tr><th>Task</th><th>Priority</th><th>Status</th><th>Result</th><th>Branch</th><th></th></tr></thead>
           <tbody>
             @for (t of tasks(); track t.id) {
-              <tr>
-                <td><strong>{{ t.title }}</strong><div class="set-rt-desc">{{ t.description || 'No description' }}</div></td>
+              <tr class="clickable" [routerLink]="['/tasks', t.id]">
+                <td>
+                  <a [routerLink]="['/tasks', t.id]" (click)="$event.stopPropagation()" style="font-weight:600; color:var(--sf-text-primary); text-decoration:none;">{{ t.title }}</a>
+                  <div class="set-rt-desc">{{ t.description || 'No description' }}</div>
+                </td>
                 <td><span class="sf-pill">{{ t.priority }}</span></td>
                 <td><span class="sf-badge" [class]="'sf-badge--' + statusTone(t.status)">{{ taskStatusLabel(t.status) }}</span></td>
                 <td>
@@ -132,12 +135,12 @@
                       <div><span class="sf-pill">CI: {{ t.git_ci_status }}</span></div>
                     }
                     @if (t.git_changed_files.length > 0) {
-                      <button class="sf-btn" type="button" style="padding:3px 8px; margin-top:4px; font-size:12px;" (click)="toggleDiff(t)">
+                      <button class="sf-btn" type="button" style="padding:3px 8px; margin-top:4px; font-size:12px;" (click)="$event.stopPropagation(); toggleDiff(t)">
                         {{ expandedDiffTaskId() === t.id ? 'Hide diff' : (t.git_changed_files.length + ' file(s) changed') }}
                       </button>
                     }
                     @if (t.git_pr_url) {
-                      <div><a [href]="t.git_pr_url" target="_blank" rel="noopener" style="font-size:12px;">PR #{{ t.git_pr_number }}</a> <span class="sf-pill">{{ t.git_pr_state }}</span>
+                      <div><a [href]="t.git_pr_url" (click)="$event.stopPropagation()" target="_blank" rel="noopener" style="font-size:12px;">PR #{{ t.git_pr_number }}</a> <span class="sf-pill">{{ t.git_pr_state }}</span>
                         @if (t.git_base_branch_protected) {
                           <span class="sf-pill" title="{{ t.git_required_approving_reviews }} review(s) required{{ t.git_required_status_checks.length > 0 ? ', checks: ' + t.git_required_status_checks.join(', ') : '' }}">protected</span>
                         }
@@ -147,9 +150,9 @@
                 </td>
                 <td>
                   @if (t.status === 'running') {
-                    <button class="sf-btn" type="button" style="padding:5px 10px;" (click)="cancelTask(t)">Cancel</button>
+                    <button class="sf-btn" type="button" style="padding:5px 10px;" (click)="$event.stopPropagation(); cancelTask(t)">Cancel</button>
                   } @else {
-                    <button class="sf-btn" type="button" style="padding:5px 10px;" [disabled]="startingTaskId() === t.id" (click)="startTask(t)">
+                    <button class="sf-btn" type="button" style="padding:5px 10px;" [disabled]="startingTaskId() === t.id" (click)="$event.stopPropagation(); startTask(t)">
                       {{ startingTaskId() === t.id ? 'Starting…' : (t.status === 'not_started' ? 'Start' : 'Restart') }}
                     </button>
                   }
@@ -204,15 +207,76 @@
             </p>
           }
 
-          <label for="taskConn">Coding-agent connection</label>
-          <select id="taskConn" [value]="newTaskConnectionId()" (change)="newTaskConnectionId.set($any($event.target).value)">
-            <option value="">Unassigned (configure later)</option>
+          <label>Coding Agent &amp; Model Selection</label>
+          <div style="margin-bottom:14px;">
+            <sf-model-picker
+              [projectId]="proj.id"
+              [currentModelId]="newTaskSelectedModel()"
+              (modelSelected)="onNewTaskModelSelected($event)"
+              placement="bottom"
+            />
+          </div>
+
+          <label>Or Quick-Select Runtime Connection</label>
+          @if (connectedAgents().length === 0) {
+            <div class="sf-empty" style="padding:12px; text-align:left; background:rgba(217, 119, 6, 0.08); border:1px solid rgba(217, 119, 6, 0.25); border-radius:8px; margin-bottom:12px;">
+              <div style="font-weight:600; color:var(--sf-amber-600, #d97706); margin-bottom:4px;">
+                ⚠️ No coding agents are currently connected
+              </div>
+              <p style="margin:0 0 8px; font-size:12px; color:var(--sf-text-secondary);">
+                Connect Claude Code or Gemini CLI in Organization Settings to execute tasks.
+              </p>
+              <a class="sf-btn sf-btn--primary" style="display:inline-flex; padding:4px 10px; font-size:12px;" routerLink="/settings">
+                Open Settings
+              </a>
+            </div>
+          }
+
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:8px; margin-bottom:14px;">
+            <div
+              (click)="newTaskConnectionId.set('')"
+              [style.border]="newTaskConnectionId() === '' ? '2px solid var(--sf-primary, #6366f1)' : '1px solid var(--sf-border, #e2e8f0)'"
+              [style.background]="newTaskConnectionId() === '' ? 'rgba(99, 102, 241, 0.05)' : 'var(--sf-surface)'"
+              style="padding:10px; border-radius:8px; cursor:pointer; transition:all 0.15s ease;"
+            >
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                <strong style="font-size:13px;">Unassigned</strong>
+                <span class="sf-pill" style="font-size:10px;">Optional</span>
+              </div>
+              <div style="font-size:11.5px; color:var(--sf-text-secondary);">Configure later</div>
+            </div>
+
             @for (c of connections(); track c.runtime_slug) {
-              @if (c.id) {
-                <option [value]="c.id">{{ c.runtime_name }} ({{ c.status.replace('_', ' ') }})</option>
-              }
+              <div
+                (click)="c.status === 'connected' && c.id ? newTaskConnectionId.set(c.id) : null"
+                [style.border]="newTaskConnectionId() === c.id ? '2px solid var(--sf-primary, #6366f1)' : '1px solid var(--sf-border, #e2e8f0)'"
+                [style.background]="newTaskConnectionId() === c.id ? 'rgba(99, 102, 241, 0.05)' : 'var(--sf-surface)'"
+                [style.opacity]="c.status === 'connected' ? '1' : '0.65'"
+                [style.cursor]="c.status === 'connected' ? 'pointer' : 'not-allowed'"
+                style="padding:10px; border-radius:8px; transition:all 0.15s ease;"
+              >
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                  <strong style="font-size:13px; display:flex; align-items:center; gap:6px;">
+                    <sf-icon [name]="c.icon || 'navigation/agents'" /> {{ c.runtime_name }}
+                  </strong>
+                  <span class="sf-badge" [class]="c.status === 'connected' ? 'sf-badge--green' : 'sf-badge--gray'" style="font-size:10px;">
+                    {{ c.status === 'connected' ? 'Connected' : 'Offline' }}
+                  </span>
+                </div>
+                <div style="display:flex; gap:6px; align-items:center; font-size:11px; color:var(--sf-text-secondary);">
+                  @if (c.detected_version) {
+                    <span class="sf-pill" style="font-size:10px;">{{ c.detected_version }}</span>
+                  }
+                  <span>{{ c.auth_method }}</span>
+                </div>
+                @if (c.status !== 'connected') {
+                  <div style="margin-top:6px; font-size:11px;">
+                    <a routerLink="/settings" (click)="$event.stopPropagation()" style="color:var(--sf-primary);">Setup →</a>
+                  </div>
+                }
+              </div>
             }
-          </select>
+          </div>
 
           <div class="org-modal__actions">
             <button type="button" class="sf-btn" (click)="closeCreateTask()">Cancel</button>
@@ -342,112 +406,122 @@
     <section class="sf-card">
       <div class="sf-panel-title">
         <h3>Knowledge Graph</h3>
-        <button class="sf-btn sf-btn--primary" type="button" style="padding:6px 14px;" [disabled]="syncingKnowledge()" (click)="syncKnowledge()">
-          <sf-icon name="navigation/knowledge" /> {{ syncingKnowledge() ? 'Syncing…' : 'Sync now' }}
-        </button>
-      </div>
-      <p class="set-note" style="padding:0 18px 14px; font-size:12.5px; color: var(--sf-text-secondary);">
-        Syncing writes this project's real tasks, workflows, and coding-agent connections into Neo4j as
-        real nodes and relationships. If Neo4j isn't reachable, this honestly reports that instead of
-        showing a fabricated graph.
-      </p>
-      @if (knowledgeGraph() === null) {
-        <div class="sf-empty">Loading…</div>
-      } @else if (!knowledgeGraph()!.connected) {
-        <div class="sf-empty">Knowledge graph service not available: {{ knowledgeGraph()!.detail }}</div>
-      } @else if (knowledgeGraph()!.nodes.length === 0) {
-        <div class="sf-empty">Not synced yet. Click "Sync now" to build this project's real knowledge graph.</div>
-      } @else {
-        <div class="kg-stats">
-          <div><strong>{{ knowledgeGraph()!.nodes.length }}</strong><span>Nodes</span></div>
-          <div><strong>{{ knowledgeGraph()!.edges.length }}</strong><span>Relationships</span></div>
+        <div style="display:flex; gap:8px;">
+          @if (knowledgeView() === 'project') {
+            <button class="sf-btn sf-btn--primary" type="button" style="padding:6px 14px;" [disabled]="syncingKnowledge()" (click)="syncKnowledge()">
+              <sf-icon name="navigation/knowledge" /> {{ syncingKnowledge() ? 'Syncing…' : 'Sync Project Graph' }}
+            </button>
+          } @else {
+            <button class="sf-btn sf-btn--primary" type="button" style="padding:6px 14px;" [disabled]="ingestingRepository()" (click)="ingestRepository()">
+              <sf-icon name="navigation/repositories" /> {{ ingestingRepository() ? 'Indexing…' : 'Index Connected Repository' }}
+            </button>
+          }
         </div>
-        <table class="sf-table">
-          <thead><tr><th>Node</th><th>Type</th><th>Relationships</th></tr></thead>
-          <tbody>
-            @for (node of knowledgeGraph()!.nodes; track node.id) {
-              <tr>
-                <td>{{ node.label }}</td>
-                <td><span class="sf-pill">{{ node.type }}</span></td>
-                <td>
-                  <div class="pw-wf-steps">
-                    @for (edge of knowledgeGraph()!.edges; track edge.source + edge.type + edge.target) {
-                      @if (edge.source === node.id) {
-                        <span class="sf-badge sf-badge--blue">{{ edge.type }} → {{ nodeLabel(edge.target) }}</span>
-                      }
-                    }
-                  </div>
-                </td>
-              </tr>
-            }
-          </tbody>
-        </table>
-      }
-    </section>
+      </div>
 
-    <section class="sf-card" style="margin-top:16px;">
-      <div class="sf-panel-title">
-        <h3>Repository Code Structure</h3>
-      </div>
-      <p class="set-note" style="padding:0 18px 14px; font-size:12.5px; color: var(--sf-text-secondary);">
-        Parses a real directory of source files already present on the backend host (Python via the
-        real <code>ast</code> module, TypeScript/JavaScript via a lightweight top-level-declaration
-        scan) into real File/Function/Class nodes — project admins only, since it reads whatever path
-        the backend process can see. There is no remote-git-URL option here by design.
-      </p>
-      <div class="set-note" style="display:flex; gap:8px; padding:0 18px 14px; align-items:center;">
-        <input
-          style="flex:1;"
-          type="text"
-          placeholder="Absolute path on the backend host, e.g. C:\path\to\repo"
-          [value]="ingestPath()"
-          (input)="ingestPath.set($any($event.target).value)"
-        />
-        <button
-          class="sf-btn sf-btn--primary"
-          type="button"
-          style="padding:6px 14px; white-space:nowrap;"
-          [disabled]="ingestingRepository() || !ingestPath().trim()"
-          (click)="ingestRepository()"
-        >
-          {{ ingestingRepository() ? 'Ingesting…' : 'Ingest repository' }}
+      <div class="sf-tabs" style="padding: 0 18px 12px; margin-bottom: 8px;">
+        <button type="button" class="sf-tab" [class.active]="knowledgeView() === 'project'" (click)="setKnowledgeView('project')">
+          Project Graph
+        </button>
+        <button type="button" class="sf-tab" [class.active]="knowledgeView() === 'repository'" (click)="setKnowledgeView('repository')">
+          Repository Graph
         </button>
       </div>
-      @if (ingestError()) {
-        <div class="sf-empty" style="color: var(--sf-danger, #d04444);">{{ ingestError() }}</div>
-      }
-      @if (codeGraph() === null) {
-        <div class="sf-empty">Loading…</div>
-      } @else if (!codeGraph()!.connected) {
-        <div class="sf-empty">Knowledge graph service not available: {{ codeGraph()!.detail }}</div>
-      } @else if (codeGraph()!.files.length === 0) {
-        <div class="sf-empty">Not ingested yet. Enter a real path on the backend host and click "Ingest repository".</div>
-      } @else {
-        <div class="kg-stats">
-          <div><strong>{{ codeGraph()!.files.length }}</strong><span>Files</span></div>
-          <div>
-            <strong>{{ codeGraph()!.files.reduce((n, f) => n + f.symbols.length, 0) }}</strong>
-            <span>Symbols</span>
+
+      @if (knowledgeView() === 'project') {
+        <p class="set-note" style="padding:0 18px 14px; font-size:12.5px; color: var(--sf-text-secondary);">
+          Project Knowledge Graph synchronizes this project's real tasks, workflows, repository connections, and coding-agent connections into Neo4j as real nodes and relationships.
+        </p>
+        @if (knowledgeGraph() === null) {
+          <div class="sf-empty">Loading…</div>
+        } @else if (!knowledgeGraph()!.connected) {
+          <div class="sf-empty">Knowledge graph service not available: {{ knowledgeGraph()!.detail }}</div>
+        } @else if (knowledgeGraph()!.nodes.length === 0) {
+          <div class="sf-empty">Not synced yet. Click "Sync Project Graph" to build this project's real knowledge graph.</div>
+        } @else {
+          <div class="kg-stats">
+            <div><strong>{{ knowledgeGraph()!.nodes.length }}</strong><span>Nodes</span></div>
+            <div><strong>{{ knowledgeGraph()!.edges.length }}</strong><span>Relationships</span></div>
           </div>
+          <table class="sf-table">
+            <thead><tr><th>Node</th><th>Type</th><th>Relationships</th></tr></thead>
+            <tbody>
+              @for (node of knowledgeGraph()!.nodes; track node.id) {
+                <tr>
+                  <td>{{ node.label }}</td>
+                  <td><span class="sf-pill">{{ node.type }}</span></td>
+                  <td>
+                    <div class="pw-wf-steps">
+                      @for (edge of knowledgeGraph()!.edges; track edge.source + edge.type + edge.target) {
+                        @if (edge.source === node.id) {
+                          <span class="sf-badge sf-badge--blue">{{ edge.type }} → {{ nodeLabel(edge.target) }}</span>
+                        }
+                      }
+                    </div>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        }
+      } @else {
+        <p class="set-note" style="padding:0 18px 14px; font-size:12.5px; color: var(--sf-text-secondary);">
+          Repository Knowledge Graph represents source code structure (Files, Classes, Functions, Modules, and Imports) indexed from the connected repository checkout.
+        </p>
+        <div class="set-note" style="display:flex; gap:8px; padding:0 18px 14px; align-items:center;">
+          <input
+            style="flex:1;"
+            type="text"
+            placeholder="Optional: custom path on backend host (leave empty to index connected Git worktree)"
+            [value]="ingestPath()"
+            (input)="ingestPath.set($any($event.target).value)"
+          />
+          <button
+            class="sf-btn sf-btn--primary"
+            type="button"
+            style="padding:6px 14px; white-space:nowrap;"
+            [disabled]="ingestingRepository()"
+            (click)="ingestRepository()"
+          >
+            {{ ingestingRepository() ? 'Indexing…' : 'Index Repository' }}
+          </button>
         </div>
-        <table class="sf-table">
-          <thead><tr><th>File</th><th>Language</th><th>Symbols</th></tr></thead>
-          <tbody>
-            @for (file of codeGraph()!.files; track file.path) {
-              <tr>
-                <td>{{ file.path }}</td>
-                <td><span class="sf-pill">{{ file.language }}</span></td>
-                <td>
-                  <div class="pw-wf-steps">
-                    @for (symbol of file.symbols; track symbol.name + symbol.line) {
-                      <span class="sf-badge sf-badge--blue">{{ symbol.kind }} {{ symbol.name }}:{{ symbol.line }}</span>
-                    }
-                  </div>
-                </td>
-              </tr>
-            }
-          </tbody>
-        </table>
+        @if (ingestError()) {
+          <div class="sf-empty" style="color: var(--sf-danger, #d04444); margin: 0 18px 14px;">{{ ingestError() }}</div>
+        }
+        @if (codeGraph() === null) {
+          <div class="sf-empty">Loading…</div>
+        } @else if (!codeGraph()!.connected) {
+          <div class="sf-empty">Knowledge graph service not available: {{ codeGraph()!.detail }}</div>
+        } @else if (codeGraph()!.files.length === 0) {
+          <div class="sf-empty">Not indexed yet. Click "Index Connected Repository" to extract files and symbols into the knowledge graph.</div>
+        } @else {
+          <div class="kg-stats">
+            <div><strong>{{ codeGraph()!.files.length }}</strong><span>Files</span></div>
+            <div>
+              <strong>{{ codeGraph()!.files.reduce((n, f) => n + f.symbols.length, 0) }}</strong>
+              <span>Symbols</span>
+            </div>
+          </div>
+          <table class="sf-table">
+            <thead><tr><th>File</th><th>Language</th><th>Symbols</th></tr></thead>
+            <tbody>
+              @for (file of codeGraph()!.files; track file.path) {
+                <tr>
+                  <td>{{ file.path }}</td>
+                  <td><span class="sf-pill">{{ file.language }}</span></td>
+                  <td>
+                    <div class="pw-wf-steps">
+                      @for (symbol of file.symbols; track symbol.name + symbol.line) {
+                        <span class="sf-badge sf-badge--blue">{{ symbol.kind }} {{ symbol.name }}:{{ symbol.line }}</span>
+                      }
+                    </div>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        }
       }
     </section>
   }

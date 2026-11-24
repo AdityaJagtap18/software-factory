@@ -171,8 +171,8 @@ def test_multi_step_workflow_succeeds_when_every_step_succeeds(client, monkeypat
     assert body["status"] == "completed"
     assert body["steps"][0]["status"] == "completed"
     assert body["steps"][1]["status"] == "completed"
-    assert body["steps"][0]["output"] == "done: Step one"
-    assert body["steps"][1]["output"] == "done: Step two"
+    assert "Step one" in body["steps"][0]["output"]
+    assert "Step two" in body["steps"][1]["output"]
 
 
 def test_second_step_never_runs_when_first_step_fails(client, monkeypatch):

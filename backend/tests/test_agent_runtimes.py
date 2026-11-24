@@ -302,3 +302,55 @@ def test_claude_code_cli_streaming_execution_requests_accept_edits_inside_a_work
 
     assert result.succeeded is True
     assert captured["cmd"] == ["/usr/bin/claude", "-p", "Add a file", "--permission-mode", "acceptEdits"]
+
+
+def test_gemini_cli_execution_requests_skip_trust_and_yes_inside_a_worktree(monkeypatch):
+    captured = {}
+
+    class _FakeCompletedProcess:
+        returncode = 0
+        stdout = "ok from gemini"
+        stderr = ""
+
+    def _fake_run(cmd, env=None, **kwargs):
+        captured["cmd"] = cmd
+        captured["env"] = env
+        return _FakeCompletedProcess()
+
+    monkeypatch.setattr(adapters.shutil, "which", lambda binary: f"/usr/bin/{binary}")
+    monkeypatch.setattr(adapters.subprocess, "run", _fake_run)
+
+    result = adapters.GeminiCliAdapter().start_execution("Add a file", "test-key-123", cwd="/tmp/some-worktree")
+
+    assert result.succeeded is True
+    assert captured["cmd"] == ["/usr/bin/gemini", "-p", "Add a file", "--skip-trust", "-y"]
+    assert captured["env"]["GEMINI_API_KEY"] == "test-key-123"
+
+
+def test_gemini_cli_health_check_verifies_cli_and_api_key(monkeypatch):
+    monkeypatch.setattr(adapters.shutil, "which", lambda binary: f"/usr/bin/{binary}")
+
+    class _FakeCompletedProcess:
+        returncode = 0
+        stdout = "0.70.0\n"
+        stderr = ""
+
+    class _FakeResponse:
+        status_code = 200
+
+    monkeypatch.setattr(adapters.subprocess, "run", lambda *a, **k: _FakeCompletedProcess())
+    monkeypatch.setattr(adapters.httpx, "get", lambda *a, **k: _FakeResponse())
+
+    # With credential
+    res = adapters.GeminiCliAdapter().health_check("fake-key")
+    assert res.connected is True
+    assert "0.70.0" in res.detail
+
+    # Without credential and without env key
+    from app.core.config import get_settings
+    monkeypatch.setattr(get_settings(), "gemini_api_key", "")
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    res_no_key = adapters.GeminiCliAdapter().health_check(None)
+    assert res_no_key.connected is False
+    assert "GEMINI_API_KEY" in res_no_key.detail
+

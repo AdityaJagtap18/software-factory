@@ -1,115 +1,963 @@
 <div class="sf-breadcrumbs">
-  <a routerLink="/projects">Projects</a> <span>›</span> <a>FINTRIX</a> <span>›</span>
+  <a routerLink="/projects">Projects</a>
+  <span>›</span>
+  <a [routerLink]="['/projects', selectedProjectId()]">{{ currentProject()?.name || 'Project' }}</a>
+  <span>›</span>
   <span class="current">Repository Intelligence</span>
 </div>
 
-<div class="sf-page-header">
+<!-- Header with Selectors & Status -->
+<div class="sf-page-header ri-header">
   <div class="sf-page-header__title-group">
     <span class="sf-page-header__icon tone-violet"><sf-icon name="navigation/repositories" /></span>
     <div>
-      <h1>FINTRIX — Repository Intelligence</h1>
-      <p>Code graph, dependencies and engineering context for the repository</p>
+      <h1>{{ currentRepo()?.name || 'Repository Intelligence' }}</h1>
+      <p>Code graph, symbol dependencies, impact analysis, and engineering context</p>
     </div>
   </div>
-  <div class="sf-page-header__actions">
-    <span class="sf-pill">main</span>
-    <span class="sf-badge sf-badge--green">Indexed</span>
-    <button class="sf-btn" type="button"><sf-icon name="navigation/workflows" /> Sync Now</button>
-  </div>
-</div>
 
-<div class="sf-tabs">
-  <button type="button" class="sf-tab" [class.active]="tab() === 'overview'" (click)="tab.set('overview')"><sf-icon name="navigation/dashboard" /> Overview</button>
-  <button type="button" class="sf-tab" [class.active]="tab() === 'graph'" (click)="tab.set('graph')"><sf-icon name="workspace/repository-graph" /> Repository Graph</button>
-  <button type="button" class="sf-tab" [class.active]="tab() === 'search'" (click)="tab.set('search')"><sf-icon name="workspace/code-search" /> Code Search</button>
-  <button type="button" class="sf-tab" [class.active]="tab() === 'dependencies'" (click)="tab.set('dependencies')"><sf-icon name="workspace/dependencies" /> Dependencies</button>
-  <button type="button" class="sf-tab" [class.active]="tab() === 'impact'" (click)="tab.set('impact')"><sf-icon name="workspace/impact-analysis" /> Impact Analysis</button>
-  <button type="button" class="sf-tab" [class.active]="tab() === 'history'" (click)="tab.set('history')"><sf-icon name="workspace/graph-history" /> Graph History</button>
-  <button type="button" class="sf-tab" [class.active]="tab() === 'indexing'" (click)="tab.set('indexing')"><sf-icon name="workspace/indexing" /> Indexing</button>
-  <button type="button" class="sf-tab" [class.active]="tab() === 'settings'" (click)="tab.set('settings')"><sf-icon name="navigation/settings" /> Settings</button>
-</div>
-
-<div class="ri-grid">
-  <aside class="sf-card">
-    <div class="sf-panel-title"><h3>Repository</h3></div>
-    <div class="ri-tree">
-      <ng-container *ngTemplateOutlet="treeTpl; context: { $implicit: repoTree() }" />
-    </div>
-    <ng-template #treeTpl let-node>
-      <div class="rt-item" [class.active]="node.active" (click)="node.type === 'folder' ? toggle(node) : null">
-        @if (node.type === 'folder') {
-          <sf-icon name="navigation/workflows" class="rt-item__chevron" [class.open]="isExpanded(node)" />
-          <sf-icon name="navigation/repositories" class="rt-item__icon" />
-        } @else {
-          <span class="rt-item__spacer"></span>
-          <sf-icon name="workspace/code-diff" class="rt-item__icon" />
+  <div class="ri-selectors-bar">
+    <div class="ri-selector-group">
+      <label>Project</label>
+      <select [ngModel]="selectedProjectId()" (ngModelChange)="selectProject($event)" class="sf-select">
+        @for (p of projects(); track p.id) {
+          <option [value]="p.id">{{ p.name }}</option>
         }
-        <span>{{ node.name }}</span>
+      </select>
+    </div>
+
+    <div class="ri-selector-group">
+      <label>Repository</label>
+      <select [ngModel]="selectedRepoId()" (ngModelChange)="selectRepository($event)" class="sf-select">
+        @for (r of repoConnections(); track r.id) {
+          <option [value]="r.id">{{ r.full_name }}</option>
+        }
+        @if (repoConnections().length === 0) {
+          <option value="" disabled>No connected repository</option>
+        }
+      </select>
+    </div>
+
+    <div class="ri-selector-group">
+      <label>Branch</label>
+      <select [ngModel]="selectedBranch()" (ngModelChange)="onBranchChange($event)" class="sf-select">
+        @for (b of branches(); track b.name) {
+          <option [value]="b.name">{{ b.name }} {{ b.is_default ? '(default)' : '' }}</option>
+        }
+      </select>
+    </div>
+
+    <div class="ri-status-action">
+      <span class="sf-badge sf-badge--{{ statusBadge().color }}">{{ statusBadge().label }}</span>
+      <button class="sf-btn sf-btn--primary" type="button" (click)="triggerIndexing()" [disabled]="indexing() || !selectedRepoId()">
+        <sf-icon name="navigation/workflows" />
+        {{ indexing() ? 'Indexing...' : 'Index Now' }}
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Alert Messages -->
+@if (errorMessage()) {
+  <div class="sf-alert sf-alert--error mb-16">
+    <span>{{ errorMessage() }}</span>
+    <button type="button" class="sf-alert__close" (click)="errorMessage.set('')">✕</button>
+  </div>
+}
+@if (successMessage()) {
+  <div class="sf-alert sf-alert--success mb-16">
+    <span>{{ successMessage() }}</span>
+    <button type="button" class="sf-alert__close" (click)="successMessage.set('')">✕</button>
+  </div>
+}
+
+<!-- Navigation Tabs -->
+<div class="sf-tabs">
+  <button type="button" class="sf-tab" [class.active]="tab() === 'overview'" (click)="switchTab('overview')">
+    <sf-icon name="navigation/dashboard" /> Overview
+  </button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'graph'" (click)="switchTab('graph')">
+    <sf-icon name="workspace/repository-graph" /> Repository Graph
+  </button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'search'" (click)="switchTab('search')">
+    <sf-icon name="workspace/code-search" /> Code Search
+  </button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'dependencies'" (click)="switchTab('dependencies')">
+    <sf-icon name="workspace/dependencies" /> Dependencies
+  </button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'impact'" (click)="switchTab('impact')">
+    <sf-icon name="workspace/impact-analysis" /> Impact Analysis
+  </button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'history'" (click)="switchTab('history')">
+    <sf-icon name="workspace/graph-history" /> Graph History
+  </button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'indexing'" (click)="switchTab('indexing')">
+    <sf-icon name="workspace/indexing" /> Indexing
+  </button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'settings'" (click)="switchTab('settings')">
+    <sf-icon name="navigation/settings" /> Settings
+  </button>
+</div>
+
+<!-- TAB 1: OVERVIEW -->
+@if (tab() === 'overview') {
+  <div class="ri-tab-content">
+    @if (overviewData(); as ov) {
+      <div class="ri-metrics-grid">
+        <div class="sf-card ri-metric-card">
+          <div class="ri-metric-card__icon tone-blue"><sf-icon name="workspace/code-diff" /></div>
+          <div>
+            <div class="ri-metric-card__val">{{ ov.metrics.total_files }}</div>
+            <div class="ri-metric-card__lbl">Source Files</div>
+          </div>
+        </div>
+        <div class="sf-card ri-metric-card">
+          <div class="ri-metric-card__icon tone-purple"><sf-icon name="navigation/repositories" /></div>
+          <div>
+            <div class="ri-metric-card__val">{{ ov.metrics.total_directories }}</div>
+            <div class="ri-metric-card__lbl">Directories</div>
+          </div>
+        </div>
+        <div class="sf-card ri-metric-card">
+          <div class="ri-metric-card__icon tone-green"><sf-icon name="navigation/artifacts" /></div>
+          <div>
+            <div class="ri-metric-card__val">{{ ov.metrics.total_classes }}</div>
+            <div class="ri-metric-card__lbl">Classes</div>
+          </div>
+        </div>
+        <div class="sf-card ri-metric-card">
+          <div class="ri-metric-card__icon tone-cyan"><sf-icon name="navigation/workflows" /></div>
+          <div>
+            <div class="ri-metric-card__val">{{ ov.metrics.total_functions }}</div>
+            <div class="ri-metric-card__lbl">Functions / APIs</div>
+          </div>
+        </div>
+        <div class="sf-card ri-metric-card">
+          <div class="ri-metric-card__icon tone-amber"><sf-icon name="workspace/code-search" /></div>
+          <div>
+            <div class="ri-metric-card__val">{{ ov.metrics.lines_of_code | number }}</div>
+            <div class="ri-metric-card__lbl">Lines of Code</div>
+          </div>
+        </div>
+        <div class="sf-card ri-metric-card">
+          <div class="ri-metric-card__icon tone-slate"><sf-icon name="workspace/dependencies" /></div>
+          <div>
+            <div class="ri-metric-card__val">{{ ov.metrics.external_dependencies_count }}</div>
+            <div class="ri-metric-card__lbl">Dependencies</div>
+          </div>
+        </div>
       </div>
-      @if (node.type === 'folder' && isExpanded(node) && node.children) {
-        <div class="rt-children">
-          @for (child of node.children; track child.name) {
-            <ng-container *ngTemplateOutlet="treeTpl; context: { $implicit: child }" />
+
+      <div class="ri-overview-grid mt-16">
+        <!-- Language Breakdown -->
+        <div class="sf-card">
+          <div class="sf-panel-title"><h3>Languages Breakdown</h3></div>
+          <div class="ri-lang-container">
+            @for (item of ov.metrics.languages | keyvalue; track item.key) {
+              <div class="ri-lang-row">
+                <span class="ri-lang-name">{{ item.key }}</span>
+                <div class="ri-lang-bar-bg">
+                  <div class="ri-lang-bar-fill" [style.width.%]="(item.value / (ov.metrics.lines_of_code || 1)) * 100"></div>
+                </div>
+                <span class="ri-lang-count">{{ item.value | number }} lines</span>
+              </div>
+            }
+            @if ((ov.metrics.languages | keyvalue).length === 0) {
+              <div class="ri-empty-sub">No languages detected. Index repository to analyze code.</div>
+            }
+          </div>
+        </div>
+
+        <!-- Indexing Status Card -->
+        <div class="sf-card">
+          <div class="sf-panel-title"><h3>Knowledge Graph Status</h3></div>
+          <div class="pw-info p-16">
+            <div class="pw-info__row">
+              <span class="label">Status</span>
+              <span class="sf-badge sf-badge--{{ statusBadge().color }}">{{ ov.index_status.status }}</span>
+            </div>
+            <div class="pw-info__row">
+              <span class="label">Graphify Engine</span>
+              <span class="value">v{{ ov.index_status.graphify_version }}</span>
+            </div>
+            <div class="pw-info__row">
+              <span class="label">Head Commit</span>
+              <span class="value font-mono">{{ ov.index_status.commit_sha || 'N/A' }}</span>
+            </div>
+            <div class="pw-info__row">
+              <span class="label">Entities in Neo4j</span>
+              <span class="value">{{ ov.index_status.entities_count }}</span>
+            </div>
+            <div class="pw-info__row">
+              <span class="label">Relationships</span>
+              <span class="value">{{ ov.index_status.relationships_count }}</span>
+            </div>
+            <div class="pw-info__row">
+              <span class="label">Last Indexed</span>
+              <span class="value">{{ ov.index_status.last_indexed_at ? (ov.index_status.last_indexed_at | date:'medium') : 'Never' }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent Commits -->
+      <div class="sf-card mt-16">
+        <div class="sf-panel-title"><h3>Recent Commits</h3></div>
+        <table class="sf-table">
+          <thead>
+            <tr>
+              <th>Commit</th>
+              <th>Message</th>
+              <th>Author</th>
+              <th>Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (c of ov.recent_commits; track c.sha) {
+              <tr>
+                <td class="font-mono text-blue">{{ c.sha }}</td>
+                <td>{{ c.message }}</td>
+                <td>{{ c.author }}</td>
+                <td>{{ c.date }}</td>
+              </tr>
+            }
+            @if (ov.recent_commits.length === 0) {
+              <tr>
+                <td colspan="4" class="text-center py-16 text-muted">No commit history available.</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    } @else {
+      <div class="sf-card p-32 text-center text-muted">
+        @if (loading()) {
+          <p>Loading repository overview...</p>
+        } @else {
+          <p>No repository data found. Please ensure a repository is selected and click <strong>Index Now</strong>.</p>
+        }
+      </div>
+    }
+  </div>
+}
+
+<!-- TAB 2: REPOSITORY GRAPH -->
+@if (tab() === 'graph') {
+  <div class="ri-tab-content ri-graph-layout">
+    <!-- Main Interactive Graph Canvas -->
+    <div class="ri-canvas-card">
+      <!-- Toolbar Controls -->
+      <div class="ri-canvas-toolbar">
+        <div class="ri-layout-modes">
+          <button
+            type="button"
+            class="sf-pill-btn"
+            [class.active]="layoutMode() === 'force'"
+            (click)="setLayoutMode('force')">
+            Force-Directed
+          </button>
+          <button
+            type="button"
+            class="sf-pill-btn"
+            [class.active]="layoutMode() === 'radial'"
+            (click)="setLayoutMode('radial')">
+            Radial
+          </button>
+          <button
+            type="button"
+            class="sf-pill-btn"
+            [class.active]="layoutMode() === 'hierarchical'"
+            (click)="setLayoutMode('hierarchical')">
+            Hierarchical
+          </button>
+        </div>
+
+        <div class="ri-pill-filters">
+          @for (t of ['All', 'File', 'Class', 'Function', 'API', 'Test', 'External']; track t) {
+            <button
+              type="button"
+              class="sf-pill-btn"
+              [class.active]="selectedGraphNodeType() === t"
+              (click)="selectedGraphNodeType.set(t); loadGraph()">
+              {{ t }}
+            </button>
           }
         </div>
-      }
-    </ng-template>
-  </aside>
 
-  <section class="sf-card ri-graph-card">
-    <div class="sf-panel-title"><h3>Repository Graph</h3></div>
-    <div class="ri-graph">
-      <div class="ri-graph__node ri-graph__node--center"><sf-icon name="navigation/artifacts" /><span>InvoiceExtractionService</span><small>Service</small></div>
-      <div class="ri-graph__node" style="left:8%;top:10%;"><sf-icon name="workspace/code-diff" /><span>InvoiceController</span><small>Controller</small></div>
-      <div class="ri-graph__node" style="left:38%;top:4%;"><sf-icon name="navigation/repositories" /><span>InvoiceRepository</span><small>Repository</small></div>
-      <div class="ri-graph__node" style="left:68%;top:10%;"><sf-icon name="navigation/artifacts" /><span>Invoice</span><small>Model</small></div>
-      <div class="ri-graph__node" style="left:4%;top:55%;"><sf-icon name="navigation/settings" /><span>DocumentParserService</span><small>Service</small></div>
-      <div class="ri-graph__node" style="left:28%;top:78%;"><sf-icon name="navigation/settings" /><span>ClassificationService</span><small>Service</small></div>
-      <div class="ri-graph__node" style="left:70%;top:60%;"><sf-icon name="navigation/providers" /><span>StorageService</span><small>Service</small></div>
-      <div class="ri-graph__node" style="left:88%;top:30%;"><sf-icon name="workspace/code-diff" /><span>OCRClient</span><small>Client</small></div>
-      <div class="ri-graph__node" style="left:45%;top:88%;"><sf-icon name="navigation/settings" /><span>ExtractionConfig</span><small>Config</small></div>
-    </div>
-  </section>
+        <div class="ri-zoom-controls">
+          <button type="button" class="sf-btn sf-btn--sm" (click)="zoomIn()" title="Zoom In">+</button>
+          <button type="button" class="sf-btn sf-btn--sm" (click)="zoomOut()" title="Zoom Out">-</button>
+          <button type="button" class="sf-btn sf-btn--sm" (click)="fitGraph()" title="Fit to View">Fit</button>
+          <button type="button" class="sf-btn sf-btn--sm" (click)="resetZoom()" title="Reset View">Reset</button>
+        </div>
+      </div>
 
-  <aside class="sf-card">
-    <div class="sf-panel-title"><h3>InvoiceExtractionService</h3></div>
-    <p class="kg-detail__type">Service Class</p>
-    <div class="pw-info" style="padding:0 18px 14px;">
-      <div class="pw-info__row"><span class="label">Type</span><span class="value">Service</span></div>
-      <div class="pw-info__row"><span class="label">Package</span><span class="value">com.fintrix.service</span></div>
-      <div class="pw-info__row"><span class="label">LOC</span><span class="value">842</span></div>
-      <div class="pw-info__row"><span class="label">Complexity</span><span class="sf-badge sf-badge--amber">Medium</span></div>
-    </div>
-    <div class="ri-desc">
-      <strong>Description</strong>
-      <p>Core service for invoice processing. Extracts structured data from invoices using OCR and applies business rules for validation and classification.</p>
-    </div>
-  </aside>
-</div>
+      <!-- HTML5 Interactive Canvas Container -->
+      <div class="ri-canvas-wrapper">
+        <canvas
+          #graphCanvas
+          (mousedown)="onCanvasMouseDown($event)"
+          (mousemove)="onCanvasMouseMove($event)"
+          (mouseup)="onCanvasMouseUp()"
+          (mouseleave)="onCanvasMouseUp()"
+          (wheel)="onCanvasWheel($event)"
+          (dblclick)="onCanvasDblClick($event)">
+        </canvas>
 
-<div class="ri-bottom">
-  <section class="sf-card">
-    <div class="sf-panel-title"><h3>Dependencies ({{ dependencies.length }})</h3><a class="view-all">View All →</a></div>
-    <table class="sf-table">
-      <thead><tr><th>Dependency</th><th>Type</th><th>Direction</th></tr></thead>
-      <tbody>
-        @for (d of dependencies; track d.name) {
-          <tr><td>{{ d.name }}</td><td><span class="sf-pill">{{ d.type }}</span></td><td>→ {{ d.direction }}</td></tr>
+        @if ((graphData()?.nodes?.length || 0) === 0 && !loading()) {
+          <div class="ri-empty-canvas">
+            <p>No graph nodes found for this branch.</p>
+            <button class="sf-btn sf-btn--primary" type="button" (click)="triggerIndexing()">Index Repository</button>
+          </div>
         }
-      </tbody>
-    </table>
-  </section>
+      </div>
+    </div>
 
-  <section class="sf-card">
-    <div class="sf-panel-title"><h3>Impact Analysis</h3><a class="view-all">View Impact →</a></div>
-    <p class="ri-impact-note">If InvoiceExtractionService changes, the following will be impacted.</p>
-    <div class="sf-stat-grid" style="padding:0 18px 18px;margin-bottom:0;">
-      @for (i of impact; track i.label) {
-        <div class="sf-stat-card sf-stat-card--blue">
-          <div class="sf-stat-card__icon"><sf-icon [name]="i.icon" /></div>
-          <div><div class="sf-stat-card__value">{{ i.value }}</div><div class="sf-stat-card__label">{{ i.label }}</div></div>
+    <!-- Right Explorer Sidebar (Matching Reference Design) -->
+    <aside class="ri-explorer-panel">
+      <!-- A. Search Nodes -->
+      <div class="ri-panel-section ri-search-section">
+        <div class="ri-search-input-wrap">
+          <input
+            type="text"
+            class="ri-search-node-input"
+            placeholder="Search nodes..."
+            [ngModel]="graphSearchQuery()"
+            (ngModelChange)="graphSearchQuery.set($event)" />
+          @if (graphSearchQuery()) {
+            <button type="button" class="ri-search-clear" (click)="graphSearchQuery.set('')">✕</button>
+          }
+        </div>
+
+        <!-- Autocomplete Dropdown -->
+        @if (filteredGraphSearchNodes().length > 0) {
+          <div class="ri-search-dropdown">
+            @for (item of filteredGraphSearchNodes(); track item.id) {
+              <div class="ri-search-drop-item" (click)="focusNodeInCanvas(item.id); graphSearchQuery.set('')">
+                <span class="ri-comm-dot" [style.background]="item.community_color || '#38bdf8'"></span>
+                <span class="ri-drop-label">{{ item.label }}</span>
+                <span class="ri-drop-type">{{ item.type }}</span>
+              </div>
+            }
+          </div>
+        }
+      </div>
+
+      <!-- B. Node Info -->
+      <div class="ri-panel-section ri-node-info-section">
+        <div class="ri-sidebar-header">
+          <span>NODE INFO</span>
+        </div>
+
+        @if (selectedNodeDetail(); as detail) {
+          <div class="ri-node-detail-body">
+            <div class="ri-info-header">
+              <h4 class="ri-node-title">{{ detail.node.label }}</h4>
+              <div class="ri-badge-row">
+                <span class="sf-badge" [style.background]="getNodeColor(detail.node.type) + '20'" [style.color]="getNodeColor(detail.node.type)">
+                  {{ detail.node.type }}
+                </span>
+                @if (detail.node.community_name) {
+                  <span class="ri-comm-pill" [style.borderColor]="detail.node.community_color" [style.color]="detail.node.community_color">
+                    {{ detail.node.community_name }}
+                  </span>
+                }
+              </div>
+            </div>
+
+            <div class="ri-node-props mt-10">
+              <div class="ri-prop-row">
+                <span class="label">Connections</span>
+                <span class="val font-mono">{{ (detail.incoming.length + detail.outgoing.length) }} edges</span>
+              </div>
+              @if (detail.node.file_path) {
+                <div class="ri-prop-row">
+                  <span class="label">File</span>
+                  <span class="val font-mono" title="{{ detail.node.file_path }}">{{ detail.node.file_path }}</span>
+                </div>
+              }
+              @if (detail.node.location) {
+                <div class="ri-prop-row">
+                  <span class="label">Location</span>
+                  <span class="val font-mono">{{ detail.node.location }}</span>
+                </div>
+              }
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="ri-node-actions mt-12">
+              <button class="sf-btn sf-btn--sm" type="button" (click)="expandNeighbors(detail.node.id)" title="Expand 1-hop connections">
+                <sf-icon name="navigation/workflows" /> Expand
+              </button>
+              <button class="sf-btn sf-btn--sm sf-btn--secondary" type="button" (click)="analyzeImpactForNode(detail.node.id)" title="Analyze ripple effect">
+                <sf-icon name="workspace/impact-analysis" /> Impact
+              </button>
+              @if (detail.source_preview) {
+                <button class="sf-btn sf-btn--sm sf-btn--secondary" type="button" (click)="showSourcePreview.set(!showSourcePreview())">
+                  {{ showSourcePreview() ? 'Hide Code' : 'View Code' }}
+                </button>
+              }
+            </div>
+
+            <!-- Source Preview Collapsible -->
+            @if (showSourcePreview() && detail.source_preview) {
+              <div class="ri-code-preview-wrap mt-10">
+                <pre class="ri-code-snippet"><code>{{ detail.source_preview }}</code></pre>
+              </div>
+            }
+
+            <!-- Connections Tabs / Lists -->
+            <div class="ri-connections-block mt-12">
+              <div class="ri-conn-group">
+                <div class="ri-conn-title">Incoming ({{ detail.incoming.length }})</div>
+                <div class="ri-conn-list">
+                  @for (e of detail.incoming; track e.source + e.type) {
+                    <div class="ri-conn-item" (click)="focusNodeInCanvas(e.source)">
+                      <span class="ri-conn-rel">{{ e.type }}</span>
+                      <span class="ri-conn-name">{{ e.source }}</span>
+                    </div>
+                  }
+                  @if (detail.incoming.length === 0) {
+                    <div class="ri-conn-empty">No incoming connections</div>
+                  }
+                </div>
+              </div>
+
+              <div class="ri-conn-group mt-8">
+                <div class="ri-conn-title">Outgoing ({{ detail.outgoing.length }})</div>
+                <div class="ri-conn-list">
+                  @for (e of detail.outgoing; track e.target + e.type) {
+                    <div class="ri-conn-item" (click)="focusNodeInCanvas(e.target)">
+                      <span class="ri-conn-rel">{{ e.type }}</span>
+                      <span class="ri-conn-name">{{ e.target }}</span>
+                    </div>
+                  }
+                  @if (detail.outgoing.length === 0) {
+                    <div class="ri-conn-empty">No outgoing connections</div>
+                  }
+                </div>
+              </div>
+            </div>
+          </div>
+        } @else {
+          <div class="ri-empty-info">
+            <em>Click a node to inspect it</em>
+          </div>
+        }
+      </div>
+
+      <!-- C. Communities Filter Panel -->
+      <div class="ri-panel-section ri-communities-section">
+        <div class="ri-sidebar-header">
+          <span>COMMUNITIES ({{ communities().length }})</span>
+        </div>
+
+        <div class="ri-comm-select-all">
+          <label class="ri-checkbox-label">
+            <input
+              type="checkbox"
+              [checked]="selectAllCommunities()"
+              (change)="toggleAllCommunities()" />
+            <span>Select All</span>
+          </label>
+        </div>
+
+        <div class="ri-comm-list">
+          @for (c of communities(); track c.id) {
+            <div
+              class="ri-comm-row"
+              (mouseenter)="hoveredCommunityId.set(c.id)"
+              (mouseleave)="hoveredCommunityId.set(null)">
+              <label class="ri-checkbox-label">
+                <input
+                  type="checkbox"
+                  [checked]="communityVisibility()[c.id] !== false"
+                  (change)="toggleCommunity(c.id)" />
+                <span class="ri-comm-dot" [style.background]="c.color"></span>
+                <span class="ri-comm-name" title="{{ c.name }}">{{ c.name }}</span>
+              </label>
+              <div class="ri-comm-right">
+                <span class="ri-comm-count">{{ c.node_count }}</span>
+                <button
+                  type="button"
+                  class="ri-comm-isolate-btn"
+                  title="Isolate this community"
+                  (click)="isolateCommunity(c.id, $event)">
+                  ◎
+                </button>
+              </div>
+            </div>
+          }
+          @if (communities().length === 0) {
+            <div class="ri-empty-info">
+              <em>No communities detected yet.</em>
+            </div>
+          }
+        </div>
+      </div>
+    </aside>
+  </div>
+}
+
+
+<!-- TAB 3: CODE SEARCH -->
+@if (tab() === 'search') {
+  <div class="ri-tab-content">
+    <div class="sf-card p-16">
+      <div class="ri-search-bar">
+        <input
+          type="text"
+          class="sf-input ri-search-input"
+          placeholder="Search files, symbols, classes, functions, or code contents..."
+          [ngModel]="searchQuery()"
+          (ngModelChange)="searchQuery.set($event)"
+          (keyup.enter)="executeSearch()" />
+        <button class="sf-btn sf-btn--primary" type="button" (click)="executeSearch()" [disabled]="searching()">
+          {{ searching() ? 'Searching...' : 'Search' }}
+        </button>
+      </div>
+
+      <div class="ri-search-modes mt-12">
+        @for (m of ['all', 'file', 'symbol', 'code', 'intent']; track m) {
+          <button
+            type="button"
+            class="sf-pill-btn"
+            [class.active]="searchMode() === m"
+            (click)="setSearchMode(m)">
+            {{ m | uppercase }}
+          </button>
+        }
+      </div>
+    </div>
+
+    <div class="sf-card mt-16">
+      <div class="sf-panel-title">
+        <h3>Search Results ({{ searchResults().length }})</h3>
+      </div>
+      <div class="ri-search-results">
+        @for (item of searchResults(); track item.file_path + item.line_number + item.title) {
+          <div class="ri-search-item">
+            <div class="ri-search-item__header">
+              <span class="sf-pill">{{ item.match_type | uppercase }}</span>
+              <span class="ri-search-title">{{ item.title }}</span>
+              <span class="ri-search-path">{{ item.file_path }} {{ item.line_number ? ':' + item.line_number : '' }}</span>
+            </div>
+            @if (item.snippet) {
+              <div class="ri-search-snippet font-mono">{{ item.snippet }}</div>
+            }
+            <div class="ri-search-actions">
+              @if (item.node_id) {
+                <button class="sf-btn sf-btn--sm" type="button" (click)="viewInGraph(item.node_id)">
+                  View in Graph
+                </button>
+                <button class="sf-btn sf-btn--sm sf-btn--secondary" type="button" (click)="analyzeImpactForNode(item.node_id)">
+                  Analyze Impact
+                </button>
+              }
+            </div>
+          </div>
+        }
+        @if (searchResults().length === 0 && !searching()) {
+          <div class="p-32 text-center text-muted">
+            <p>No results found. Enter a keyword above to search through AST symbols, file names, or code snippets.</p>
+          </div>
+        }
+      </div>
+    </div>
+  </div>
+}
+
+<!-- TAB 4: DEPENDENCIES -->
+@if (tab() === 'dependencies') {
+  <div class="ri-tab-content">
+    @if (dependenciesData(); as deps) {
+      <!-- Circular Dependency Alert Banner -->
+      @if (deps.cycles_count > 0) {
+        <div class="sf-alert sf-alert--warning mb-16">
+          <div class="ri-cycle-alert">
+            <strong>Circular Dependencies Detected! ({{ deps.cycles_count }} cycle{{ deps.cycles_count > 1 ? 's' : '' }})</strong>
+            <p class="mt-4">The following circular import/call loops were identified in the codebase:</p>
+            <ul class="ri-cycle-list mt-8">
+              @for (c of deps.cycles; track c.nodes.join('->')) {
+                <li>
+                  <span class="font-mono">{{ c.nodes.join(' ➔ ') }} ➔ {{ c.nodes[0] }}</span>
+                  <span class="sf-pill ml-8">{{ c.length }} hops</span>
+                </li>
+              }
+            </ul>
+          </div>
         </div>
       }
+
+      <div class="sf-card">
+        <div class="sf-tabs sub-tabs">
+          <button type="button" class="sf-tab" [class.active]="depSubTab() === 'external'" (click)="depSubTab.set('external')">
+            External Packages ({{ deps.total_external }})
+          </button>
+          <button type="button" class="sf-tab" [class.active]="depSubTab() === 'internal'" (click)="depSubTab.set('internal')">
+            Internal Call & Import Graph ({{ deps.total_internal }})
+          </button>
+        </div>
+
+        @if (depSubTab() === 'external') {
+          <table class="sf-table">
+            <thead>
+              <tr>
+                <th>Package</th>
+                <th>Version Specifier</th>
+                <th>Manifest Source</th>
+                <th>Dependent Files</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (ext of deps.external; track ext.name + ext.manifest_file) {
+                <tr>
+                  <td><strong>{{ ext.name }}</strong></td>
+                  <td class="font-mono text-muted">{{ ext.version || 'Unspecified' }}</td>
+                  <td><span class="sf-pill">{{ ext.manifest_file }}</span></td>
+                  <td>{{ ext.usage_count }} file(s)</td>
+                </tr>
+              }
+              @if (deps.external.length === 0) {
+                <tr>
+                  <td colspan="4" class="text-center py-16 text-muted">No external manifest dependencies found.</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        }
+
+        @if (depSubTab() === 'internal') {
+          <table class="sf-table">
+            <thead>
+              <tr>
+                <th>Source Component</th>
+                <th>Relation</th>
+                <th>Target Component</th>
+                <th>Provenance</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (int of deps.internal; track int.source_node + int.target_node + int.relation) {
+                <tr>
+                  <td>
+                    <strong>{{ int.source_node }}</strong>
+                    <div class="text-muted font-mono" style="font-size:11px;">{{ int.source_file }}</div>
+                  </td>
+                  <td><span class="sf-badge sf-badge--blue">{{ int.relation }}</span></td>
+                  <td><strong>{{ int.target_node }}</strong></td>
+                  <td>
+                    <span class="sf-badge" [class.sf-badge--green]="int.provenance === 'EXTRACTED'" [class.sf-badge--amber]="int.provenance === 'INFERRED'">
+                      {{ int.provenance }}
+                    </span>
+                  </td>
+                </tr>
+              }
+              @if (deps.internal.length === 0) {
+                <tr>
+                  <td colspan="4" class="text-center py-16 text-muted">No internal call/import relationships recorded.</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        }
+      </div>
+    } @else {
+      <div class="sf-card p-32 text-center text-muted">
+        <p>Loading dependency intelligence...</p>
+      </div>
+    }
+  </div>
+}
+
+<!-- TAB 5: IMPACT ANALYSIS -->
+@if (tab() === 'impact') {
+  <div class="ri-tab-content">
+    <div class="sf-card p-16">
+      <div class="ri-impact-picker">
+        <label>Target Node / Component ID:</label>
+        <div class="ri-search-bar mt-8">
+          <input
+            type="text"
+            class="sf-input"
+            placeholder="e.g. slugify_slugify, InvoiceExtractionService, or file:app/main.py"
+            [ngModel]="impactTargetId()"
+            (ngModelChange)="impactTargetId.set($event)"
+            (keyup.enter)="runImpactAnalysis()" />
+          <button class="sf-btn sf-btn--primary" type="button" (click)="runImpactAnalysis()" [disabled]="impactLoading() || !impactTargetId()">
+            {{ impactLoading() ? 'Analyzing...' : 'Run Impact Analysis' }}
+          </button>
+        </div>
+      </div>
     </div>
-  </section>
-</div>
+
+    @if (impactData(); as imp) {
+      <div class="ri-impact-summary mt-16">
+        <div class="sf-card p-16">
+          <div class="ri-impact-header">
+            <div>
+              <h3>Impact Assessment: {{ imp.target_node.label }}</h3>
+              <p class="text-muted mt-4">{{ imp.summary }}</p>
+            </div>
+            <div>
+              <span class="sf-badge" [class.sf-badge--green]="imp.confidence >= 1" [class.sf-badge--amber]="imp.confidence < 1">
+                Confidence: {{ (imp.confidence * 100) | number:'1.0-0' }}% ({{ imp.confidence >= 1 ? 'EXTRACTED' : 'INFERRED' }})
+              </span>
+            </div>
+          </div>
+
+          <div class="ri-metrics-grid mt-16">
+            <div class="sf-card ri-metric-card">
+              <div class="ri-metric-card__val">{{ imp.direct_consumers.length }}</div>
+              <div class="ri-metric-card__lbl">Direct Consumers</div>
+            </div>
+            <div class="sf-card ri-metric-card">
+              <div class="ri-metric-card__val">{{ imp.transitive_consumers.length }}</div>
+              <div class="ri-metric-card__lbl">Transitive Consumers</div>
+            </div>
+            <div class="sf-card ri-metric-card">
+              <div class="ri-metric-card__val">{{ imp.affected_tests.length }}</div>
+              <div class="ri-metric-card__lbl">Affected Tests</div>
+            </div>
+            <div class="sf-card ri-metric-card">
+              <div class="ri-metric-card__val">{{ imp.affected_apis.length }}</div>
+              <div class="ri-metric-card__lbl">Affected APIs</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Affected Tests & APIs Sections -->
+        <div class="ri-overview-grid mt-16">
+          <div class="sf-card">
+            <div class="sf-panel-title">
+              <h3>Affected Test Suites ({{ imp.affected_tests.length }})</h3>
+            </div>
+            <div class="p-16">
+              @for (t of imp.affected_tests; track t.id) {
+                <div class="ri-impact-node-row">
+                  <span class="sf-pill">TEST</span>
+                  <span class="ri-impact-node-name">{{ t.label }}</span>
+                  <span class="font-mono text-muted">{{ t.file_path }}</span>
+                </div>
+              }
+              @if (imp.affected_tests.length === 0) {
+                <p class="text-muted">No test suites directly reference this component.</p>
+              }
+            </div>
+          </div>
+
+          <div class="sf-card">
+            <div class="sf-panel-title">
+              <h3>Affected Public APIs ({{ imp.affected_apis.length }})</h3>
+            </div>
+            <div class="p-16">
+              @for (a of imp.affected_apis; track a.id) {
+                <div class="ri-impact-node-row">
+                  <span class="sf-pill">API</span>
+                  <span class="ri-impact-node-name">{{ a.label }}</span>
+                  <span class="font-mono text-muted">{{ a.file_path }}</span>
+                </div>
+              }
+              @if (imp.affected_apis.length === 0) {
+                <p class="text-muted">No public API endpoints detected in downstream path.</p>
+              }
+            </div>
+          </div>
+        </div>
+
+        <!-- Direct & Transitive Consumers Lists -->
+        <div class="sf-card mt-16">
+          <div class="sf-panel-title"><h3>Direct Consumers (Immediate Callers & Importers)</h3></div>
+          <div class="p-16">
+            @for (c of imp.direct_consumers; track c.id) {
+              <div class="ri-impact-node-row">
+                <span class="sf-badge" [style.background]="getNodeColor(c.type) + '20'" [style.color]="getNodeColor(c.type)">{{ c.type }}</span>
+                <span class="ri-impact-node-name font-bold">{{ c.label }}</span>
+                <span class="font-mono text-muted">{{ c.file_path }}</span>
+                <button class="sf-btn sf-btn--sm ml-auto" type="button" (click)="viewInGraph(c.id)">View</button>
+              </div>
+            }
+            @if (imp.direct_consumers.length === 0) {
+              <p class="text-muted">No direct consumers identified.</p>
+            }
+          </div>
+        </div>
+      </div>
+    }
+  </div>
+}
+
+<!-- TAB 6: GRAPH HISTORY -->
+@if (tab() === 'history') {
+  <div class="ri-tab-content">
+    <div class="sf-card">
+      <div class="sf-panel-title">
+        <h3>Indexing Runs History</h3>
+        <div class="ri-diff-actions">
+          <select [ngModel]="selectedRunA()" (ngModelChange)="selectedRunA.set($event)" class="sf-select sf-select--sm">
+            @for (r of historyData()?.runs || []; track r.id) {
+              <option [value]="r.id">Run {{ r.id.slice(0, 8) }} ({{ r.branch }})</option>
+            }
+          </select>
+          <span>vs</span>
+          <select [ngModel]="selectedRunB()" (ngModelChange)="selectedRunB.set($event)" class="sf-select sf-select--sm">
+            @for (r of historyData()?.runs || []; track r.id) {
+              <option [value]="r.id">Run {{ r.id.slice(0, 8) }} ({{ r.branch }})</option>
+            }
+          </select>
+          <button class="sf-btn sf-btn--sm sf-btn--primary" type="button" (click)="compareRuns()" [disabled]="diffLoading() || !selectedRunA() || !selectedRunB()">
+            Compare
+          </button>
+        </div>
+      </div>
+
+      <!-- Comparison Diff Box -->
+      @if (diffData(); as diff) {
+        <div class="ri-diff-result p-16 sf-alert sf-alert--info mb-16">
+          <strong>Comparison: Run {{ diff.run_a_id.slice(0, 8) }} ➔ Run {{ diff.run_b_id.slice(0, 8) }}</strong>
+          <div class="ri-diff-metrics mt-8">
+            <span class="sf-badge sf-badge--green">+{{ diff.entities_added }} entities</span>
+            <span class="sf-badge sf-badge--red">-{{ diff.entities_removed }} entities</span>
+            <span class="sf-badge sf-badge--blue">+{{ diff.relationships_added }} relations</span>
+            <span class="sf-badge sf-badge--amber">-{{ diff.relationships_removed }} relations</span>
+          </div>
+        </div>
+      }
+
+      <table class="sf-table">
+        <thead>
+          <tr>
+            <th>Run ID</th>
+            <th>Branch</th>
+            <th>Commit SHA</th>
+            <th>Entities</th>
+            <th>Relations</th>
+            <th>Duration</th>
+            <th>Status</th>
+            <th>Started</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (r of historyData()?.runs || []; track r.id) {
+            <tr>
+              <td class="font-mono">{{ r.id.slice(0, 8) }}</td>
+              <td><span class="sf-pill">{{ r.branch }}</span></td>
+              <td class="font-mono text-muted">{{ r.commit_sha || 'N/A' }}</td>
+              <td>{{ r.entities_count }}</td>
+              <td>{{ r.relationships_count }}</td>
+              <td>{{ r.duration_seconds }}s</td>
+              <td>
+                <span class="sf-badge" [class.sf-badge--green]="r.status === 'COMPLETED'" [class.sf-badge--red]="r.status === 'FAILED'">
+                  {{ r.status }}
+                </span>
+              </td>
+              <td>{{ r.started_at ? (r.started_at | date:'short') : '' }}</td>
+            </tr>
+          }
+          @if ((historyData()?.runs || []).length === 0) {
+            <tr>
+              <td colspan="8" class="text-center py-16 text-muted">No historical indexing runs recorded.</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </div>
+}
+
+<!-- TAB 7: INDEXING PIPELINE -->
+@if (tab() === 'indexing') {
+  <div class="ri-tab-content">
+    <div class="sf-card p-16">
+      <div class="sf-panel-title">
+        <h3>Indexing Pipeline</h3>
+        <button class="sf-btn sf-btn--primary" type="button" (click)="triggerIndexing()" [disabled]="indexing()">
+          {{ indexing() ? 'Indexing in progress...' : 'Trigger Full Re-index' }}
+        </button>
+      </div>
+
+      <!-- Pipeline Stage Stepper -->
+      <div class="ri-pipeline-stepper mt-16">
+        <div class="ri-step completed">
+          <div class="ri-step__num">1</div>
+          <div class="ri-step__title">Git Checkout</div>
+        </div>
+        <div class="ri-step__divider"></div>
+        <div class="ri-step completed">
+          <div class="ri-step__num">2</div>
+          <div class="ri-step__title">Graphify AST Extraction</div>
+        </div>
+        <div class="ri-step__divider"></div>
+        <div class="ri-step completed">
+          <div class="ri-step__num">3</div>
+          <div class="ri-step__title">Schema Normalization</div>
+        </div>
+        <div class="ri-step__divider"></div>
+        <div class="ri-step completed">
+          <div class="ri-step__num">4</div>
+          <div class="ri-step__title">Neo4j Persistence</div>
+        </div>
+        <div class="ri-step__divider"></div>
+        <div class="ri-step completed">
+          <div class="ri-step__num">5</div>
+          <div class="ri-step__title">Manifest Analysis</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Execution Log Console -->
+    <div class="sf-card mt-16 ri-console-card">
+      <div class="sf-panel-title">
+        <h3>Execution Logs</h3>
+        <span class="sf-pill font-mono">STDOUT / STDERR</span>
+      </div>
+      <div class="ri-terminal">
+        <pre><code>{{ liveRunDetail()?.log_output || 'No execution logs available. Click "Trigger Full Re-index" to start.' }}</code></pre>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- TAB 8: SETTINGS -->
+@if (tab() === 'settings') {
+  <div class="ri-tab-content">
+    <div class="sf-card p-24" style="max-width: 720px;">
+      <div class="sf-panel-title">
+        <h3>Repository Intelligence Settings</h3>
+      </div>
+
+      <div class="sf-form-group mt-16">
+        <label class="sf-label">Default Target Branch</label>
+        <input type="text" class="sf-input" [(ngModel)]="settingsDefaultBranch" placeholder="e.g. main or master" />
+      </div>
+
+      <div class="sf-form-group mt-16">
+        <label class="sf-label">Included Paths (Comma-separated)</label>
+        <input type="text" class="sf-input" [(ngModel)]="settingsIncludedPaths" placeholder="e.g. src/, app/, lib/ (Leave empty to include all)" />
+      </div>
+
+      <div class="sf-form-group mt-16">
+        <label class="sf-label">Excluded Paths (Comma-separated)</label>
+        <input type="text" class="sf-input" [(ngModel)]="settingsExcludedPaths" placeholder="e.g. node_modules, dist, .git, __pycache__" />
+      </div>
+
+      <div class="sf-form-group mt-16">
+        <label class="sf-label">Maximum File Size (KB)</label>
+        <input type="number" class="sf-input" [(ngModel)]="settingsMaxFileSizeKb" />
+      </div>
+
+      <div class="sf-form-group mt-16">
+        <label class="sf-checkbox-label">
+          <input type="checkbox" [(ngModel)]="settingsAutoIndex" />
+          <span>Automatically update knowledge graph when Git repository is synced</span>
+        </label>
+      </div>
+
+      <div class="mt-24">
+        <button class="sf-btn sf-btn--primary" type="button" (click)="saveSettings()" [disabled]="settingsSaving()">
+          {{ settingsSaving() ? 'Saving...' : 'Save Configuration' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}

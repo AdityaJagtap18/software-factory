@@ -189,7 +189,9 @@ def test_successful_execution_marks_task_completed_with_real_output(client, monk
 
     body = _wait_for_terminal_status(client, project["id"], task["id"], alice)
     assert body["status"] == "completed"
-    assert body["output"] == "echo: Write a haiku about testing"
+    assert "Write a haiku about testing" in body["output"]
+    assert "PROJECT KNOWLEDGE CONTEXT" in body["output"]
+    assert body["knowledge_context"]["retrieved"] is True
     assert body["error_message"] == ""
 
 

@@ -15,13 +15,15 @@ import { BranchComparison, BranchSummary, RepositorySummary } from '../../core/o
 import { ApiProject } from '../../core/auth/auth.models';
 import { ApiTask, TaskDiff } from '../../core/org/task.models';
 import { ApiWorkflow, CreateWorkflowStepPayload } from '../../core/org/workflow.models';
+import { ModelOption } from '../../core/org/agent-runtime.models';
+import { ModelPickerComponent } from '../../shared/model-picker/model-picker.component';
 
 type TabId = 'overview' | 'tasks' | 'workflows' | 'agents' | 'knowledge' | 'artifacts' | 'activity' | 'settings';
 
 @Component({
   selector: 'sf-project-workspace',
   standalone: true,
-  imports: [RouterLink, IconComponent, DatePipe],
+  imports: [RouterLink, IconComponent, DatePipe, ModelPickerComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './project-workspace.component.html',
   styleUrl: './project-workspace.component.scss'
@@ -50,6 +52,7 @@ export class ProjectWorkspaceComponent implements OnDestroy {
   readonly knowledgeGraph = this.knowledgeService.graph;
   readonly syncingKnowledge = signal(false);
   readonly codeGraph = this.knowledgeService.codeGraph;
+  readonly knowledgeView = signal<'project' | 'repository'>('project');
   readonly ingestPath = signal('');
   readonly ingestingRepository = signal(false);
   readonly ingestError = signal('');
@@ -87,6 +90,9 @@ export class ProjectWorkspaceComponent implements OnDestroy {
   readonly newTaskTitle = signal('');
   readonly newTaskDescription = signal('');
   readonly newTaskConnectionId = signal('');
+  readonly newTaskSelectedModel = signal('');
+  readonly newTaskExecutionRuntime = signal('');
+  readonly connectedAgents = computed(() => this.connections().filter((c) => c.status === 'connected' && c.id));
   readonly newTaskBaseBranch = signal('');
   readonly newTaskBranches = signal<BranchSummary[]>([]);
   readonly loadingNewTaskBranches = signal(false);
@@ -152,6 +158,13 @@ export class ProjectWorkspaceComponent implements OnDestroy {
         }
       });
     });
+
+    effect(() => {
+      const insts = this.gitInstallations();
+      if (insts.length > 0 && !this.connectRepoInstallationId()) {
+        this.connectRepoInstallationId.set(insts[0].id);
+      }
+    });
   }
 
   statusTone(status: string): 'green' | 'blue' | 'amber' | 'gray' | 'red' {
@@ -175,7 +188,10 @@ export class ProjectWorkspaceComponent implements OnDestroy {
   openCreateTask() {
     this.newTaskTitle.set('');
     this.newTaskDescription.set('');
-    this.newTaskConnectionId.set('');
+    this.newTaskSelectedModel.set('');
+    this.newTaskExecutionRuntime.set('');
+    const firstConnected = this.connectedAgents()[0];
+    this.newTaskConnectionId.set(firstConnected?.id ?? '');
     this.newTaskBaseBranch.set('');
     this.newTaskBranches.set([]);
     this.showCreateTask.set(true);
@@ -203,6 +219,12 @@ export class ProjectWorkspaceComponent implements OnDestroy {
     }
   }
 
+  onNewTaskModelSelected(model: ModelOption) {
+    this.newTaskSelectedModel.set(model.id);
+    this.newTaskExecutionRuntime.set(model.runtime_slug);
+    this.newTaskConnectionId.set(model.connection_id || '');
+  }
+
   closeCreateTask() {
     this.showCreateTask.set(false);
   }
@@ -217,7 +239,9 @@ export class ProjectWorkspaceComponent implements OnDestroy {
         title,
         description: this.newTaskDescription().trim(),
         coding_agent_connection_id: this.newTaskConnectionId() || null,
-        base_branch: this.newTaskBaseBranch() || undefined
+        base_branch: this.newTaskBaseBranch() || undefined,
+        selected_model: this.newTaskSelectedModel() || undefined,
+        execution_runtime: this.newTaskExecutionRuntime() || undefined
       })
       .subscribe({
         next: () => {
@@ -332,12 +356,23 @@ export class ProjectWorkspaceComponent implements OnDestroy {
     this.workflowService.cancel(project.id, workflow.id).subscribe();
   }
 
+  setKnowledgeView(view: 'project' | 'repository') {
+    this.knowledgeView.set(view);
+    const project = this.project();
+    if (project) {
+      this.knowledgeService.fetchGraph(project.id, view).subscribe();
+    }
+  }
+
   syncKnowledge() {
     const project = this.project();
     if (!project) return;
     this.syncingKnowledge.set(true);
     this.knowledgeService.sync(project.id).subscribe({
-      complete: () => this.syncingKnowledge.set(false),
+      next: () => {
+        this.knowledgeService.fetchGraph(project.id, this.knowledgeView()).subscribe();
+        this.syncingKnowledge.set(false);
+      },
       error: () => this.syncingKnowledge.set(false)
     });
   }
@@ -349,13 +384,13 @@ export class ProjectWorkspaceComponent implements OnDestroy {
 
   ingestRepository() {
     const project = this.project();
-    const path = this.ingestPath().trim();
-    if (!project || !path) return;
+    if (!project) return;
     this.ingestingRepository.set(true);
     this.ingestError.set('');
-    this.knowledgeService.ingestRepository(project.id, path).subscribe({
+    this.knowledgeService.ingestRepository(project.id, this.ingestPath().trim()).subscribe({
       next: (result) => {
         if (!result.connected) this.ingestError.set(result.detail);
+        this.knowledgeService.fetchGraph(project.id, this.knowledgeView()).subscribe();
         this.ingestingRepository.set(false);
       },
       error: (err) => {
@@ -382,7 +417,10 @@ export class ProjectWorkspaceComponent implements OnDestroy {
   }
 
   openConnectRepository() {
-    this.connectRepoInstallationId.set(this.gitInstallations()[0]?.id ?? '');
+    const insts = this.gitInstallations();
+    if (insts.length > 0 && !this.connectRepoInstallationId()) {
+      this.connectRepoInstallationId.set(insts[0].id);
+    }
     this.availableRepositories.set([]);
     this.selectedRepositoryFullName.set('');
     this.repoConnectError.set('');
@@ -448,6 +486,7 @@ export class ProjectWorkspaceComponent implements OnDestroy {
         next: () => {
           this.connectingRepository.set(false);
           this.showConnectRepository.set(false);
+          this.gitService.listRepositoryConnections(project.id).subscribe();
         },
         error: (err) => {
           this.connectingRepository.set(false);
@@ -460,7 +499,16 @@ export class ProjectWorkspaceComponent implements OnDestroy {
     const project = this.project();
     const installationId = this.connectRepoInstallationId();
     const name = this.newRepoName().trim();
-    if (!project || !installationId || !name) return;
+    if (!project) return;
+    if (!installationId) {
+      this.repoConnectError.set('Please select a GitHub installation first.');
+      return;
+    }
+    if (!name) {
+      this.repoConnectError.set('Repository name cannot be empty.');
+      return;
+    }
+    if (this.connectingRepository()) return;
     this.connectingRepository.set(true);
     this.repoConnectError.set('');
     this.gitService
@@ -473,6 +521,7 @@ export class ProjectWorkspaceComponent implements OnDestroy {
         next: () => {
           this.connectingRepository.set(false);
           this.showConnectRepository.set(false);
+          this.gitService.listRepositoryConnections(project.id).subscribe();
         },
         error: (err) => {
           this.connectingRepository.set(false);

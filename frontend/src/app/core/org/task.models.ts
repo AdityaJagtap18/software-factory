@@ -24,6 +24,10 @@ export interface ApiTask {
   git_base_branch_protected: boolean;
   git_required_status_checks: string[];
   git_required_approving_reviews: number;
+  knowledge_context?: Record<string, any>;
+  selected_model?: string;
+  execution_runtime?: string;
+  execution_history?: Array<Record<string, any>>;
 }
 
 export interface MyApiTask extends ApiTask {
@@ -36,6 +40,8 @@ export interface CreateTaskPayload {
   priority?: TaskPriority;
   coding_agent_connection_id?: string | null;
   base_branch?: string;
+  selected_model?: string;
+  execution_runtime?: string;
 }
 
 export interface TaskDiff {
@@ -53,4 +59,6 @@ export interface TaskMessage {
   role: TaskMessageRole;
   content: string;
   created_at: string;
+  model_id?: string;
+  runtime_slug?: string;
 }

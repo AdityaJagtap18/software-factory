@@ -41,3 +41,37 @@ export interface CreateConnectionPayload {
   credential_provider?: string;
   credential_value?: string;
 }
+
+export interface ModelOption {
+  id: string; // composite key e.g. "claude_code:claude-3-7-sonnet"
+  provider_id: string;
+  provider_name: string;
+  model_id: string;
+  model_name: string;
+  runtime_slug: string;
+  runtime_name: string;
+  display_name: string;
+  connection_id: string | null;
+  connection_status: string;
+  availability_status: 'CONNECTED' | 'AVAILABLE' | 'DISCONNECTED' | 'UNAVAILABLE' | 'MISCONFIGURED' | 'ERROR';
+  capabilities: Capability[];
+  execution_supported: boolean;
+  selection_allowed: boolean;
+  version?: string;
+  description?: string;
+  is_default?: boolean;
+}
+
+export interface ProviderGroup {
+  provider_id: string;
+  provider_name: string;
+  icon: string;
+  models: ModelOption[];
+}
+
+export interface ModelCatalogResponse {
+  groups: ProviderGroup[];
+  models: ModelOption[];
+  default_model_id: string | null;
+  selected_model_id: string | null;
+}

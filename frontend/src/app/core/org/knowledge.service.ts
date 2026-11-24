@@ -22,19 +22,26 @@ export class KnowledgeService {
       .pipe(tap(() => this.fetchGraph(projectId).subscribe()));
   }
 
-  fetchGraph(projectId: string): Observable<KnowledgeGraphResponse> {
+  fetchGraph(projectId: string, graphType: 'project' | 'repository' | 'all' = 'project'): Observable<KnowledgeGraphResponse> {
     return this.http
-      .get<KnowledgeGraphResponse>(`${environment.apiBaseUrl}/projects/${projectId}/knowledge/graph`)
+      .get<KnowledgeGraphResponse>(`${environment.apiBaseUrl}/projects/${projectId}/knowledge/graph`, {
+        params: { graph_type: graphType }
+      })
       .pipe(tap((graph) => this.graph.set(graph)));
   }
 
-  ingestRepository(projectId: string, path: string): Observable<IngestRepositoryResponse> {
+  ingestRepository(projectId: string, path: string = ''): Observable<IngestRepositoryResponse> {
     return this.http
       .post<IngestRepositoryResponse>(
         `${environment.apiBaseUrl}/projects/${projectId}/knowledge/ingest-repository`,
         { path }
       )
-      .pipe(tap(() => this.fetchCodeGraph(projectId).subscribe()));
+      .pipe(
+        tap(() => {
+          this.fetchCodeGraph(projectId).subscribe();
+          this.fetchGraph(projectId).subscribe();
+        })
+      );
   }
 
   fetchCodeGraph(projectId: string): Observable<CodeGraphResponse> {

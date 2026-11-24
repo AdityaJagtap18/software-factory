@@ -44,6 +44,7 @@ services:
       SF_NEO4J_URI: bolt://neo4j:7687
       SF_NEO4J_USER: neo4j
       SF_NEO4J_PASSWORD: sfgraphpass123
+      SF_GEMINI_API_KEY: ${SF_GEMINI_API_KEY:-${GEMINI_API_KEY:-}}
     ports:
       # Host 8020: 8000 is taken by another local project, and 8010 is used
       # by the non-Docker dev instance of this backend during local work.

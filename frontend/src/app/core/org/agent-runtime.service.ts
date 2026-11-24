@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
 import { Observable, tap } from 'rxjs';
 import { environment } from '../../../environments/environment';
-import { AgentConnection, CreateConnectionPayload } from './agent-runtime.models';
+import { AgentConnection, CreateConnectionPayload, ModelCatalogResponse } from './agent-runtime.models';
 
 @Injectable({ providedIn: 'root' })
 export class AgentRuntimeService {
@@ -75,5 +75,10 @@ export class AgentRuntimeService {
           );
         })
       );
+  }
+
+  getModelCatalog(projectId: string, taskId?: string): Observable<ModelCatalogResponse> {
+    const url = `${environment.apiBaseUrl}/projects/${projectId}/agent-runtimes/model-catalog${taskId ? `?task_id=${taskId}` : ''}`;
+    return this.http.get<ModelCatalogResponse>(url);
   }
 }

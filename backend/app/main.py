@@ -18,6 +18,7 @@ from app.api.routes import (
     orchestration,
     presence,
     projects,
+    repository_intelligence,
     tasks,
     workflows,
 )
@@ -67,6 +68,7 @@ app.include_router(documents.router, prefix="/api/v1")
 app.include_router(orchestration.router, prefix="/api/v1")
 app.include_router(notifications.router, prefix="/api/v1")
 app.include_router(audit_log.router, prefix="/api/v1")
+app.include_router(repository_intelligence.router, prefix="/api/v1")
 
 
 @app.get("/api/v1/health")

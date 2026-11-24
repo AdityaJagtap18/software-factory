@@ -93,7 +93,7 @@
     <div class="tw-main">
       <div class="sf-tabs">
         <button type="button" class="sf-tab" [class.active]="tab() === 'conversation'" (click)="setTab('conversation')">
-          <sf-icon name="navigation/approvals" /> Conversation
+          <sf-icon name="workspace/conversation" /> Conversation
         </button>
         <button type="button" class="sf-tab" [class.active]="tab() === 'changes'" (click)="setTab('changes')">
           <sf-icon name="workspace/code-diff" /> Code Changes ({{ task.git_changed_files.length }})
@@ -108,7 +108,7 @@
       <sf-icon name="navigation/artifacts" /> Artifacts
     </button>
     <button type="button" class="sf-tab" [class.active]="tab() === 'logs'" (click)="setTab('logs')">
-      <sf-icon name="navigation/monitoring" /> Execution Logs
+      <sf-icon name="workspace/activity-log" /> Execution Logs
     </button>
   </div>
 

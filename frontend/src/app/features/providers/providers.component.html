@@ -17,19 +17,19 @@
 
 <div class="sf-stat-grid">
   <div class="sf-stat-card"><div class="sf-stat-card__icon"><sf-icon name="navigation/providers" /></div><div><div class="sf-stat-card__label">Configured Providers</div><div class="sf-stat-card__value">{{ providers().length }}</div></div></div>
-  <div class="sf-stat-card"><div class="sf-stat-card__icon"><sf-icon name="navigation/artifacts" /></div><div><div class="sf-stat-card__label">Available Models</div><div class="sf-stat-card__value">{{ models().length * 3 + 3 }}</div></div></div>
-  <div class="sf-stat-card"><div class="sf-stat-card__icon"><sf-icon name="navigation/workflows" /></div><div><div class="sf-stat-card__label">Active Routing Policies</div><div class="sf-stat-card__value">{{ routingPolicies.length }}</div></div></div>
+  <div class="sf-stat-card"><div class="sf-stat-card__icon"><sf-icon name="providers/local-model" /></div><div><div class="sf-stat-card__label">Available Models</div><div class="sf-stat-card__value">{{ models().length * 3 + 3 }}</div></div></div>
+  <div class="sf-stat-card"><div class="sf-stat-card__icon"><sf-icon name="providers/model-routing" /></div><div><div class="sf-stat-card__label">Active Routing Policies</div><div class="sf-stat-card__value">{{ routingPolicies.length }}</div></div></div>
   <div class="sf-stat-card"><div class="sf-stat-card__icon"><sf-icon name="status/success" /></div><div><div class="sf-stat-card__label">Healthy Providers</div><div class="sf-stat-card__value">{{ providers().length }} / {{ providers().length }}</div></div></div>
-  <div class="sf-stat-card"><div class="sf-stat-card__icon"><sf-icon name="navigation/artifacts" /></div><div><div class="sf-stat-card__label">This Month (LLM Cost)</div><div class="sf-stat-card__value">₹218.40 <span class="sf-stat-card__delta down">↓ -21%</span></div></div></div>
+  <div class="sf-stat-card"><div class="sf-stat-card__icon"><sf-icon name="metrics/cost" /></div><div><div class="sf-stat-card__label">This Month (LLM Cost)</div><div class="sf-stat-card__value">₹218.40 <span class="sf-stat-card__delta down">↓ -21%</span></div></div></div>
 </div>
 
 <div class="sf-tabs">
   <button type="button" class="sf-tab" [class.active]="tab() === 'overview'" (click)="tab.set('overview')"><sf-icon name="navigation/dashboard" /> Overview</button>
-  <button type="button" class="sf-tab" [class.active]="tab() === 'providers'" (click)="tab.set('providers')"><sf-icon name="navigation/agents" /> Providers</button>
-  <button type="button" class="sf-tab" [class.active]="tab() === 'models'" (click)="tab.set('models')"><sf-icon name="navigation/artifacts" /> Models</button>
-  <button type="button" class="sf-tab" [class.active]="tab() === 'routing'" (click)="tab.set('routing')"><sf-icon name="navigation/workflows" /> Routing &amp; Policies</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'providers'" (click)="tab.set('providers')"><sf-icon name="navigation/providers" /> Providers</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'models'" (click)="tab.set('models')"><sf-icon name="providers/local-model" /> Models</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'routing'" (click)="tab.set('routing')"><sf-icon name="providers/model-routing" /> Routing &amp; Policies</button>
   <button type="button" class="sf-tab" [class.active]="tab() === 'quotas'" (click)="tab.set('quotas')"><sf-icon name="status/success" /> Quotas &amp; Limits</button>
-  <button type="button" class="sf-tab" [class.active]="tab() === 'cost'" (click)="tab.set('cost')"><sf-icon name="navigation/artifacts" /> Cost Management</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'cost'" (click)="tab.set('cost')"><sf-icon name="metrics/cost" /> Cost Management</button>
   <button type="button" class="sf-tab" [class.active]="tab() === 'audit'" (click)="tab.set('audit')"><sf-icon name="navigation/monitoring" /> Audit &amp; Usage</button>
 </div>
 

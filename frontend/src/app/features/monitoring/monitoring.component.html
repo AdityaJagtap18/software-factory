@@ -24,18 +24,18 @@
 <div class="sf-stat-grid">
   <div class="sf-stat-card"><div class="sf-stat-card__icon"><sf-icon name="navigation/workflows" /></div><div><div class="sf-stat-card__label">Task Executions</div><div class="sf-stat-card__value">127 <span class="sf-stat-card__delta up">↑ +18%</span></div></div></div>
   <div class="sf-stat-card"><div class="sf-stat-card__icon"><sf-icon name="status/success" /></div><div><div class="sf-stat-card__label">Success Rate</div><div class="sf-stat-card__value">92.1% <span class="sf-stat-card__delta up">↑ +4.3pp</span></div></div></div>
-  <div class="sf-stat-card"><div class="sf-stat-card__icon"><sf-icon name="navigation/monitoring" /></div><div><div class="sf-stat-card__label">Avg. Execution Time</div><div class="sf-stat-card__value">4 min 32 sec <span class="sf-stat-card__delta down">↓ -28%</span></div></div></div>
-  <div class="sf-stat-card"><div class="sf-stat-card__icon"><sf-icon name="navigation/providers" /></div><div><div class="sf-stat-card__label">Total Cost (LLM)</div><div class="sf-stat-card__value">₹218.40 <span class="sf-stat-card__delta down">↓ -21%</span></div></div></div>
+  <div class="sf-stat-card"><div class="sf-stat-card__icon"><sf-icon name="metrics/duration" /></div><div><div class="sf-stat-card__label">Avg. Execution Time</div><div class="sf-stat-card__value">4 min 32 sec <span class="sf-stat-card__delta down">↓ -28%</span></div></div></div>
+  <div class="sf-stat-card"><div class="sf-stat-card__icon"><sf-icon name="metrics/cost" /></div><div><div class="sf-stat-card__label">Total Cost (LLM)</div><div class="sf-stat-card__value">₹218.40 <span class="sf-stat-card__delta down">↓ -21%</span></div></div></div>
   <div class="sf-stat-card"><div class="sf-stat-card__icon"><sf-icon name="navigation/agents" /></div><div><div class="sf-stat-card__label">Active Agents</div><div class="sf-stat-card__value">6 / 8</div></div></div>
 </div>
 
 <div class="sf-tabs">
   <button type="button" class="sf-tab" [class.active]="tab() === 'overview'" (click)="tab.set('overview')"><sf-icon name="navigation/dashboard" /> Overview</button>
-  <button type="button" class="sf-tab" [class.active]="tab() === 'executions'" (click)="tab.set('executions')"><sf-icon name="navigation/artifacts" /> Executions</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'executions'" (click)="tab.set('executions')"><sf-icon name="workspace/activity-log" /> Executions</button>
   <button type="button" class="sf-tab" [class.active]="tab() === 'agents'" (click)="tab.set('agents')"><sf-icon name="navigation/agents" /> Agent Performance</button>
   <button type="button" class="sf-tab" [class.active]="tab() === 'workflows'" (click)="tab.set('workflows')"><sf-icon name="navigation/workflows" /> Workflows (DAGs)</button>
   <button type="button" class="sf-tab" [class.active]="tab() === 'providers'" (click)="tab.set('providers')"><sf-icon name="navigation/providers" /> Provider Usage</button>
-  <button type="button" class="sf-tab" [class.active]="tab() === 'costs'" (click)="tab.set('costs')"><sf-icon name="navigation/monitoring" /> Costs</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'costs'" (click)="tab.set('costs')"><sf-icon name="metrics/cost" /> Costs</button>
   <button type="button" class="sf-tab" [class.active]="tab() === 'incidents'" (click)="tab.set('incidents')"><sf-icon name="status/warning" /> Incidents &amp; Alerts</button>
   <button type="button" class="sf-tab" [class.active]="tab() === 'health'" (click)="tab.set('health')"><sf-icon name="navigation/settings" /> System Health</button>
 </div>

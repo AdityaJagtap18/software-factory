@@ -16,7 +16,7 @@
     </div>
   </div>
   <div class="sf-card sf-empty" style="padding:48px; text-align:center;">
-    <sf-icon name="navigation/workflows" style="width:36px; height:36px; color:var(--sf-violet-600); margin-bottom:12px;" />
+    <sf-icon name="navigation/workflows" class="sf-empty__icon" />
     <h3>No workflows yet</h3>
     <p>Open a project and create one from its Workflows tab.</p>
     <a class="sf-btn sf-btn--primary" style="margin-top:12px;" routerLink="/projects">Browse projects</a>
@@ -94,12 +94,12 @@
         <div class="sf-panel-title"><h3>Workflow Overview</h3></div>
         <div class="pw-info" style="padding:6px 18px 14px;">
           <div class="pw-info__row"><sf-icon name="navigation/projects" /><span class="label">Project</span><span class="value">{{ selectedWorkflow()!.project_name }}</span></div>
-          <div class="pw-info__row"><sf-icon name="navigation/monitoring" /><span class="label">Created</span><span class="value">{{ selectedWorkflow()!.created_at | date:'medium' }}</span></div>
+          <div class="pw-info__row"><sf-icon name="metrics/duration" /><span class="label">Created</span><span class="value">{{ selectedWorkflow()!.created_at | date:'medium' }}</span></div>
           @if (selectedWorkflow()!.started_at) {
-            <div class="pw-info__row"><sf-icon name="navigation/monitoring" /><span class="label">Started</span><span class="value">{{ selectedWorkflow()!.started_at | date:'medium' }}</span></div>
+            <div class="pw-info__row"><sf-icon name="metrics/duration" /><span class="label">Started</span><span class="value">{{ selectedWorkflow()!.started_at | date:'medium' }}</span></div>
           }
           @if (selectedWorkflow()!.completed_at) {
-            <div class="pw-info__row"><sf-icon name="navigation/monitoring" /><span class="label">Completed</span><span class="value">{{ selectedWorkflow()!.completed_at | date:'medium' }}</span></div>
+            <div class="pw-info__row"><sf-icon name="metrics/duration" /><span class="label">Completed</span><span class="value">{{ selectedWorkflow()!.completed_at | date:'medium' }}</span></div>
           }
         </div>
       </section>

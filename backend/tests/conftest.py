@@ -40,6 +40,17 @@ def _ensure_database_exists() -> None:
     finally:
         conn.close()
 
+    # P4-3: this suite builds its schema via Base.metadata.create_all(),
+    # not Alembic, so the `vector` extension (normally created by the
+    # documents migration) needs to be enabled here too.
+    conn = psycopg2.connect(dbname=dbname, user=user, password=password, host=hostname, port=port)
+    conn.autocommit = True
+    try:
+        with conn.cursor() as cur:
+            cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    finally:
+        conn.close()
+
 
 @pytest.fixture(scope="session", autouse=True)
 def _setup_database():
@@ -51,6 +62,9 @@ def _setup_database():
 @pytest.fixture(autouse=True)
 def _clean_tables():
     yield
+    from app.core.rate_limit import reset as reset_rate_limit
+
+    reset_rate_limit()
     with engine.begin() as conn:
         for table in reversed(Base.metadata.sorted_tables):
             conn.execute(table.delete())

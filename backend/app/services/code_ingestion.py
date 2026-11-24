@@ -30,6 +30,12 @@ _TS_SYMBOL_RE = re.compile(
     re.MULTILINE,
 )
 
+_TS_IMPORT_RE = re.compile(
+    r"^\s*import\s+(?:(?:[\w*\s{},]+)\s+from\s+)?['\"]([^'\"]+)['\"]"
+    r"|^\s*(?:const|let|var)\s+\w+\s*=\s*require\(['\"]([^'\"]+)['\"]\)",
+    re.MULTILINE,
+)
+
 
 @dataclass
 class CodeSymbol:
@@ -61,6 +67,12 @@ def _parse_python(source: str) -> list[CodeSymbol]:
             symbols.append(CodeSymbol(name=node.name, kind="function", line=node.lineno))
         elif isinstance(node, ast.ClassDef):
             symbols.append(CodeSymbol(name=node.name, kind="class", line=node.lineno))
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                symbols.append(CodeSymbol(name=alias.name, kind="import", line=node.lineno))
+        elif isinstance(node, ast.ImportFrom):
+            if node.module:
+                symbols.append(CodeSymbol(name=node.module, kind="import", line=node.lineno))
     return symbols
 
 
@@ -68,15 +80,20 @@ def _parse_ts_js(source: str) -> list[CodeSymbol]:
     symbols: list[CodeSymbol] = []
     for lineno, line in enumerate(source.splitlines(), start=1):
         match = _TS_SYMBOL_RE.match(line)
-        if not match:
-            continue
-        kind_a, name_a, name_const, kind_b, name_b = match.groups()
-        if name_a:
-            symbols.append(CodeSymbol(name=name_a, kind=kind_a, line=lineno))
-        elif name_const:
-            symbols.append(CodeSymbol(name=name_const, kind="const", line=lineno))
-        elif name_b:
-            symbols.append(CodeSymbol(name=name_b, kind=kind_b, line=lineno))
+        if match:
+            kind_a, name_a, name_const, kind_b, name_b = match.groups()
+            if name_a:
+                symbols.append(CodeSymbol(name=name_a, kind=kind_a, line=lineno))
+            elif name_const:
+                symbols.append(CodeSymbol(name=name_const, kind="const", line=lineno))
+            elif name_b:
+                symbols.append(CodeSymbol(name=name_b, kind=kind_b, line=lineno))
+        import_match = _TS_IMPORT_RE.match(line)
+        if import_match:
+            mod_a, mod_b = import_match.groups()
+            mod = mod_a or mod_b
+            if mod:
+                symbols.append(CodeSymbol(name=mod, kind="import", line=lineno))
     return symbols
 
 

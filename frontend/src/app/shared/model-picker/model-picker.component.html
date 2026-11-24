@@ -1,0 +1,127 @@
+<div class="sf-model-picker" [class.is-open]="isOpen()" [class.is-compact]="compact()">
+  <!-- Trigger Pill -->
+  <button
+    type="button"
+    class="sf-model-trigger"
+    [class.sf-model-trigger--compact]="compact()"
+    [disabled]="disabled()"
+    (click)="togglePopover()"
+    aria-haspopup="listbox"
+    [attr.aria-expanded]="isOpen()"
+  >
+    <div class="sf-model-trigger__leading">
+      @if (selectedModel(); as m) {
+        <span class="sf-model-trigger__status-dot" [class.is-connected]="m.availability_status === 'CONNECTED'"></span>
+        <span class="sf-model-trigger__icon">
+          <sf-icon [name]="getProviderIcon(m.provider_id, m.runtime_slug)" />
+        </span>
+        <span class="sf-model-trigger__label" [title]="m.display_name">
+          {{ m.display_name || m.model_name }}
+        </span>
+      } @else {
+        <span class="sf-model-trigger__icon">
+          <sf-icon name="navigation/agents" />
+        </span>
+        <span class="sf-model-trigger__label">Select Model</span>
+      }
+    </div>
+    <span class="sf-model-trigger__chevron" [class.is-flipped]="isOpen()">▾</span>
+  </button>
+
+  <!-- Popover Menu -->
+  @if (isOpen()) {
+    <div
+      class="sf-model-popover"
+      [class.sf-model-popover--top]="placement() === 'top'"
+      [class.sf-model-popover--bottom]="placement() === 'bottom'"
+      role="listbox"
+    >
+      <div class="sf-model-popover__header">
+        <div class="sf-model-popover__title">MODEL</div>
+        <div class="sf-model-popover__search">
+          <input
+            type="text"
+            placeholder="Search models..."
+            [value]="searchQuery()"
+            (input)="searchQuery.set($any($event.target).value)"
+            (click)="$event.stopPropagation()"
+            autofocus
+          />
+        </div>
+      </div>
+
+      <div class="sf-model-popover__body">
+        @if (loading() && !catalog()) {
+          <div class="sf-model-popover__status">Loading model catalog…</div>
+        } @else if (error()) {
+          <div class="sf-model-popover__error">{{ error() }}</div>
+        } @else if (filteredGroups().length === 0) {
+          <div class="sf-model-popover__empty">No models match "{{ searchQuery() }}"</div>
+        } @else {
+          @for (group of filteredGroups(); track group.provider_id) {
+            <div class="sf-model-group">
+              <div class="sf-model-group__header">
+                <span class="sf-model-group__icon">
+                  <sf-icon [name]="group.icon || 'providers/cloud-provider'" />
+                </span>
+                <span class="sf-model-group__title">{{ group.provider_name }}</span>
+              </div>
+
+              <div class="sf-model-group__items">
+                @for (model of group.models; track model.id) {
+                  <button
+                    type="button"
+                    class="sf-model-item"
+                    [class.is-selected]="isSelected(model)"
+                    [class.is-disabled]="!model.selection_allowed"
+                    [disabled]="!model.selection_allowed"
+                    (click)="selectModel(model)"
+                    role="option"
+                    [attr.aria-selected]="isSelected(model)"
+                  >
+                    <div class="sf-model-item__main">
+                      <div class="sf-model-item__name-row">
+                        <span class="sf-model-item__name">{{ model.model_name }}</span>
+                        @if (model.is_default) {
+                          <span class="sf-model-item__tag">Default</span>
+                        }
+                      </div>
+                      <div class="sf-model-item__sub">
+                        <span>{{ model.runtime_name }}</span>
+                        @if (model.description) {
+                          <span class="sf-model-item__desc">· {{ model.description }}</span>
+                        }
+                      </div>
+                    </div>
+
+                    <div class="sf-model-item__meta">
+                      @if (model.availability_status === 'CONNECTED') {
+                        <span class="sf-model-item__badge is-connected">
+                          {{ model.version ? model.version : 'Connected' }}
+                        </span>
+                      } @else if (model.availability_status === 'AVAILABLE') {
+                        <span class="sf-model-item__badge is-available">Available</span>
+                      } @else if (model.availability_status === 'DISCONNECTED') {
+                        <span class="sf-model-item__badge is-offline">Offline</span>
+                      } @else {
+                        <span class="sf-model-item__badge is-unavail">Not Setup</span>
+                      }
+
+                      @if (isSelected(model)) {
+                        <span class="sf-model-item__check">✓</span>
+                      }
+                    </div>
+                  </button>
+                }
+              </div>
+            </div>
+          }
+        }
+      </div>
+
+      <div class="sf-model-popover__footer">
+        <span class="sf-model-popover__footer-hint">Live coding agents &amp; local runtimes</span>
+      </div>
+    </div>
+  }
+</div>

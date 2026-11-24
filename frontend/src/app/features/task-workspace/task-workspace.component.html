@@ -30,24 +30,42 @@
     <div class="sf-page-header__title-group">
       <span class="sf-page-header__icon tone-violet"><sf-icon name="navigation/tasks" /></span>
       <div>
-        <h1>
-          {{ displayId() }} — {{ task.title }}
+        <h1 style="display:flex; align-items:center; flex-wrap:wrap; gap:8px;">
+          <span>{{ displayId() }} — {{ task.title }}</span>
           <span class="sf-badge" [class]="'sf-badge--' + statusTone(task.status)">{{ task.status }}</span>
+          @if (assignedAgent(); as agent) {
+            <span class="sf-badge sf-badge--blue" title="Assigned Coding Agent: {{ agent.runtime_name }}">
+              <sf-icon [name]="agent.icon || 'navigation/agents'" /> {{ agent.runtime_name }}
+            </span>
+          }
+          @if (activeModelDisplay(); as modelLabel) {
+            <span class="sf-badge sf-badge--violet" title="Active Model">
+              <sf-icon name="providers/local-model" /> {{ modelLabel }}
+            </span>
+          }
+          @if (task.knowledge_context && task.knowledge_context['retrieved']) {
+            <span class="sf-badge sf-badge--green" title="Project &amp; repository knowledge graph consulted automatically ({{ task.knowledge_context['total_entities'] || 0 }} entities)">
+              KG: Synced ({{ task.knowledge_context['total_entities'] || 0 }})
+            </span>
+          } @else if (task.knowledge_context && task.knowledge_context['error']) {
+            <span class="sf-badge sf-badge--amber" title="Knowledge graph unavailable during execution: {{ task.knowledge_context['error'] }}">
+              KG: Offline
+            </span>
+          }
         </h1>
         <p>{{ task.description || 'No description provided.' }}</p>
       </div>
     </div>
     <div class="sf-page-header__actions">
-      <select
-        class="tcr-task-picker"
-        aria-label="Switch task"
-        [value]="task.id"
-        (change)="selectTask($any($event.target).value)"
+      <button
+        type="button"
+        class="sf-btn"
+        [class.sf-btn--primary]="!sidebarCollapsed()"
+        (click)="toggleSidebar()"
+        title="Toggle Project Tasks Sidebar"
       >
-        @for (t of tasks(); track t.id) {
-          <option [value]="t.id">TSK-{{ t.id.slice(0, 8) }} — {{ t.title }}</option>
-        }
-      </select>
+        <sf-icon name="navigation/tasks" /> Tasks ({{ projectTasks().length }})
+      </button>
       @if (task.git_pr_url) {
         <a class="sf-btn" [href]="task.git_pr_url" target="_blank" rel="noopener">
           <sf-icon name="navigation/repositories" /> View PR
@@ -71,13 +89,15 @@
     </div>
   </div>
 
-  <div class="sf-tabs">
-    <button type="button" class="sf-tab" [class.active]="tab() === 'conversation'" (click)="setTab('conversation')">
-      <sf-icon name="navigation/approvals" /> Conversation
-    </button>
-    <button type="button" class="sf-tab" [class.active]="tab() === 'changes'" (click)="setTab('changes')">
-      <sf-icon name="workspace/code-diff" /> Code Changes ({{ task.git_changed_files.length }})
-    </button>
+  <div class="tw-container">
+    <div class="tw-main">
+      <div class="sf-tabs">
+        <button type="button" class="sf-tab" [class.active]="tab() === 'conversation'" (click)="setTab('conversation')">
+          <sf-icon name="workspace/conversation" /> Conversation
+        </button>
+        <button type="button" class="sf-tab" [class.active]="tab() === 'changes'" (click)="setTab('changes')">
+          <sf-icon name="workspace/code-diff" /> Code Changes ({{ task.git_changed_files.length }})
+        </button>
     <button type="button" class="sf-tab" [class.active]="tab() === 'tests'" (click)="setTab('tests')">
       <sf-icon name="status/success" /> Test Results
     </button>
@@ -88,7 +108,7 @@
       <sf-icon name="navigation/artifacts" /> Artifacts
     </button>
     <button type="button" class="sf-tab" [class.active]="tab() === 'logs'" (click)="setTab('logs')">
-      <sf-icon name="navigation/monitoring" /> Execution Logs
+      <sf-icon name="workspace/activity-log" /> Execution Logs
     </button>
   </div>
 
@@ -133,6 +153,9 @@
             <div class="tcr-msg__body">
               <div class="tcr-msg__head">
                 <strong>{{ m.role === 'user' ? 'You' : (m.role === 'agent' ? 'Coding Agent' : 'System') }}</strong>
+                @if (m.model_id) {
+                  <span class="sf-pill" style="font-size:10.5px; padding:1px 6px;">{{ m.model_id }}</span>
+                }
                 <span>{{ m.created_at | date:'short' }}</span>
               </div>
               @if (m.role === 'system') {
@@ -145,20 +168,36 @@
         }
       </div>
       <form class="tcr-composer" (ngSubmit)="sendMessage()">
-        <textarea
-          placeholder="Send a follow-up instruction to continue this task's real changes…"
-          rows="2"
-          [value]="draft()"
-          (input)="draft.set($any($event.target).value)"
-          [disabled]="task.status === 'running' || sendingMessage() || !task.git_branch_name"
-        ></textarea>
-        <button
-          class="sf-btn sf-btn--primary"
-          type="submit"
-          [disabled]="task.status === 'running' || sendingMessage() || !draft().trim() || !task.git_branch_name"
-        >
-          <sf-icon name="navigation/approvals" />
-        </button>
+        <div class="tcr-composer__box">
+          <textarea
+            placeholder="Send a follow-up instruction to continue this task's real changes…"
+            rows="2"
+            [value]="draft()"
+            (input)="draft.set($any($event.target).value)"
+            [disabled]="task.status === 'running' || sendingMessage() || !task.git_branch_name"
+          ></textarea>
+          <div class="tcr-composer__toolbar">
+            <div class="tcr-composer__picker">
+              <sf-model-picker
+                [projectId]="task.project_id"
+                [taskId]="task.id"
+                [currentModelId]="selectedComposerModel() || task.selected_model"
+                (modelSelected)="onModelSelected($event)"
+                placement="top"
+                [compact]="true"
+                [disabled]="task.status === 'running' || sendingMessage()"
+              />
+            </div>
+            <button
+              class="sf-btn sf-btn--primary tcr-composer__send"
+              type="submit"
+              [disabled]="task.status === 'running' || sendingMessage() || !draft().trim() || !task.git_branch_name"
+            >
+              <sf-icon name="navigation/approvals" />
+              <span>Send</span>
+            </button>
+          </div>
+        </div>
       </form>
       @if (!task.git_branch_name) {
         <p class="tcr-composer__note">Follow-up instructions need a repository workspace — start this task at least once first.</p>
@@ -250,7 +289,20 @@
 
           <section class="sf-card">
             <div class="sf-panel-title"><h3>Test Results</h3></div>
-            <div class="sf-empty tcr-side__empty">Not configured — no test runner is integrated yet.</div>
+            @if (loadingTestRuns()) {
+              <div class="sf-empty tcr-side__empty">Loading…</div>
+            } @else if (latestTestRun(); as run) {
+              <div class="pw-info" style="padding:0 18px 14px;">
+                <div class="pw-info__row"><span class="label">Framework</span><span class="sf-pill">{{ run.framework }}</span></div>
+                @if (run.ran) {
+                  <div class="pw-info__row"><span class="label">Result</span><span class="sf-badge" [class]="run.failed > 0 ? 'sf-badge--red' : 'sf-badge--green'">{{ run.passed }}/{{ run.total }} passed</span></div>
+                } @else {
+                  <div class="pw-info__row"><span class="label">Result</span><span class="sf-badge sf-badge--gray">Not run</span></div>
+                }
+              </div>
+            } @else {
+              <div class="sf-empty tcr-side__empty">No test runs yet. Use the Test Results tab to run this task's suite.</div>
+            }
           </section>
 
           <section class="sf-card">
@@ -290,6 +342,67 @@
             <div class="sf-panel-title"><h3>Task Details</h3></div>
             <div class="pw-info" style="padding:6px 18px 14px;">
               <div class="pw-info__row"><span class="label">Priority</span><span class="sf-pill">{{ task.priority }}</span></div>
+              
+              <div class="pw-info__row">
+                <span class="label">Assigned Agent</span>
+                @if (assignedAgent(); as agent) {
+                  <span class="value" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                    <sf-icon [name]="agent.icon || 'navigation/agents'" /> {{ agent.runtime_name }}
+                    <span class="sf-badge" [class]="agent.status === 'connected' ? 'sf-badge--green' : 'sf-badge--gray'" style="font-size:10px;">
+                      {{ agent.status === 'connected' ? 'Connected' : 'Offline' }}
+                    </span>
+                    @if (agent.detected_version) {
+                      <span class="sf-pill" style="font-size:10px;">{{ agent.detected_version }}</span>
+                    }
+                  </span>
+                } @else {
+                  <span class="sf-pill">Unassigned</span>
+                }
+              </div>
+
+              @if (task.status === 'not_started') {
+                <div style="margin-top:6px; margin-bottom:10px;">
+                  <label style="font-size:11.5px; color:var(--sf-text-secondary); margin-bottom:4px; display:block;">Reassign Agent</label>
+                  <select
+                    [value]="task.coding_agent_connection_id || ''"
+                    (change)="reassignTaskAgent($any($event.target).value)"
+                    [disabled]="reassigningAgent()"
+                    style="width:100%; padding:6px 8px; border:1px solid var(--sf-border); border-radius:6px; font-size:12px; background:var(--sf-surface);"
+                  >
+                    <option value="">Unassigned</option>
+                    @for (c of connections(); track c.runtime_slug) {
+                      @if (c.id) {
+                        <option [value]="c.id">{{ c.runtime_name }} ({{ c.status === 'connected' ? 'Connected' : 'Offline' }})</option>
+                      }
+                    }
+                  </select>
+                </div>
+              }
+
+              <div class="pw-info__row">
+                <span class="label">Knowledge Graph</span>
+                @if (task.knowledge_context && task.knowledge_context['retrieved']) {
+                  <span class="sf-badge sf-badge--green">Synced</span>
+                } @else if (task.knowledge_context && task.knowledge_context['error']) {
+                  <span class="sf-badge sf-badge--amber" title="{{ task.knowledge_context['error'] }}">Offline</span>
+                } @else {
+                  <span class="value" style="font-size:11.5px; color:var(--sf-text-tertiary);">Consulted on run</span>
+                }
+              </div>
+
+              @if (task.knowledge_context && task.knowledge_context['retrieved']) {
+                <div class="pw-info__row">
+                  <span class="label">Context Items</span>
+                  <span class="value">{{ task.knowledge_context['total_entities'] || 0 }} ({{ task.knowledge_context['files_count'] || 0 }} files, {{ task.knowledge_context['symbols_count'] || 0 }} symbols)</span>
+                </div>
+                @if (task.knowledge_context['repository_name']) {
+                  <div class="pw-info__row">
+                    <span class="label">Repo Indexed</span>
+                    <code class="value" style="font-size:11px;">{{ task.knowledge_context['repository_name'] }}</code>
+                  </div>
+                }
+              }
+
               <div class="pw-info__row"><span class="label">Created</span><span class="value">{{ task.created_at | date:'medium' }}</span></div>
               @if (task.started_at) {
                 <div class="pw-info__row"><span class="label">Started</span><span class="value">{{ task.started_at | date:'medium' }}</span></div>
@@ -304,18 +417,98 @@
 
       <section class="sf-card tcr-comments">
         <div class="sf-tabs tcr-comments__tabs">
-          <button type="button" class="sf-tab active">Review Comments</button>
-          <button type="button" class="sf-tab">Suggested Improvements</button>
+          <button type="button" class="sf-tab active">Review Comments ({{ comments().length }})</button>
         </div>
-        <div class="sf-empty tcr-side__empty">Review comments aren't supported yet — there's no backend model for them.</div>
+        @if (loadingComments()) {
+          <div class="sf-empty tcr-side__empty">Loading comments…</div>
+        } @else if (comments().length === 0) {
+          <div class="sf-empty tcr-side__empty">No review comments yet.</div>
+        } @else {
+          <div class="tcr-comments__list">
+            @for (c of comments(); track c.id) {
+              <div class="tcr-comment" [class.tcr-comment--resolved]="c.resolved">
+                <div class="tcr-comment__head">
+                  @if (c.file_path) {
+                    <code class="tcr-comment__path">{{ c.file_path }}@if (c.line_number) {:{{ c.line_number }}}</code>
+                  }
+                  <span class="tcr-comment__time">{{ c.created_at | date: 'short' }}</span>
+                  @if (c.resolved) {
+                    <span class="sf-badge sf-badge--green">Resolved</span>
+                  }
+                </div>
+                <p class="tcr-comment__body">{{ c.body }}</p>
+                @if (!c.resolved) {
+                  <button
+                    type="button"
+                    class="sf-btn"
+                    [disabled]="resolvingCommentId() === c.id"
+                    (click)="resolveComment(c)"
+                  >
+                    {{ resolvingCommentId() === c.id ? 'Resolving…' : 'Mark Resolved' }}
+                  </button>
+                }
+              </div>
+            }
+          </div>
+        }
+        <form class="tcr-comments__composer" (ngSubmit)="submitComment()">
+          <textarea
+            rows="2"
+            placeholder="{{ selectedDiffFile() ? 'Comment on ' + selectedDiffFile()!.path + '…' : 'Leave a review comment…' }}"
+            [value]="commentDraft()"
+            (input)="commentDraft.set($any($event.target).value)"
+            [disabled]="submittingComment()"
+          ></textarea>
+          <button class="sf-btn sf-btn--primary" type="submit" [disabled]="submittingComment() || !commentDraft().trim()">
+            {{ submittingComment() ? 'Posting…' : 'Comment' }}
+          </button>
+        </form>
       </section>
     }
   }
 
   @if (tab() === 'tests') {
     <section class="sf-card">
-      <div class="sf-panel-title"><h3>Test Results</h3></div>
-      <div class="sf-empty">Not configured — this task's runtime doesn't run a test suite yet.</div>
+      <div class="sf-panel-title">
+        <h3>Test Results</h3>
+        <button type="button" class="sf-btn" [disabled]="triggeringTestRun()" (click)="triggerTestRun()">
+          {{ triggeringTestRun() ? 'Running…' : 'Run Tests' }}
+        </button>
+      </div>
+      @if (testRunError()) {
+        <p class="apr-detail-sub" style="color:var(--sf-danger, #d64545);">{{ testRunError() }}</p>
+      }
+      @if (loadingTestRuns()) {
+        <div class="sf-empty">Loading test runs…</div>
+      } @else if (testRuns().length === 0) {
+        <div class="sf-empty">No test runs yet for this task. Click "Run Tests" to run its real test suite against this task's worktree.</div>
+      } @else {
+        <div class="tcr-comments__list" style="padding: 12px 18px;">
+          @for (run of testRuns(); track run.id) {
+            <div class="tcr-comment">
+              <div class="tcr-comment__head">
+                <span class="sf-pill">{{ run.framework }}</span>
+                @if (!run.ran) {
+                  <span class="sf-badge sf-badge--gray">Not run</span>
+                } @else if (run.failed > 0) {
+                  <span class="sf-badge sf-badge--red">{{ run.failed }} failed</span>
+                } @else {
+                  <span class="sf-badge sf-badge--green">All passed</span>
+                }
+                @if (run.ran) {
+                  <span class="value">{{ run.passed }}/{{ run.total }} passed</span>
+                }
+                <span class="tcr-comment__time">{{ run.created_at | date: 'short' }}</span>
+              </div>
+              @if (run.error) {
+                <p class="tcr-comment__body">{{ run.error }}</p>
+              } @else if (run.output) {
+                <pre class="tcr-logs" style="padding: 8px; max-height: 240px; overflow: auto;">{{ run.output }}</pre>
+              }
+            </div>
+          }
+        </div>
+      }
     </section>
   }
 
@@ -333,8 +526,50 @@
   }
 
   @if (tab() === 'logs') {
+    @if (task.execution_history && task.execution_history.length > 0) {
+      <section class="sf-card" style="margin-bottom: 16px;">
+        <div class="sf-panel-title"><h3>Execution History &amp; Model Provenance</h3></div>
+        <div style="overflow-x: auto;">
+          <table class="sf-table">
+            <thead>
+              <tr>
+                <th>Turn</th>
+                <th>Model</th>
+                <th>Runtime</th>
+                <th>Executed At</th>
+                <th>Duration</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (entry of task.execution_history; track $index) {
+                <tr>
+                  <td><strong>Turn #{{ entry['turn'] || ($index + 1) }}</strong></td>
+                  <td>
+                    <span class="sf-pill" style="font-weight:600;">{{ entry['model'] || 'default' }}</span>
+                  </td>
+                  <td>{{ entry['runtime'] || 'unspecified' }}</td>
+                  <td>{{ entry['executed_at'] | date:'medium' }}</td>
+                  <td>{{ entry['duration_seconds'] ? (entry['duration_seconds'] + 's') : '—' }}</td>
+                  <td>
+                    <span
+                      class="sf-badge"
+                      [class.sf-badge--green]="entry['success']"
+                      [class.sf-badge--amber]="!entry['success']"
+                    >
+                      {{ entry['success'] ? 'Completed' : 'Failed' }}
+                    </span>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </section>
+    }
+
     <section class="sf-card">
-      <div class="sf-panel-title"><h3>Execution Logs</h3></div>
+      <div class="sf-panel-title"><h3>Raw Execution Output</h3></div>
       @if (task.output || task.error_message) {
         <pre class="tcr-logs">{{ task.error_message || task.output }}</pre>
       } @else {
@@ -342,4 +577,49 @@
       }
     </section>
   }
+
+    </div> <!-- .tw-main -->
+
+    <aside class="tw-sidebar" [class.tw-sidebar--collapsed]="sidebarCollapsed()">
+      <div class="tw-sidebar__header">
+        <div>
+          <h3>{{ currentProject()?.name || task.project_name || 'Project Tasks' }}</h3>
+          <span style="font-size:11.5px; color:var(--sf-text-secondary);">{{ filteredProjectTasks().length }} task(s)</span>
+        </div>
+        <button type="button" class="sf-btn" style="padding:4px 8px; font-size:12px;" (click)="toggleSidebar()" title="Collapse Sidebar">✕</button>
+      </div>
+
+      <div class="tw-sidebar__search">
+        <input
+          type="text"
+          placeholder="Filter project tasks…"
+          [value]="projectTaskSearch()"
+          (input)="projectTaskSearch.set($any($event.target).value)"
+        />
+      </div>
+
+      <div class="tw-sidebar__list">
+        @for (t of filteredProjectTasks(); track t.id) {
+          <div
+            class="tw-sidebar__item"
+            [class.active]="t.id === task.id"
+            (click)="selectTask(t.id)"
+          >
+            <div class="tw-sidebar__item-head">
+              <span class="tw-sidebar__item-id">TSK-{{ t.id.slice(0, 8) }}</span>
+              <span class="sf-badge" [class]="'sf-badge--' + statusTone(t.status)" style="font-size:10px;">{{ t.status }}</span>
+            </div>
+            <div class="tw-sidebar__item-title">{{ t.title }}</div>
+            <div class="tw-sidebar__item-foot">
+              <sf-icon name="navigation/agents" />
+              <span>{{ agentName(t.coding_agent_connection_id) }}</span>
+            </div>
+          </div>
+        }
+        @if (filteredProjectTasks().length === 0) {
+          <div class="sf-empty" style="padding:20px 10px; font-size:12px;">No tasks match filter.</div>
+        }
+      </div>
+    </aside>
+  </div> <!-- .tw-container -->
 }

@@ -16,18 +16,18 @@
   </div>
   <div class="sf-page-header__actions">
     <button class="sf-btn" type="button">Open in IDE</button>
-    <button class="sf-btn" type="button"><sf-icon name="navigation/repositories" /> View PR (Draft)</button>
+    <button class="sf-btn" type="button"><sf-icon name="workspace/pull-request" /> View PR (Draft)</button>
     <button class="sf-btn sf-btn--primary" type="button"><sf-icon name="status/success" /> Approve &amp; Create PR</button>
   </div>
 </div>
 
 <div class="sf-tabs">
-  <button type="button" class="sf-tab" [class.active]="tab() === 'conversation'" (click)="tab.set('conversation')"><sf-icon name="navigation/approvals" /> Conversation</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'conversation'" (click)="tab.set('conversation')"><sf-icon name="workspace/conversation" /> Conversation</button>
   <button type="button" class="sf-tab" [class.active]="tab() === 'changes'" (click)="tab.set('changes')"><sf-icon name="workspace/code-diff" /> Code Changes ({{ changes().length }})</button>
   <button type="button" class="sf-tab" [class.active]="tab() === 'tests'" (click)="tab.set('tests')"><sf-icon name="status/success" /> Test Results</button>
   <button type="button" class="sf-tab" [class.active]="tab() === 'quality'" (click)="tab.set('quality')"><sf-icon name="agents/review-agent" /> Quality &amp; Security</button>
   <button type="button" class="sf-tab" [class.active]="tab() === 'artifacts'" (click)="tab.set('artifacts')"><sf-icon name="navigation/artifacts" /> Artifacts</button>
-  <button type="button" class="sf-tab" [class.active]="tab() === 'logs'" (click)="tab.set('logs')"><sf-icon name="navigation/monitoring" /> Execution Logs</button>
+  <button type="button" class="sf-tab" [class.active]="tab() === 'logs'" (click)="tab.set('logs')"><sf-icon name="workspace/activity-log" /> Execution Logs</button>
 </div>
 
 @if (tab() === 'changes') {

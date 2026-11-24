@@ -24,17 +24,21 @@ def sync_repository_connection(connection: RepositoryConnection) -> None:
         repo = adapter.get_repository(
             connection.installation.external_installation_id, connection.owner, connection.name
         )
-        branch = repo.default_branch or connection.default_branch
-        commit = adapter.get_branch_head_commit(
-            connection.installation.external_installation_id, connection.owner, connection.name, branch
-        )
+        branch = repo.default_branch or connection.default_branch or "main"
+        try:
+            commit = adapter.get_branch_head_commit(
+                connection.installation.external_installation_id, connection.owner, connection.name, branch
+            )
+            connection.last_observed_commit_sha = commit.sha
+        except GitProviderError:
+            # If the repository is empty or just initialized, branch head might not be ready yet
+            connection.last_observed_commit_sha = connection.last_observed_commit_sha or ""
     except GitProviderError as exc:
         connection.status = RepositoryConnectionStatus.ERROR
         connection.last_error = exc.detail
         return
 
-    connection.default_branch = repo.default_branch
-    connection.last_observed_commit_sha = commit.sha
+    connection.default_branch = repo.default_branch or connection.default_branch or "main"
     connection.last_successful_sync_at = datetime.now(timezone.utc)
     connection.status = RepositoryConnectionStatus.CONNECTED
     connection.last_error = ""

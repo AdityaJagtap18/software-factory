@@ -17,6 +17,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: 'Artifacts', icon: 'navigation/artifacts', route: '/artifacts' },
   { label: 'Approvals', icon: 'navigation/approvals', route: '/approvals' },
   { label: 'Monitoring', icon: 'navigation/monitoring', route: '/monitoring' },
+  { label: 'Audit Log', icon: 'navigation/monitoring', route: '/audit-log' },
   { label: 'Providers & Models', icon: 'navigation/providers', route: '/providers' },
   { label: 'Settings', icon: 'navigation/settings', route: '/settings' }
 ];

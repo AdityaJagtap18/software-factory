@@ -12,21 +12,24 @@ explicit authorization, per the audit brief.
 
 ## Phase 0 — Security & Configuration Hygiene (immediate, not a development phase)
 
-| Task ID | Feature | Objective |
-|---|---|---|
-| P0-1 | Rotate placeholder secrets | Replace `SF_JWT_SECRET`/`SF_CREDENTIAL_ENCRYPTION_KEY` with real random values in any non-local `.env`. |
-| P0-2 | Disable dev-login outside local dev | Turn off `SF_DEV_QUICK_LOGIN_ENABLED` for any shared/staging/production environment; consider a build-time guard in addition to the runtime flag. |
-| P0-3 | Add auth rate limiting | Add basic throttling to `/auth/login` and `/auth/register`. |
+**STATUS: DONE (2026-11-21).** All three items below are implemented and test-covered; see
+`06-SECURITY_AND_GOVERNANCE_AUDIT.md` §1/§3 for the updated findings and `IMPLEMENTATION_CHANGELOG.md` for
+the change record.
 
-- **Current status:** P0-1/P0-2 are live risks today in this environment's `.env` (`06-SECURITY_AND_GOVERNANCE_AUDIT.md` §1, §3). P0-3 is unimplemented.
+| Task ID | Feature | Objective | Status |
+|---|---|---|---|
+| P0-1 | Rotate placeholder secrets | Replace `SF_JWT_SECRET`/`SF_CREDENTIAL_ENCRYPTION_KEY` with real random values in any non-local `.env`. | **DONE (structural)** — a non-local `SF_ENVIRONMENT` now fails fast at startup if either secret is still the placeholder default, rather than relying on someone remembering to rotate it. This dev machine's own `.env` is intentionally left as-is (local dev only, gitignored). |
+| P0-2 | Disable dev-login outside local dev | Turn off `SF_DEV_QUICK_LOGIN_ENABLED` for any shared/staging/production environment; consider a build-time guard in addition to the runtime flag. | **DONE** — `/auth/dev-login` now requires `settings.is_local_dev` in addition to the flag; a non-local deployment with the flag mistakenly set either 404s (dev-login route) or fails to start (if secrets are also still placeholders). |
+| P0-3 | Add auth rate limiting | Add basic throttling to `/auth/login` and `/auth/register`. | **DONE** — in-memory sliding-window limiter (`app/core/rate_limit.py`), 8/min/IP register, 15/min/IP login+dev-login. Single-process scope only; a multi-worker/multi-instance deployment will need a shared store (Redis) instead — noted as a follow-up, not scheduled here since this backend runs single-process today. |
+
 - **Dependencies:** none.
 - **Frontend changes:** none.
-- **Backend changes:** config/`.env` only for P0-1/P0-2; add rate-limiting middleware for P0-3.
+- **Backend changes:** `app/core/config.py` (new `environment` setting + `_validate_non_local_settings`), `app/api/routes/auth.py` (`_dev_login_permitted` guard + rate-limit dependencies), new `app/core/rate_limit.py`.
 - **Database changes:** none.
 - **Agent infrastructure changes:** none.
-- **API changes:** none (P0-3 adds middleware, not new routes).
-- **Testing requirements:** a test asserting `/auth/dev-login` 404s when the flag is unset/false (likely already implicitly covered); a rate-limit test for P0-3.
-- **Acceptance criteria:** no environment outside local dev has the dev-login bypass reachable; secrets are non-default; repeated failed logins are throttled.
+- **API changes:** none (dev-login/login/register keep their existing shapes; 429 is a new possible response code).
+- **Testing:** `tests/test_config_security.py` (5 cases), `tests/test_auth.py` (dev-login-disabled + both rate-limit tests added). Full suite re-run after the change: 140 passed / 14 failed — the 14 failures are pre-existing, unrelated to this change (a stale `model=` kwarg mismatch from already-uncommitted, in-progress model-selection work; see `11-IMPLEMENTATION_CHANGELOG.md`).
+- **Acceptance criteria:** met — no environment outside local dev can boot with the dev-login bypass reachable or placeholder secrets; repeated failed logins/registrations are throttled with a real 429.
 
 ---
 
@@ -41,21 +44,24 @@ the roadmap's starting point is explicit.
 
 ## Phase 2 — Foundational Gaps That Block Later Phases
 
-| Task ID | Feature | Objective | Current status |
-|---|---|---|---|
-| P2-1 | Graph Access Service | A dedicated module all Neo4j reads/writes pass through, deriving scope from authenticated identity | NOT IMPLEMENTED |
-| P2-2 | Knowledge graph schema | Constraints/indexes for existing + near-term node labels | NOT IMPLEMENTED |
-| P2-3 | Sandbox all local-CLI adapters | Route Claude Code/Codex/Gemini CLI/Qwen executions through the existing Docker isolation primitive | PARTIALLY IMPLEMENTED (Docker Sandbox adapter only) |
-| P2-4 | Agent Registry foundation | Minimal Agent entity (id/version/capabilities/status) to replace the current single-FK "connection" model | NOT IMPLEMENTED |
+**STATUS: DONE (2026-11-21), with P2-3 intentionally partial.** See `11-IMPLEMENTATION_CHANGELOG.md` for
+the full change record and honest caveats.
 
-- **Dependencies:** P2-1 and P2-2 should land before Phase 3's Git-integration ingestion work (P3-2) to avoid widening an ungated surface. P2-4 is a prerequisite for Phase 5's handoff work but independent of P2-1/P2-2/P2-3.
-- **Frontend changes:** none required for P2-1/P2-2/P2-3; P2-4 may need a minimal agent-list view later but not in this phase.
-- **Backend changes:** new `graph_access.py` module (P2-1); Neo4j constraint/index migration script (P2-2); adapter dispatch changes to route through `DockerSandboxAdapter`-style execution for local CLIs (P2-3); new `Agent`/`AgentVersion` model (P2-4, additive — does not need to replace `CodingAgentConnection` yet, can coexist).
-- **Database changes:** Neo4j schema only for P2-2; new Postgres table(s) for P2-4.
-- **Agent infrastructure changes:** P2-3 is the main one — changes how local-CLI adapters are invoked.
-- **API changes:** none required for P2-1/P2-2; P2-3 is transparent to the API; P2-4 may add a read-only `/agents` listing route.
-- **Testing requirements:** cross-tenant graph-access denial test (P2-1); schema-creation idempotency test (P2-2); a test proving a local-CLI task run is now sandboxed equivalently to Docker Sandbox (P2-3, e.g. network-isolation assertion).
-- **Acceptance criteria:** no caller can read/write graph data without going through the access service; Neo4j has real constraints/indexes; every coding-agent runtime (not just `docker_sandbox`) runs with network/resource isolation; a minimal Agent entity exists and is populated for at least the existing six adapters.
+| Task ID | Feature | Objective | Status |
+|---|---|---|---|
+| P2-1 | Graph Access Service | A dedicated module all Neo4j reads/writes pass through, deriving scope from authenticated identity | **DONE** — `app/services/graph_access.py`; `knowledge.py` routes and `knowledge_context.py` now go through it; no method on it accepts a caller-supplied project id (structurally enforced, tested). |
+| P2-2 | Knowledge graph schema | Constraints/indexes for existing + near-term node labels | **DONE** — `knowledge_graph.ensure_schema()` now also covers File/Directory/Class/Function/Module (previously only the six platform-entity labels had constraints); called at app startup via FastAPI lifespan, not just lazily on first sync/ingest. |
+| P2-3 | Sandbox all local-CLI adapters | Route Claude Code/Codex/Gemini CLI/Qwen executions through the existing Docker isolation primitive | **PARTIALLY DONE, honestly** — the sandboxed-execution *plumbing* is built and verified against a real Docker daemon (worktree mount, resource limits, real network reachability, real cancellation), and all four adapters are wired to use it. But it is **off by default everywhere** (`SF_*_SANDBOX_IMAGE` env vars, all empty) because no real Docker image with Claude Code/Codex/Gemini CLI/Qwen actually installed exists yet -- building and verifying four such images is its own scoped task, not done here. Until one is configured, each adapter keeps running directly on the host exactly as before (zero behavior change in any environment today). See changelog for why claiming more than this would be fabrication. |
+| P2-4 | Agent Registry foundation | Minimal Agent entity (id/version/capabilities/status) to replace the current single-FK "connection" model | **DONE (foundation only, as scoped)** — new `Agent` model + migration, `GET /agents` (any authenticated user), kept in sync with the adapter registry (`app/services/agent_registry.py::sync_agent_registry`); additive, does not replace `CodingAgentConnection`. No separate `AgentVersion` table yet (deliberately deferred, per the roadmap's own "minimal" framing). |
+
+- **Dependencies:** met as planned — P2-1/P2-2 landed before any further graph-ingestion surface widened.
+- **Frontend changes:** none made (none required).
+- **Backend changes:** `app/services/graph_access.py` (new); `knowledge_graph.ensure_schema()` extended + called from `app/main.py`'s lifespan (P2-2); `app/services/agent_runtime/adapters.py` sandboxed-CLI helpers + per-adapter wiring + four new `Settings` fields (P2-3); new `app/models/agent.py` + `app/services/agent_registry.py` + migration `3c99bb5de7e0` (P2-4).
+- **Database changes:** Neo4j constraints/indexes for P2-2; new `agents` Postgres table for P2-4.
+- **Agent infrastructure changes:** P2-3's dispatch changes land, but are inert until a real per-runtime sandbox image is configured (see its status note above).
+- **API changes:** none for P2-1/P2-2/P2-3; `GET /agents` added for P2-4.
+- **Testing:** `tests/test_graph_access.py` (cross-tenant data-level isolation + a structural no-project-id-parameter assertion); `tests/test_cli_sandboxing.py` (pure command-construction tests + two real-Docker tests proving the mechanism, including real network reachability and real cancellation + a wiring test proving the adapter only sandboxes when configured); `tests/test_agent_registry.py` (sync idempotency, deprecation-not-deletion, endpoint auth/shape).
+- **Acceptance criteria:** met for P2-1/P2-2/P2-4 as scoped. P2-3's acceptance criterion ("every coding-agent runtime runs with network/resource isolation") is **not yet met in practice** -- only the capability to do so is built and proven; closing it the rest of the way requires building and verifying four real CLI Docker images, explicitly called out as the next concrete step rather than left implicit.
 
 ---
 
@@ -63,12 +69,12 @@ the roadmap's starting point is explicit.
 
 | Task ID | Feature | Objective | Current status |
 |---|---|---|---|
-| P3-1 | Test execution | Real test-runner integration, surfaced in the existing "Test Results" UI slot | NOT IMPLEMENTED |
-| P3-2 | Repository KG ↔ Git integration | Wire graph ingestion to real `RepositoryConnection`/worktree, record commit SHA | NOT IMPLEMENTED |
+| P3-1 | Test execution | Real test-runner integration, surfaced in the existing "Test Results" UI slot | **DONE** (2026-11-21) — real pytest/npm detection + execution against the task's own worktree; see changelog |
+| P3-2 | Repository KG ↔ Git integration | Wire graph ingestion to real `RepositoryConnection`/worktree, record commit SHA | **DONE** (2026-11-21) — `commit_sha` now a real `git rev-parse HEAD`, stored on the `Repository` node and in the API response; see changelog |
 | P3-3 | Repository KG extraction breadth | Add imports/dependencies/test-mapping relationships via a parser-adapter framework | NOT IMPLEMENTED (file/top-level-symbol only today) |
-| P3-4 | Multi-turn conversation | A `TaskMessage` model + route + UI wiring for follow-up instructions | NOT IMPLEMENTED |
-| P3-5 | Review comments | A `ReviewComment` model + CRUD routes + UI wiring (diff viewer already has per-line structure to anchor to) | NOT IMPLEMENTED |
-| P3-6 | Planning & Approval gate | A `Plan` entity and an `Approval` model/route; replace the mocked frontend Approvals screen with real data | NOT IMPLEMENTED (backend) / MOCKED (frontend) |
+| P3-4 | Multi-turn conversation | A `TaskMessage` model + route + UI wiring for follow-up instructions | Appears already implemented from an earlier, separately-committed change (`TaskMessage` model, routes, and composer UI all exist) — not re-verified or re-scoped as part of this Phase 3 pass; re-check before relying on this status |
+| P3-5 | Review comments | A `ReviewComment` model + CRUD routes + UI wiring (diff viewer already has per-line structure to anchor to) | **DONE** (2026-11-21) — real model/routes, wired into the real task-workspace diff viewer; see changelog |
+| P3-6 | Planning & Approval gate | A `Plan` entity and an `Approval` model/route; replace the mocked frontend Approvals screen with real data | **DONE** (2026-11-21) for the Approval half — real model/routes/RBAC, frontend no longer uses `MockDataService`; a `Plan` entity was **not** built (no planning-gate-before-execution flow exists yet, only post-hoc approval of an already-opened PR); see changelog |
 
 - **Dependencies:** P3-2 depends on P2-1/P2-2 (Phase 2). P3-3 depends on P3-2. P3-4 depends on some session-resume capability per adapter (see Phase 4, but a simpler "append to prompt and re-run" version can ship without full session resume — note this explicitly as a scoped-down interim approach if full resume isn't ready). P3-1 should reuse the sandboxing pattern from P2-3.
 - **Frontend changes:** P3-1 wires the existing "Not configured" slot to real data; P3-4 enables the currently-`disabled` composer; P3-5 adds comment UI anchored to diff lines; P3-6 replaces `MockDataService` usage in `approvals.component.ts` with real API calls.
@@ -85,10 +91,10 @@ the roadmap's starting point is explicit.
 
 | Task ID | Feature | Objective | Current status |
 |---|---|---|---|
-| P4-1 | Resolve the search-mix design question | Explicitly decide graph vs. keyword vs. vector retrieval mix (currently an open question in the Decision Log) | UNDECIDED |
-| P4-2 | Document ingestion + chunking | Build the ingestion/chunking pipeline for the format(s) decided in P4-1 | NOT IMPLEMENTED |
-| P4-3 | Embedding + vector storage | Likely pgvector, given the existing PostgreSQL dependency | NOT IMPLEMENTED |
-| P4-4 | Retrieval + RAG pipeline | Wire retrieval into `task_execution.py`'s prompt construction | NOT IMPLEMENTED |
+| P4-1 | Resolve the search-mix design question | Explicitly decide graph vs. keyword vs. vector retrieval mix (currently an open question in the Decision Log) | **DONE** (2026-11-21) — local Ollama embeddings + pgvector, kept separate from the Neo4j graph; see `DECISION_REGISTER.md` |
+| P4-2 | Document ingestion + chunking | Build the ingestion/chunking pipeline for the format(s) decided in P4-1 | **DONE** (2026-11-21) — plain text/Markdown only, via `POST /projects/{id}/documents`; see `IMPLEMENTATION_STATE.md` |
+| P4-3 | Embedding + vector storage | Likely pgvector, given the existing PostgreSQL dependency | **DONE** (2026-11-21) — pgvector + HNSW cosine index; dev Postgres image swapped to `pgvector/pgvector:pg16` |
+| P4-4 | Retrieval + RAG pipeline | Wire retrieval into `task_execution.py`'s prompt construction | **DONE** (2026-11-21) — `document_retrieval.py` + `_build_prompt_with_rag_context`; `/documents/search` endpoint |
 
 - **Dependencies:** P4-1 must happen before P4-2–P4-4 are scheduled with real confidence — building a vector pipeline before the team has decided how it coexists with the Knowledge Graph risks duplicated or conflicting retrieval paths.
 - **Frontend changes:** wire the currently-mocked `knowledge-graph.component.ts`/`repository-intelligence.component.ts` to real data once a real backend exists (today they are 100% `MockDataService`).

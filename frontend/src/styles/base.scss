@@ -91,7 +91,7 @@ textarea {
   justify-content: center;
   flex-shrink: 0;
 
-  svg {
+  sf-icon, svg {
     width: 22px;
     height: 22px;
     color: var(--sf-blue-600);
@@ -151,7 +151,7 @@ textarea {
   color: var(--sf-text-primary);
   transition: background 0.15s ease, border-color 0.15s ease;
 
-  svg {
+  sf-icon, svg {
     width: 16px;
     height: 16px;
   }
@@ -210,6 +210,8 @@ textarea {
   padding: 16px 18px;
   border-radius: var(--sf-radius-lg);
   border: 1px solid var(--sf-border);
+  background: var(--sf-surface);
+  box-shadow: var(--sf-shadow-sm);
 
   &__icon {
     width: 42px;
@@ -219,10 +221,12 @@ textarea {
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    background: var(--sf-surface-muted);
 
-    svg {
+    sf-icon, svg {
       width: 20px;
       height: 20px;
+      color: var(--sf-text-secondary);
     }
   }
 
@@ -253,21 +257,16 @@ textarea {
     }
   }
 
-  &--blue {
-    background: #eef4ff;
-    .sf-stat-card__icon { background: #dbe8ff; svg { color: var(--sf-blue-600); } }
+  // Semantic tints: use only when the count itself carries meaning
+  // (e.g. an approved/rejected total), never for decorative variety.
+  &--positive {
+    .sf-stat-card__icon { background: #e3f6e8; svg { color: var(--sf-green-600); } }
   }
-  &--violet {
-    background: #f1f0ff;
-    .sf-stat-card__icon { background: #e3e0ff; svg { color: var(--sf-violet-600); } }
+  &--negative {
+    .sf-stat-card__icon { background: #fde8e8; svg { color: var(--sf-red-600); } }
   }
-  &--green {
-    background: #effaf1;
-    .sf-stat-card__icon { background: #d9f4df; svg { color: var(--sf-green-600); } }
-  }
-  &--amber {
-    background: #fff8ed;
-    .sf-stat-card__icon { background: #ffecc7; svg { color: var(--sf-amber-600); } }
+  &--warning {
+    .sf-stat-card__icon { background: #fdf1dc; svg { color: var(--sf-amber-600); } }
   }
 }
 
@@ -297,7 +296,7 @@ textarea {
   border: none;
   background: transparent;
 
-  svg {
+  sf-icon, svg {
     width: 16px;
     height: 16px;
   }
@@ -401,7 +400,7 @@ textarea {
     align-items: center;
     gap: 8px;
 
-    svg {
+    sf-icon, svg {
       width: 17px;
       height: 17px;
       color: var(--sf-text-secondary);
@@ -427,6 +426,13 @@ textarea {
   text-align: center;
   color: var(--sf-text-tertiary);
   font-size: 13px;
+}
+
+.sf-empty__icon {
+  width: 28px;
+  height: 28px;
+  color: var(--sf-violet-600);
+  margin-bottom: 12px;
 }
 
 // Shared toolbar (search + filter chips) used by Projects, Artifacts, and similar list pages
@@ -532,14 +538,18 @@ td.link {
   inset: 0;
   background: rgba(13, 18, 38, 0.5);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
+  overflow-y: auto;
+  padding: 32px 16px;
   z-index: 100;
 }
 
 .org-modal {
   width: 400px;
   max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
   background: var(--sf-surface);
   border-radius: var(--sf-radius-lg);
   padding: 24px;
@@ -565,7 +575,8 @@ td.link {
   }
 
   input,
-  select {
+  select,
+  textarea {
     width: 100%;
     border: 1px solid var(--sf-border-strong);
     border-radius: var(--sf-radius-sm);
@@ -590,6 +601,12 @@ td.link {
       opacity: 0.6;
       cursor: not-allowed;
     }
+  }
+
+  textarea {
+    resize: vertical;
+    min-height: 90px;
+    line-height: 1.5;
   }
 
   select:not([size]),
@@ -655,5 +672,82 @@ td.link {
     height: 100%;
     background: var(--sf-violet-600);
     border-radius: var(--sf-radius-pill);
+  }
+}
+
+// ---- Phone-width adjustments for the shared utility classes above ----
+// (the app shell handles the sidebar/topbar itself -- see
+// app-shell.component.scss). These keep every page built from these
+// classes usable at phone width without each feature re-solving it.
+@media (max-width: 640px) {
+  .sf-page-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .sf-page-header__actions {
+    width: 100%;
+  }
+
+  .sf-page-header__icon {
+    width: 36px;
+    height: 36px;
+
+    sf-icon, svg {
+      width: 18px;
+      height: 18px;
+    }
+  }
+
+  .sf-page-header h1 {
+    font-size: 18px;
+  }
+
+  .sf-stat-grid {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 10px;
+  }
+
+  .sf-stat-card {
+    padding: 12px 14px;
+  }
+
+  .sf-tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+
+    &::-webkit-scrollbar {
+      height: 0;
+    }
+  }
+
+  .sf-tab {
+    flex-shrink: 0;
+  }
+
+  // A plain <table> at phone width overflows its card instead of
+  // squeezing columns unreadably -- the card scrolls horizontally and
+  // keeps every column's real content intact.
+  .sf-card:has(> table),
+  .sf-card:has(.sf-table) {
+    overflow-x: auto;
+  }
+
+  .projects-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+
+    &__search {
+      width: 100%;
+    }
+  }
+
+  .org-modal {
+    width: calc(100vw - 32px);
+
+    &--wide {
+      width: calc(100vw - 32px);
+    }
   }
 }

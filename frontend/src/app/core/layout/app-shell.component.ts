@@ -1,15 +1,18 @@
 import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
-import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { CommonModule } from '@angular/common';
+import { NavigationStart, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { filter } from 'rxjs';
 import { IconComponent } from '../../shared/icon/icon.component';
 import { MockDataService } from '../mock-data.service';
 import { NAV_ITEMS } from '../nav-items';
 import { AuthService } from '../auth/auth.service';
 import { OrganizationService } from '../org/organization.service';
+import { NotificationService } from '../org/notification.service';
 
 @Component({
   selector: 'sf-app-shell',
   standalone: true,
-  imports: [RouterLink, RouterLinkActive, RouterOutlet, IconComponent],
+  imports: [CommonModule, RouterLink, RouterLinkActive, RouterOutlet, IconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './app-shell.component.html',
   styleUrl: './app-shell.component.scss'
@@ -19,9 +22,16 @@ export class AppShellComponent implements OnInit {
   private readonly auth = inject(AuthService);
   private readonly orgService = inject(OrganizationService);
   private readonly router = inject(Router);
+  private readonly notificationService = inject(NotificationService);
+
+  readonly unreadNotifications = this.notificationService.unreadCount;
+  readonly recentNotifications = this.notificationService.notifications;
+  readonly showNotifications = signal(false);
+  readonly mobileSidebarOpen = signal(false);
 
   readonly navItems = NAV_ITEMS;
   readonly approvalsPending = this.data.approvals;
+  readonly currentYear = new Date().getFullYear();
 
   readonly currentUser = this.auth.currentUser;
   readonly organizations = this.orgService.organizations;
@@ -50,6 +60,34 @@ export class AppShellComponent implements OnInit {
     }
     if (this.organizations().length === 0) {
       this.orgService.listMine().subscribe({ error: () => this.handleSessionExpired() });
+    }
+    this.notificationService.refreshUnreadCount();
+    this.router
+      .events.pipe(filter((e) => e instanceof NavigationStart))
+      .subscribe(() => this.mobileSidebarOpen.set(false));
+  }
+
+  toggleMobileSidebar(): void {
+    this.mobileSidebarOpen.update((v) => !v);
+  }
+
+  closeMobileSidebar(): void {
+    this.mobileSidebarOpen.set(false);
+  }
+
+  toggleNotifications(): void {
+    const next = !this.showNotifications();
+    this.showNotifications.set(next);
+    if (next) {
+      this.notificationService.list().subscribe();
+    }
+  }
+
+  openNotification(id: string, linkUrl: string): void {
+    this.notificationService.markRead(id).subscribe();
+    this.showNotifications.set(false);
+    if (linkUrl) {
+      this.router.navigateByUrl(linkUrl);
     }
   }
 

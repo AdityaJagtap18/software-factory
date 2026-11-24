@@ -70,3 +70,31 @@ def test_logout_revokes_refresh_token(client):
     assert r.status_code == 204
     r2 = client.post("/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
     assert r2.status_code == 401
+
+
+def test_dev_login_404_when_disabled(client):
+    # In this test environment SF_DEV_QUICK_LOGIN_ENABLED is unset/false,
+    # so the bypass must not be reachable at all.
+    r = client.get("/api/v1/auth/dev-login")
+    assert r.status_code == 200
+    assert r.json() == {"available": False}
+    r2 = client.post("/api/v1/auth/dev-login")
+    assert r2.status_code == 404
+
+
+def test_login_rate_limited_after_repeated_attempts(client):
+    register(client)
+    for _ in range(15):
+        r = login(client, password="wrong-password")
+        assert r.status_code == 401
+
+    r = login(client, password="wrong-password")
+    assert r.status_code == 429
+
+
+def test_register_rate_limited_after_repeated_attempts(client):
+    for i in range(8):
+        register(client, email=f"flood{i}@example.com")
+
+    r = register(client, email="flood-over@example.com")
+    assert r.status_code == 429

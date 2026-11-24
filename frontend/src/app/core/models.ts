@@ -174,6 +174,7 @@ export interface PromptVersion {
   agent: string;
   name: string;
   description: string;
+  body: string;
   version: string;
   status: 'Published' | 'In Review' | 'Draft';
   icon: string;

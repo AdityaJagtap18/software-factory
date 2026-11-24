@@ -9,7 +9,7 @@
 
   &__hero {
     flex: 1 1 46%;
-    background: radial-gradient(circle at 20% 15%, #24366e 0%, var(--sf-navy-900) 55%), var(--sf-navy-900);
+    background: linear-gradient(180deg, var(--sf-navy-800) 0%, var(--sf-navy-900) 100%);
     color: #fff;
     padding: 56px;
     display: flex;
@@ -48,50 +48,12 @@
     line-height: 1.6;
   }
 
-  &__hero-graphic {
-    position: relative;
-    height: 260px;
-    margin-top: 48px;
-  }
-
-  &__node {
+  &__copyright {
     position: absolute;
-    width: 56px;
-    height: 56px;
-    border-radius: var(--sf-radius-md);
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-
-    sf-icon {
-      width: 24px;
-      height: 24px;
-      color: #cdd6ff;
-    }
-
-    &--core {
-      width: 108px;
-      height: 108px;
-      left: 50%;
-      top: 50%;
-      transform: translate(-50%, -50%);
-      background: linear-gradient(145deg, rgba(116, 103, 255, 0.5), rgba(36, 120, 232, 0.5));
-      border-color: rgba(255, 255, 255, 0.25);
-
-      sf-icon {
-        width: 46px;
-        height: 46px;
-        color: #fff;
-      }
-    }
-
-    &--doc { left: 6%; top: 18%; }
-    &--code { left: 42%; top: 2%; }
-    &--graph { left: 76%; top: 20%; }
-    &--box { left: 2%; top: 68%; }
-    &--check { left: 78%; top: 66%; }
+    left: 56px;
+    bottom: 28px;
+    font-size: 12px;
+    color: #7c87b3;
   }
 
   &__form-panel {
@@ -214,18 +176,6 @@
     }
   }
 
-  &__oauth {
-    width: 100%;
-    justify-content: center;
-    margin-bottom: 10px;
-    padding: 11px;
-
-    &:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-  }
-
   &__error {
     background: var(--sf-red-100);
     color: var(--sf-red-600);
@@ -245,6 +195,45 @@
     a {
       color: var(--sf-violet-600);
       font-weight: 600;
+    }
+  }
+}
+
+@media (max-width: 860px) {
+  .login {
+    flex-direction: column;
+    min-height: auto;
+
+    &__hero {
+      flex: none;
+      padding: 28px 24px;
+    }
+
+    &__hero-graphic {
+      display: none;
+    }
+
+    h1 {
+      font-size: 26px;
+      max-width: none;
+    }
+
+    p {
+      font-size: 14px;
+      max-width: none;
+    }
+
+    &__brand {
+      margin-bottom: 20px;
+    }
+
+    &__form-panel {
+      flex: none;
+      padding: 28px 20px 48px;
+    }
+
+    &__form-wrap {
+      max-width: none;
     }
   }
 }

@@ -1,8 +1,12 @@
 <div class="shell">
-  <aside class="sidebar">
+  @if (mobileSidebarOpen()) {
+    <div class="sidebar-backdrop" (click)="closeMobileSidebar()"></div>
+  }
+  <aside class="sidebar" [class.sidebar--mobile-open]="mobileSidebarOpen()">
     <div class="sidebar__brand">
       <sf-icon name="logos/software-factory-mark" class="sidebar__brand-mark" />
       <span>Software Factory</span>
+      <button type="button" class="sidebar__close" aria-label="Close menu" (click)="closeMobileSidebar()">&times;</button>
     </div>
 
     <nav class="sidebar__nav">
@@ -42,19 +46,49 @@
         </button>
       }
     </div>
+
+    <div class="sidebar__copyright">© {{ currentYear }} Aditya Jagtap</div>
   </aside>
 
   <div class="main">
     <header class="topbar">
+      <button type="button" class="topbar__menu-btn" aria-label="Open menu" (click)="toggleMobileSidebar()">
+        <span></span><span></span><span></span>
+      </button>
       <div class="topbar__search">
         <sf-icon name="workspace/code-search" />
         <input type="text" placeholder="Search projects, tasks, agents, artifacts..." />
       </div>
       <div class="topbar__actions">
-        <button class="topbar__icon-btn" type="button" aria-label="Notifications">
-          <sf-icon name="navigation/approvals" />
-          <span class="topbar__dot"></span>
-        </button>
+        <div class="topbar__user-wrap">
+          <button class="topbar__icon-btn" type="button" aria-label="Notifications" (click)="toggleNotifications()">
+            <sf-icon name="navigation/approvals" />
+            @if (unreadNotifications() > 0) {
+              <span class="topbar__dot"></span>
+            }
+          </button>
+          @if (showNotifications()) {
+            <div class="topbar__menu" style="width:320px; max-height:360px; overflow-y:auto;">
+              @if (recentNotifications().length === 0) {
+                <div class="topbar__menu-email">No notifications yet.</div>
+              }
+              @for (n of recentNotifications(); track n.id) {
+                <button
+                  type="button"
+                  class="topbar__menu-item"
+                  style="flex-direction:column; align-items:flex-start; gap:2px;"
+                  [style.opacity]="n.read_at ? 0.6 : 1"
+                  (click)="openNotification(n.id, n.link_url)"
+                >
+                  <strong style="font-size:13px;">{{ n.title }}</strong>
+                  @if (n.body) {
+                    <span style="font-size:12px; color:var(--sf-text-secondary);">{{ n.body }}</span>
+                  }
+                </button>
+              }
+            </div>
+          }
+        </div>
         <button class="topbar__icon-btn" type="button" aria-label="Help">?</button>
         <div class="topbar__user-wrap">
           <button type="button" class="topbar__user" (click)="toggleUserMenu()">

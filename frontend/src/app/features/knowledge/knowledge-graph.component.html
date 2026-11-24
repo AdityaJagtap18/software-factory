@@ -3,119 +3,287 @@
     <span class="sf-page-header__icon tone-violet"><sf-icon name="navigation/knowledge" /></span>
     <div>
       <h1>Knowledge Graph Explorer</h1>
-      <p>Explore code, engineering knowledge and project context in a unified graph</p>
+      <p>Explore real engineering knowledge, architecture, and code structure from Neo4j</p>
     </div>
+  </div>
+  <div class="sf-page-header__actions" style="display:flex; align-items:center; gap:10px;">
+    <label for="kgProjectSelect" style="font-size:12px; font-weight:600; color:var(--sf-text-secondary); margin:0;">Project:</label>
+    <select
+      id="kgProjectSelect"
+      class="sf-btn"
+      style="padding:6px 12px; font-size:13px; min-width:200px;"
+      [value]="selectedProjectId()"
+      (change)="selectProject($any($event.target).value)"
+    >
+      <option value="" disabled>Select a project…</option>
+      @for (p of projects(); track p.id) {
+        <option [value]="p.id">{{ p.name }}</option>
+      }
+    </select>
+    <button
+      class="sf-btn sf-btn--primary"
+      type="button"
+      style="padding:6px 14px;"
+      [disabled]="syncing() || !selectedProjectId()"
+      (click)="syncAndBuildGraph()"
+    >
+      <sf-icon name="navigation/knowledge" />
+      {{ syncing() ? 'Syncing…' : 'Sync / Build Graph' }}
+    </button>
   </div>
 </div>
 
+@if (syncMessage()) {
+  <div class="sf-note-banner" style="background:#eaf8ef; border:1px solid #bdeccb; color:#18794e; padding:8px 14px; border-radius:6px; margin-bottom:12px; font-size:13px;">
+    {{ syncMessage() }}
+  </div>
+}
+@if (syncError()) {
+  <div class="sf-note-banner" style="background:#fde8e8; border:1px solid #f8b4b4; color:#9b1c1c; padding:8px 14px; border-radius:6px; margin-bottom:12px; font-size:13px;">
+    {{ syncError() }}
+  </div>
+}
+
+<!-- Real Statistics Bar -->
 <div class="sf-stat-grid">
-  <div class="sf-stat-card sf-stat-card--violet"><div class="sf-stat-card__icon"><sf-icon name="navigation/artifacts" /></div><div><div class="sf-stat-card__label">Entities</div><div class="sf-stat-card__value">37,892 <span class="sf-stat-card__delta up">↑ +12%</span></div></div></div>
-  <div class="sf-stat-card sf-stat-card--blue"><div class="sf-stat-card__icon"><sf-icon name="navigation/knowledge" /></div><div><div class="sf-stat-card__label">Relationships</div><div class="sf-stat-card__value">124,530 <span class="sf-stat-card__delta up">↑ +18%</span></div></div></div>
-  <div class="sf-stat-card sf-stat-card--amber"><div class="sf-stat-card__icon"><sf-icon name="navigation/repositories" /></div><div><div class="sf-stat-card__label">Repositories</div><div class="sf-stat-card__value">6</div></div></div>
-  <div class="sf-stat-card sf-stat-card--green"><div class="sf-stat-card__icon"><sf-icon name="navigation/artifacts" /></div><div><div class="sf-stat-card__label">Requirements</div><div class="sf-stat-card__value">214</div></div></div>
-  <div class="sf-stat-card sf-stat-card--violet"><div class="sf-stat-card__icon"><sf-icon name="navigation/workflows" /></div><div><div class="sf-stat-card__label">Architecture Decisions</div><div class="sf-stat-card__value">37</div></div></div>
-</div>
-
-<div class="kg-grid">
-  <aside class="sf-card">
-    <div class="sf-panel-title"><h3>Graph View</h3></div>
-    <div class="kg-filter-section">
-      <span class="sf-pill">Repository + Engineering</span>
+  <div class="sf-stat-card">
+    <div class="sf-stat-card__icon"><sf-icon name="navigation/artifacts" /></div>
+    <div>
+      <div class="sf-stat-card__label">Total Entities</div>
+      <div class="sf-stat-card__value">{{ totalEntities() }}</div>
     </div>
-    <div class="kg-filter-section">
-      <h4>Node Types</h4>
-      @for (t of nodeTypes; track t.label) {
-        <label class="kg-check">
-          <input type="checkbox" [checked]="t.checked" />
-          {{ t.label }} ({{ t.count.toLocaleString() }})
-        </label>
-      }
-    </div>
-    <div class="kg-filter-section">
-      <h4>Relationship Types</h4>
-      @for (rel of ['DEPENDS_ON', 'CALLS', 'IMPLEMENTS', 'RELATES_TO']; track rel) {
-        <label class="kg-check"><input type="checkbox" checked /> {{ rel }}</label>
-      }
-    </div>
-    <div style="padding:6px 18px 18px;">
-      <button class="sf-btn sf-btn--primary" style="width:100%;justify-content:center;" type="button">Apply Filters</button>
-    </div>
-  </aside>
-
-  <section class="sf-card kg-canvas-card">
-    <div class="sf-panel-title">
-      <h3>{{ selected()?.label }}</h3>
-      <div class="ag-search" style="margin:0;width:260px;">
-        <sf-icon name="workspace/code-search" />
-        <input type="text" placeholder="Search in graph..." />
-      </div>
-    </div>
-    <div class="kg-canvas">
-      <svg class="kg-canvas__edges" viewBox="0 0 100 100" preserveAspectRatio="none">
-        @for (line of edgeLines(); track line.label + line.x + line.y) {
-          <line [attr.x1]="line.x" [attr.y1]="line.y" [attr.x2]="line.x2" [attr.y2]="line.y2" stroke="#d7dae8" stroke-width="0.4" vector-effect="non-scaling-stroke" />
-        }
-      </svg>
-      @for (entity of entities(); track entity.id) {
-        <button
-          type="button"
-          class="kg-node"
-          [class]="'tone-' + entity.tone"
-          [class.center]="entity.id === centerId"
-          [class.selected]="selected()?.id === entity.id"
-          [style.left]="position(entity).left"
-          [style.top]="position(entity).top"
-          (click)="select(entity)"
-        >
-          <sf-icon [name]="entity.icon" />
-          <span>{{ entity.label }}</span>
-          <small>{{ entity.type }}</small>
-        </button>
-      }
-    </div>
-  </section>
-
-  <aside class="sf-card kg-detail">
-    @if (selected(); as node) {
-      <div class="sf-panel-title">
-        <h3><sf-icon [name]="node.icon" /> {{ node.label }}</h3>
-      </div>
-      <p class="kg-detail__type">{{ node.type }}</p>
-      <div class="sf-tabs" style="margin:0 18px 10px;border:none;padding:0;">
-        <button type="button" class="sf-tab active">Overview</button>
-        <button type="button" class="sf-tab">Relationships</button>
-        <button type="button" class="sf-tab">Context</button>
-        <button type="button" class="sf-tab">History</button>
-      </div>
-      <div class="pw-info" style="padding:0 18px 16px;">
-        <div class="pw-info__row"><span class="label">Repository</span><span class="value link">invoice-service</span></div>
-        <div class="pw-info__row"><span class="label">Path</span><span class="value">src/main/java/...</span></div>
-        <div class="pw-info__row"><span class="label">Language</span><span class="value">Java</span></div>
-        <div class="pw-info__row"><span class="label">Complexity</span><span class="sf-badge sf-badge--amber">Medium</span></div>
-      </div>
-    }
-  </aside>
-</div>
-
-<section class="sf-card kg-related">
-  <div class="sf-tabs" style="margin:0;border:none;padding:10px 10px 0;">
-    <button type="button" class="sf-tab" [class.active]="resultsTab() === 'related'" (click)="resultsTab.set('related')">Related Entities</button>
-    <button type="button" class="sf-tab" [class.active]="resultsTab() === 'impact'" (click)="resultsTab.set('impact')">Impact Analysis</button>
-    <button type="button" class="sf-tab" [class.active]="resultsTab() === 'dependencies'" (click)="resultsTab.set('dependencies')">Dependencies</button>
-    <button type="button" class="sf-tab" [class.active]="resultsTab() === 'usage'" (click)="resultsTab.set('usage')">Usage</button>
-    <button type="button" class="sf-tab" [class.active]="resultsTab() === 'history'" (click)="resultsTab.set('history')">Change History</button>
   </div>
-  <table class="sf-table">
-    <thead><tr><th>Entity</th><th>Type</th><th>Relationship</th><th>Details</th></tr></thead>
-    <tbody>
-      @for (rel of relationships(); track rel.from + rel.to) {
-        <tr>
-          <td>{{ rel.to }}</td>
-          <td><span class="sf-pill">entity</span></td>
-          <td><span class="sf-pill">{{ rel.label }}</span></td>
-          <td>Relationship between graph entities</td>
-        </tr>
+  <div class="sf-stat-card">
+    <div class="sf-stat-card__icon"><sf-icon name="workspace/repository-graph" /></div>
+    <div>
+      <div class="sf-stat-card__label">Relationships</div>
+      <div class="sf-stat-card__value">{{ totalRelationships() }}</div>
+    </div>
+  </div>
+  <div class="sf-stat-card">
+    <div class="sf-stat-card__icon"><sf-icon name="navigation/repositories" /></div>
+    <div>
+      <div class="sf-stat-card__label">Repositories</div>
+      <div class="sf-stat-card__value">{{ repoCount() }}</div>
+    </div>
+  </div>
+  <div class="sf-stat-card">
+    <div class="sf-stat-card__icon"><sf-icon name="workspace/code-diff" /></div>
+    <div>
+      <div class="sf-stat-card__label">Files Indexed</div>
+      <div class="sf-stat-card__value">{{ fileCount() }}</div>
+    </div>
+  </div>
+  <div class="sf-stat-card">
+    <div class="sf-stat-card__icon"><sf-icon name="navigation/tasks" /></div>
+    <div>
+      <div class="sf-stat-card__label">Tasks</div>
+      <div class="sf-stat-card__value">{{ taskCount() }}</div>
+    </div>
+  </div>
+</div>
+
+@if (!selectedProjectId()) {
+  <div class="sf-card sf-empty" style="padding:48px; text-align:center;">
+    <sf-icon name="navigation/knowledge" class="sf-empty__icon" />
+    <h3>No Project Selected</h3>
+    <p>Select a project from the dropdown above to view its real knowledge graph.</p>
+  </div>
+} @else if (graph() === null) {
+  <div class="sf-card sf-empty" style="padding:48px; text-align:center;">
+    Loading knowledge graph data from Neo4j…
+  </div>
+} @else if (!graph()!.connected) {
+  <div class="sf-card sf-empty" style="padding:48px; text-align:center; color:var(--sf-red-600);">
+    <h3>Knowledge Graph Unavailable</h3>
+    <p>{{ graph()!.detail }}</p>
+    <p style="font-size:12px; color:var(--sf-text-secondary); margin-top:8px;">Ensure the Neo4j container is running on port 7688.</p>
+  </div>
+} @else {
+  <div class="kg-grid">
+    <!-- Filter Sidebar -->
+    <aside class="sf-card">
+      <div class="sf-panel-title">
+        <h3>Graph View</h3>
+      </div>
+      <div class="kg-filter-section">
+        <h4>Source Scope</h4>
+        <div style="display:flex; flex-direction:column; gap:6px;">
+          <button
+            type="button"
+            class="sf-btn"
+            [class.sf-btn--primary]="viewMode() === 'all'"
+            style="justify-content:flex-start; padding:6px 10px; font-size:12px;"
+            (click)="setViewMode('all')"
+          >
+            All Knowledge
+          </button>
+          <button
+            type="button"
+            class="sf-btn"
+            [class.sf-btn--primary]="viewMode() === 'project'"
+            style="justify-content:flex-start; padding:6px 10px; font-size:12px;"
+            (click)="setViewMode('project')"
+          >
+            Project Graph
+          </button>
+          <button
+            type="button"
+            class="sf-btn"
+            [class.sf-btn--primary]="viewMode() === 'repository'"
+            style="justify-content:flex-start; padding:6px 10px; font-size:12px;"
+            (click)="setViewMode('repository')"
+          >
+            Repository Graph
+          </button>
+        </div>
+      </div>
+
+      <div class="kg-filter-section">
+        <h4>Node Types ({{ availableNodeTypes().length }})</h4>
+        @for (t of availableNodeTypes(); track t.type) {
+          <label class="kg-check">
+            <input type="checkbox" [checked]="t.checked" (change)="toggleNodeType(t.type)" />
+            {{ t.type }} ({{ t.count }})
+          </label>
+        }
+        @if (availableNodeTypes().length === 0) {
+          <p class="set-note" style="padding:0; font-size:12px;">No nodes available</p>
+        }
+      </div>
+
+      <div class="kg-filter-section">
+        <h4>Relationships ({{ availableEdgeTypes().length }})</h4>
+        @for (rel of availableEdgeTypes(); track rel.type) {
+          <label class="kg-check">
+            <input type="checkbox" [checked]="rel.checked" (change)="toggleEdgeType(rel.type)" />
+            {{ rel.type }} ({{ rel.count }})
+          </label>
+        }
+        @if (availableEdgeTypes().length === 0) {
+          <p class="set-note" style="padding:0; font-size:12px;">No relationships</p>
+        }
+      </div>
+    </aside>
+
+    <!-- Canvas Section -->
+    <section class="sf-card kg-canvas-card">
+      <div class="sf-panel-title">
+        <h3>
+          {{ selectedNode()?.label || 'Graph Canvas' }}
+          @if (filteredNodes().length > 0) {
+            <span class="sf-pill" style="font-weight:normal; margin-left:8px;">{{ filteredNodes().length }} nodes visible</span>
+          }
+        </h3>
+        <div class="ag-search" style="margin:0; width:240px;">
+          <sf-icon name="workspace/code-search" />
+          <input
+            type="text"
+            placeholder="Search nodes..."
+            [ngModel]="searchQuery()"
+            (ngModelChange)="searchQuery.set($event)"
+          />
+        </div>
+      </div>
+
+      <div class="kg-canvas">
+        @if (filteredNodes().length === 0) {
+          <div class="sf-empty" style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+            @if (graph()!.nodes.length === 0) {
+              <sf-icon name="navigation/knowledge" class="sf-empty__icon" />
+              <p>Graph is not synchronized yet.</p>
+              <button class="sf-btn sf-btn--primary" type="button" style="margin-top:8px;" [disabled]="syncing()" (click)="syncAndBuildGraph()">
+                Sync / Build Graph
+              </button>
+            } @else {
+              <p>No nodes match current filters.</p>
+            }
+          </div>
+        } @else {
+          <svg class="kg-canvas__edges" viewBox="0 0 100 100" preserveAspectRatio="none">
+            @for (line of edgeLines(); track line.label + line.x1 + line.y1 + line.x2 + line.y2) {
+              <line
+                [attr.x1]="line.x1"
+                [attr.y1]="line.y1"
+                [attr.x2]="line.x2"
+                [attr.y2]="line.y2"
+                stroke="#c7cce0"
+                stroke-width="0.5"
+                vector-effect="non-scaling-stroke"
+              />
+            }
+          </svg>
+          @for (node of filteredNodes(); track node.id; let idx = $index) {
+            <button
+              type="button"
+              class="kg-node"
+              [class]="'tone-' + nodeTone(node.type)"
+              [class.center]="node.id === selectedNode()?.id"
+              [class.selected]="selectedNode()?.id === node.id"
+              [style.left]="nodePosition(node, idx, filteredNodes().length).left"
+              [style.top]="nodePosition(node, idx, filteredNodes().length).top"
+              (click)="selectNode(node)"
+            >
+              <sf-icon [name]="nodeIcon(node.type)" />
+              <span class="sf-truncate" [title]="node.label">{{ node.label }}</span>
+              <small>{{ node.type }}</small>
+            </button>
+          }
+        }
+      </div>
+    </section>
+
+    <!-- Node Details Panel -->
+    <aside class="sf-card kg-detail">
+      @if (selectedNode(); as node) {
+        <div class="sf-panel-title">
+          <h3>
+            <sf-icon [name]="nodeIcon(node.type)" />
+            <span class="sf-truncate" style="max-width:180px;" [title]="node.label">{{ node.label }}</span>
+          </h3>
+        </div>
+        <p class="kg-detail__type" style="padding:0 18px; margin:4px 0 12px; font-size:12px; font-weight:600; color:var(--sf-violet-600);">
+          {{ node.type }}
+        </p>
+
+        <div class="pw-info" style="padding:0 18px 16px;">
+          <div class="pw-info__row">
+            <span class="label">ID</span>
+            <span class="value" style="font-family:monospace; font-size:11px;" [title]="node.id">{{ node.id.slice(0, 16) }}</span>
+          </div>
+          @for (key of objectKeys(node.properties); track key) {
+            <div class="pw-info__row">
+              <span class="label" style="text-transform:capitalize;">{{ key }}</span>
+              <span class="value" [title]="node.properties[key]">{{ node.properties[key] }}</span>
+            </div>
+          }
+        </div>
+
+        @if (selectedNodeRelationships().length > 0) {
+          <div style="border-top:1px solid var(--sf-border); padding:12px 18px;">
+            <h4 style="font-size:13px; font-weight:500; margin-bottom:8px; color:var(--sf-text-secondary);">
+              Connected relationships ({{ selectedNodeRelationships().length }})
+            </h4>
+            <div style="display:flex; flex-direction:column; gap:6px; max-height:220px; overflow-y:auto;">
+              @for (rel of selectedNodeRelationships(); track rel.type + rel.otherLabel) {
+                <div style="font-size:12px; padding:4px 6px; background:var(--sf-bg-secondary); border-radius:4px;">
+                  @if (rel.direction === 'out') {
+                    <span class="sf-badge sf-badge--blue" style="font-size:10px;">{{ rel.type }} →</span>
+                    <strong style="margin-left:4px;">{{ rel.otherLabel }}</strong> ({{ rel.otherType }})
+                  } @else {
+                    <span class="sf-badge sf-badge--amber" style="font-size:10px;">← {{ rel.type }}</span>
+                    <strong style="margin-left:4px;">{{ rel.otherLabel }}</strong> ({{ rel.otherType }})
+                  }
+                </div>
+              }
+            </div>
+          </div>
+        }
+      } @else {
+        <div class="sf-empty" style="padding:24px; text-align:center;">
+          Select a node on the canvas to view its properties and relationships.
+        </div>
       }
-    </tbody>
-  </table>
-</section>
+    </aside>
+  </div>
+}

@@ -63,6 +63,10 @@ class CodingAgentRuntimeAdapter(ABC):
     def capabilities(self) -> list[Capability]:
         """Static capability metadata for this runtime, with honest validation states."""
 
+    def supported_models(self) -> list[str]:
+        """List of supported or detected models for this runtime."""
+        return []
+
     @abstractmethod
     def health_check(self, credential_value: str | None) -> HealthCheckResult:
         """Perform a real check (CLI detection and/or a live API probe).
@@ -73,7 +77,7 @@ class CodingAgentRuntimeAdapter(ABC):
 
     @abstractmethod
     def start_execution(
-        self, prompt: str, credential_value: str | None, cwd: str | None = None
+        self, prompt: str, credential_value: str | None, cwd: str | None = None, model: str | None = None
     ) -> ExecutionResult:
         """Hand a task prompt to the real runtime and return its real output.
 
@@ -96,6 +100,7 @@ class CodingAgentRuntimeAdapter(ABC):
         on_chunk: Callable[[str], None],
         should_cancel: Callable[[], bool],
         cwd: str | None = None,
+        model: str | None = None,
     ) -> ExecutionResult:
         """Like `start_execution`, but calls `on_chunk` as real output arrives
         (subprocess stdout lines, or provider SSE deltas) and checks
@@ -106,7 +111,7 @@ class CodingAgentRuntimeAdapter(ABC):
         the whole thing and emits one chunk — it never fabricates partial
         progress that didn't happen.
         """
-        result = self.start_execution(prompt, credential_value, cwd)
+        result = self.start_execution(prompt, credential_value, cwd, model=model)
         if result.output:
             on_chunk(result.output)
         return result

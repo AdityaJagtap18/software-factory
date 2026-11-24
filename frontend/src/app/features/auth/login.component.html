@@ -11,16 +11,7 @@
       system, engineering knowledge and governed delivery.
     </p>
 
-    <div class="login__hero-graphic">
-      <div class="login__node login__node--core">
-        <sf-icon name="logos/software-factory-mark" />
-      </div>
-      <div class="login__node login__node--doc"><sf-icon name="navigation/artifacts" /></div>
-      <div class="login__node login__node--code"><sf-icon name="workspace/code-diff" /></div>
-      <div class="login__node login__node--graph"><sf-icon name="navigation/knowledge" /></div>
-      <div class="login__node login__node--box"><sf-icon name="navigation/artifacts" /></div>
-      <div class="login__node login__node--check"><sf-icon name="status/success" /></div>
-    </div>
+    <div class="login__copyright">© {{ currentYear }} Aditya Jagtap</div>
   </section>
 
   <section class="login__form-panel">
@@ -35,7 +26,7 @@
       @if (quickLoginAvailable()) {
         <button
           type="button"
-          class="sf-btn sf-btn--primary login__quick"
+          class="sf-btn login__quick"
           [disabled]="quickLoggingIn()"
           (click)="quickLogin()"
         >
@@ -84,11 +75,6 @@
         <button class="sf-btn sf-btn--primary login__submit" type="submit" [disabled]="submitting()">
           {{ submitLabel() }}
         </button>
-
-        <div class="login__divider"><span>or continue with</span></div>
-
-        <button type="button" class="sf-btn login__oauth" disabled title="Not yet available">Continue with GitHub</button>
-        <button type="button" class="sf-btn login__oauth" disabled title="Not yet available">Continue with Microsoft</button>
 
         <p class="login__footer">
           @if (isRegister()) {

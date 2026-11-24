@@ -13,6 +13,8 @@ class TaskCreate(BaseModel):
     priority: TaskPriority = TaskPriority.MEDIUM
     coding_agent_connection_id: UUID | None = None
     base_branch: str = ""
+    selected_model: str = ""
+    execution_runtime: str = ""
 
 
 class TaskUpdate(BaseModel):
@@ -20,6 +22,8 @@ class TaskUpdate(BaseModel):
     description: str | None = None
     priority: TaskPriority | None = None
     coding_agent_connection_id: UUID | None = None
+    selected_model: str | None = None
+    execution_runtime: str | None = None
 
 
 class TaskResponse(BaseModel):
@@ -47,6 +51,10 @@ class TaskResponse(BaseModel):
     git_base_branch_protected: bool = False
     git_required_status_checks: list[str] = []
     git_required_approving_reviews: int = 0
+    knowledge_context: dict = Field(default_factory=dict)
+    selected_model: str = ""
+    execution_runtime: str = ""
+    execution_history: list[dict] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 
@@ -66,6 +74,8 @@ class TaskDiffResponse(BaseModel):
 
 class TaskMessageCreate(BaseModel):
     content: str = Field(min_length=1, max_length=10_000)
+    selected_model: str | None = None
+    coding_agent_connection_id: UUID | None = None
 
 
 class TaskMessageResponse(BaseModel):
@@ -74,5 +84,7 @@ class TaskMessageResponse(BaseModel):
     role: TaskMessageRole
     content: str
     created_at: datetime
+    model_id: str = ""
+    runtime_slug: str = ""
 
     model_config = {"from_attributes": True}

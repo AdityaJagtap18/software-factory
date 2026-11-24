@@ -11,6 +11,9 @@ class WorkflowStepCreate(BaseModel):
     title: str = Field(min_length=1, max_length=255)
     description: str = ""
     coding_agent_connection_id: UUID | None = None
+    required_capability: str = ""
+    depends_on_step_orders: list[int] | None = None
+    max_retries: int = Field(default=0, ge=0, le=5)
 
 
 class WorkflowCreate(BaseModel):
@@ -30,6 +33,7 @@ class WorkflowResponse(BaseModel):
     completed_at: datetime | None
     created_at: datetime
     steps: list[TaskResponse]
+    shared_context: dict = {}
 
     model_config = {"from_attributes": True}
 

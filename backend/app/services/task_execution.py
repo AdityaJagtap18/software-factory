@@ -42,10 +42,11 @@ from sqlalchemy.orm import Session as DBSession
 from app.core.crypto import decrypt_value
 from app.core.database import SessionLocal
 from app.models.agent_runtime import CodingAgentConnection, Credential
+from app.models.approval import Approval, ApprovalCategory, ApprovalPriority
 from app.models.git_integration import RepositoryConnection, RepositoryConnectionStatus
 from app.models.task import Task, TaskStatus
 from app.models.task_message import TaskMessage, TaskMessageRole
-from app.services import git_worktree
+from app.services import git_worktree, test_execution
 from app.services.agent_runtime.registry import get_adapter
 from app.services.git_provider.base import GitProviderError
 from app.services.git_provider.registry import get_git_provider
@@ -58,6 +59,80 @@ def start_task_in_background(task_id: uuid.UUID) -> None:
     thread.start()
 
 
+def _resolve_task_connection(db: DBSession, task: Task) -> tuple[CodingAgentConnection | None, str]:
+    """Resolves the assigned or selected CodingAgentConnection and model for this task.
+    If task.selected_model or execution_runtime is specified, resolves or auto-provisions
+    a local connection for the task's organization."""
+    connection = None
+    model_id = task.selected_model or ""
+    runtime_slug = task.execution_runtime or ""
+
+    if ":" in model_id and not runtime_slug:
+        prefix, sub_model = model_id.split(":", 1)
+        if get_adapter(prefix):
+            runtime_slug = prefix
+            model_id = sub_model
+
+    if task.coding_agent_connection_id is not None:
+        connection = db.get(CodingAgentConnection, task.coding_agent_connection_id)
+        if connection:
+            runtime_slug = connection.runtime_slug
+
+    if not runtime_slug and model_id:
+        if model_id.startswith("claude"):
+            runtime_slug = "claude_code"
+        elif model_id.startswith("gemini"):
+            runtime_slug = "gemini_cli"
+        elif model_id.startswith("qwen") or "coder" in model_id:
+            ollama = get_adapter("ollama")
+            if ollama and ollama.health_check(None).connected:
+                runtime_slug = "ollama"
+            else:
+                runtime_slug = "qwen"
+        elif model_id.startswith("gpt") or model_id.startswith("o3") or "codex" in model_id:
+            runtime_slug = "codex"
+        elif "sandbox" in model_id:
+            runtime_slug = "docker_sandbox"
+
+    if connection is None and runtime_slug:
+        from app.models.agent_runtime import ConnectionMode, ConnectionStatus
+        from app.models.project import Project
+
+        project = task.project or db.get(Project, task.project_id)
+        if project:
+            connection = (
+                db.query(CodingAgentConnection)
+                .filter_by(organization_id=project.organization_id, runtime_slug=runtime_slug)
+                .first()
+            )
+            if connection is None:
+                adapter = get_adapter(runtime_slug)
+                if adapter:
+                    health = adapter.health_check(None)
+                    if health.connected:
+                        connection = CodingAgentConnection(
+                            organization_id=project.organization_id,
+                            runtime_slug=runtime_slug,
+                            connection_mode=ConnectionMode.LOCAL_RUNTIME,
+                            status=ConnectionStatus.CONNECTED,
+                            detected_version=health.version,
+                            created_by_user_id=task.created_by_user_id,
+                        )
+                        db.add(connection)
+                        db.flush()
+                        task.coding_agent_connection_id = connection.id
+                        task.execution_runtime = runtime_slug
+                        task.selected_model = model_id
+                        db.commit()
+
+    if connection and not task.coding_agent_connection_id:
+        task.coding_agent_connection_id = connection.id
+        task.execution_runtime = connection.runtime_slug
+        db.commit()
+
+    return connection, model_id
+
+
 def execute_task(
     db: DBSession, task: Task, extra_should_cancel: Callable[[], bool] | None = None
 ) -> None:
@@ -67,18 +142,18 @@ def execute_task(
     task.started_at = datetime.now(timezone.utc)
     db.commit()
 
-    if task.coding_agent_connection_id is None:
+    connection, model_id = _resolve_task_connection(db, task)
+    if connection is None:
         task.status = TaskStatus.FAILED
         task.error_message = "No coding-agent connection assigned to this task."
         task.completed_at = datetime.now(timezone.utc)
         db.commit()
         return
 
-    connection = db.get(CodingAgentConnection, task.coding_agent_connection_id)
-    adapter = get_adapter(connection.runtime_slug) if connection else None
-    if connection is None or adapter is None:
+    adapter = get_adapter(connection.runtime_slug)
+    if adapter is None:
         task.status = TaskStatus.FAILED
-        task.error_message = "Assigned coding-agent connection no longer exists."
+        task.error_message = f"Assigned coding-agent adapter '{connection.runtime_slug}' not found."
         task.completed_at = datetime.now(timezone.utc)
         db.commit()
         return
@@ -125,9 +200,33 @@ def execute_task(
             db.commit()
             return
 
+    # Automatically consult project and repository knowledge context
+    from app.services.knowledge_context import build_task_knowledge_context
+    k_ctx = build_task_knowledge_context(db, task)
+    task.knowledge_context = k_ctx.metadata
+    db.commit()
+
+    user_instruction = task.description or task.title
+
+    # P4-4: real RAG retrieval over this project's ingested documents
+    # (see app/services/document_retrieval.py). Returns "" when the
+    # project has no documents or the embedding model is unreachable, so
+    # this never blocks or fabricates context -- it's a pure addition.
+    from app.services import document_retrieval
+    rag_context = document_retrieval.build_rag_context(db, task.project_id, user_instruction)
+
+    context_blocks = [b for b in (k_ctx.formatted_context, rag_context) if b]
+    if getattr(adapter, "slug", "") == "docker_sandbox":
+        prompt = user_instruction
+    elif context_blocks:
+        prompt = "\n\n".join(context_blocks) + f"\n\nTASK INSTRUCTION:\n{user_instruction}"
+    else:
+        prompt = user_instruction
+
     _run_adapter_and_finish(
-        db, task, adapter, credential_value, task.description or task.title,
+        db, task, adapter, credential_value, prompt,
         worktree, connection_record, extra_should_cancel,
+        is_followup=False, model=model_id,
     )
 
 
@@ -140,11 +239,14 @@ def _run_adapter_and_finish(
     worktree: "git_worktree.WorktreeResult | None",
     connection_record: RepositoryConnection | None,
     extra_should_cancel: Callable[[], bool] | None,
+    is_followup: bool = False,
+    model: str | None = None,
 ) -> None:
     """Shared tail of both a fresh task run and a follow-up turn: stream the
     adapter's real output into `task.output`, then (if there's a worktree)
     collect the real cumulative diff and push/open-or-update a real PR.
     Leaves `task.status` as COMPLETED or FAILED. Caller owns the session."""
+    exec_started_at = datetime.now(timezone.utc)
     chunk_count = 0
 
     def on_chunk(text: str) -> None:
@@ -160,12 +262,14 @@ def _run_adapter_and_finish(
             return True
         return extra_should_cancel() if extra_should_cancel else False
 
+    effective_model = model or task.selected_model or None
     result = adapter.start_execution_streaming(
         prompt,
         credential_value,
         on_chunk,
         should_cancel,
         cwd=worktree.path if worktree else None,
+        model=effective_model,
     )
     task.completed_at = datetime.now(timezone.utc)
     if result.succeeded:
@@ -176,6 +280,25 @@ def _run_adapter_and_finish(
         task.status = TaskStatus.FAILED
         task.output = result.output or task.output
         task.error_message = result.error
+
+    # Record actual execution in history (Phase 8 & 12)
+    history_entry = {
+        "execution_id": str(uuid.uuid4()),
+        "type": "followup" if is_followup else "initial",
+        "runtime_slug": adapter.slug,
+        "runtime_name": adapter.display_name,
+        "model_id": effective_model or adapter.slug,
+        "started_at": exec_started_at.isoformat(),
+        "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+        "status": "completed" if result.succeeded else "failed",
+        "error": result.error if not result.succeeded else "",
+    }
+    current_history = list(task.execution_history or [])
+    current_history.append(history_entry)
+    task.execution_history = current_history
+    task.execution_runtime = adapter.slug
+    if effective_model:
+        task.selected_model = effective_model
 
     if worktree is not None:
         try:
@@ -213,6 +336,17 @@ def _run_adapter_and_finish(
                     task.git_pr_url = pr.url
                     task.git_pr_number = pr.number
                     task.git_pr_state = pr.state
+                    db.add(
+                        Approval(
+                            project_id=task.project_id,
+                            category=ApprovalCategory.CODE_CHANGE,
+                            title="Pull Request Creation",
+                            subtitle=f"{task.title} (#{pr.number})",
+                            priority=ApprovalPriority.HIGH,
+                            task_id=task.id,
+                            requested_by_user_id=task.created_by_user_id,
+                        )
+                    )
                     try:
                         protection = provider.get_branch_protection(
                             connection_record.installation.external_installation_id,
@@ -232,6 +366,17 @@ def _run_adapter_and_finish(
             except (git_worktree.WorktreeError, GitProviderError) as exc:
                 note = f"Task output recorded, but could not open/update the pull request: {exc.detail}"
                 task.error_message = f"{task.error_message} ({note})" if task.error_message else note
+
+        # P3-1: a real test-suite run against this task's own worktree,
+        # whatever framework it actually uses -- never simulated. Runs
+        # last, after the PR itself is already opened/updated, so a
+        # polling caller never observes a "completed" task whose PR
+        # section hasn't actually finished yet (run_tests_for_task does
+        # its own commit).
+        try:
+            test_execution.run_tests_for_task(db, task)
+        except test_execution.NoWorktreeError:
+            pass
     db.commit()
 
 
@@ -261,14 +406,15 @@ def execute_followup(
     if not task.git_branch_name:
         fail("This task has no existing workspace to continue in — start it at least once first.")
         return
-    if task.coding_agent_connection_id is None:
+
+    connection, model_id = _resolve_task_connection(db, task)
+    if connection is None:
         fail("No coding-agent connection assigned to this task.")
         return
 
-    connection = db.get(CodingAgentConnection, task.coding_agent_connection_id)
-    adapter = get_adapter(connection.runtime_slug) if connection else None
-    if connection is None or adapter is None:
-        fail("Assigned coding-agent connection no longer exists.")
+    adapter = get_adapter(connection.runtime_slug)
+    if adapter is None:
+        fail(f"Assigned coding-agent adapter '{connection.runtime_slug}' no longer exists.")
         return
 
     credential_value = None
@@ -300,17 +446,11 @@ def execute_followup(
         fail(f"Could not resume this task's Git workspace: {exc.detail}")
         return
 
-    # A multi-paragraph prompt that labels the instruction as separate
-    # "context" genuinely confuses this CLI agent in practice -- it either
-    # refuses the Write tool outright or fixates on the task's original
-    # (often now-irrelevant) title instead of the real instruction. A
-    # single flowing sentence that states the continuation and the
-    # instruction together is what actually gets real file edits made;
-    # this was verified empirically, not assumed. The real conversation
-    # history still exists and is shown in the UI (see the `/messages`
-    # route) -- it's just not fed back into this CLI invocation, which has
-    # no native session memory of its own anyway (each run is a fresh
-    # process).
+    from app.services.knowledge_context import build_task_knowledge_context
+    k_ctx = build_task_knowledge_context(db, task)
+    task.knowledge_context = k_ctx.metadata
+    db.commit()
+
     prompt = (
         "This repository checkout already has the real changes from earlier turns of this "
         f"task -- continue in it, don't start over. {instruction}"
@@ -318,9 +458,18 @@ def execute_followup(
 
     _run_adapter_and_finish(
         db, task, adapter, credential_value, prompt, worktree, connection_record, extra_should_cancel,
+        is_followup=True, model=model_id,
     )
     if task.status == TaskStatus.COMPLETED:
-        db.add(TaskMessage(task_id=task.id, role=TaskMessageRole.AGENT, content=task.output or ""))
+        db.add(
+            TaskMessage(
+                task_id=task.id,
+                role=TaskMessageRole.AGENT,
+                content=task.output or "",
+                model_id=model_id or task.selected_model or adapter.slug,
+                runtime_slug=adapter.slug,
+            )
+        )
         db.commit()
     else:
         db.add(
@@ -328,6 +477,8 @@ def execute_followup(
                 task_id=task.id,
                 role=TaskMessageRole.SYSTEM,
                 content=task.error_message or "The follow-up run failed.",
+                model_id=model_id or task.selected_model or adapter.slug,
+                runtime_slug=adapter.slug,
             )
         )
         db.commit()

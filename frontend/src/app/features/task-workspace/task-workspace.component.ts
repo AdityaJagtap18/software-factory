@@ -5,16 +5,24 @@ import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { IconComponent } from '../../shared/icon/icon.component';
 import { TaskService } from '../../core/org/task.service';
-import { TaskDiff, TaskMessage } from '../../core/org/task.models';
+import { ApiTask, TaskDiff, TaskMessage } from '../../core/org/task.models';
 import { DiffFile, parseUnifiedDiff } from '../../shared/diff/diff-parser';
 import { GitIntegrationService } from '../../core/org/git-integration.service';
+import { ProjectService } from '../../core/org/project.service';
+import { AgentRuntimeService } from '../../core/org/agent-runtime.service';
+import { ApiProject } from '../../core/auth/auth.models';
+import { AgentConnection, ModelOption } from '../../core/org/agent-runtime.models';
+import { ModelPickerComponent } from '../../shared/model-picker/model-picker.component';
+import { ReviewCommentService } from '../../core/org/review-comment.service';
+import { ApiReviewComment } from '../../core/org/review-comment.models';
+import { TestRunService } from '../../core/org/test-run.service';
 
 export type TaskWorkspaceTab = 'conversation' | 'changes' | 'tests' | 'quality' | 'artifacts' | 'logs';
 
 @Component({
   selector: 'sf-task-workspace',
   standalone: true,
-  imports: [RouterLink, IconComponent, DatePipe, FormsModule],
+  imports: [RouterLink, IconComponent, DatePipe, FormsModule, ModelPickerComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './task-workspace.component.html',
   styleUrl: './task-workspace.component.scss'
@@ -22,6 +30,10 @@ export type TaskWorkspaceTab = 'conversation' | 'changes' | 'tests' | 'quality' 
 export class TaskWorkspaceComponent {
   private readonly taskService = inject(TaskService);
   private readonly gitService = inject(GitIntegrationService);
+  private readonly projectService = inject(ProjectService);
+  private readonly runtimeService = inject(AgentRuntimeService);
+  private readonly reviewCommentService = inject(ReviewCommentService);
+  private readonly testRunService = inject(TestRunService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
 
@@ -29,12 +41,52 @@ export class TaskWorkspaceComponent {
 
   readonly tasks = this.taskService.myTasks;
   readonly loaded = this.taskService.myTasksLoaded;
+  readonly connections = this.runtimeService.connections;
+
+  readonly currentProject = signal<ApiProject | null>(null);
+  readonly projectTasks = signal<ApiTask[]>([]);
+  readonly projectTaskSearch = signal('');
+  readonly sidebarCollapsed = signal(false);
+  readonly reassigningAgent = signal(false);
 
   readonly selectedTask = computed(() => {
     const list = this.tasks();
     if (list.length === 0) return null;
     const id = this.params()?.get('taskId');
     return list.find((t) => t.id === id) ?? list[0];
+  });
+
+  readonly filteredProjectTasks = computed(() => {
+    const list = this.projectTasks();
+    const query = this.projectTaskSearch().trim().toLowerCase();
+    if (!query) return list;
+    return list.filter(
+      (t) =>
+        t.title.toLowerCase().includes(query) ||
+        t.id.toLowerCase().includes(query) ||
+        (t.description && t.description.toLowerCase().includes(query))
+    );
+  });
+
+  readonly assignedAgent = computed<AgentConnection | null>(() => {
+    const task = this.selectedTask();
+    if (!task?.coding_agent_connection_id) return null;
+    return this.connections().find((c) => c.id === task.coding_agent_connection_id) ?? null;
+  });
+
+  readonly knowledgeStatus = computed(() => {
+    const task = this.selectedTask();
+    const kc = task?.knowledge_context;
+    if (!kc || Object.keys(kc).length === 0) {
+      return { status: 'pending', label: 'Consulted on task run', count: 0, files: 0, repo: '' };
+    }
+    if (kc['retrieved']) {
+      const count = kc['total_entities'] ?? 0;
+      const files = kc['files_count'] ?? 0;
+      const repo = kc['repository_name'] ?? '';
+      return { status: 'synced', label: `Synced (${count} entities, ${files} files)`, count, files, repo };
+    }
+    return { status: 'offline', label: kc['error'] ? `Unavailable: ${kc['error']}` : 'Graph Unavailable', count: 0, files: 0, repo: '' };
   });
 
   readonly displayId = computed(() => {
@@ -54,10 +106,52 @@ export class TaskWorkspaceComponent {
   readonly diffExpanded = signal(false);
   readonly copiedPath = signal<string | null>(null);
 
+  readonly comments = this.reviewCommentService.comments;
+  readonly loadingComments = signal(false);
+  readonly commentDraft = signal('');
+  readonly submittingComment = signal(false);
+  readonly resolvingCommentId = signal<string | null>(null);
+  private loadedCommentsForTaskId: string | null = null;
+
+  readonly testRuns = this.testRunService.runs;
+  readonly loadingTestRuns = signal(false);
+  readonly triggeringTestRun = signal(false);
+  readonly testRunError = signal('');
+  private loadedTestRunsForTaskId: string | null = null;
+
+  readonly latestTestRun = computed(() => this.testRuns()[0] ?? null);
+
   readonly messages = signal<TaskMessage[]>([]);
   readonly loadingMessages = signal(false);
   readonly draft = signal('');
   readonly sendingMessage = signal(false);
+  readonly selectedComposerModel = signal<string>('');
+  readonly selectedExecutionRuntime = signal<string>('');
+
+  readonly activeModelDisplay = computed(() => {
+    const task = this.selectedTask();
+    const model = this.selectedComposerModel() || task?.selected_model;
+    if (!model) return '';
+    if (model.includes(':')) {
+      return model.split(':')[1];
+    }
+    return model;
+  });
+
+  onModelSelected(model: ModelOption): void {
+    this.selectedComposerModel.set(model.id);
+    this.selectedExecutionRuntime.set(model.runtime_slug);
+    const task = this.selectedTask();
+    if (task) {
+      this.taskService
+        .update(task.project_id, task.id, {
+          selected_model: model.id,
+          execution_runtime: model.runtime_slug,
+          coding_agent_connection_id: model.connection_id
+        })
+        .subscribe();
+    }
+  }
 
   private loadedDiffForTaskId: string | null = null;
   private loadedMessagesForTaskId: string | null = null;
@@ -88,6 +182,20 @@ export class TaskWorkspaceComponent {
   constructor() {
     this.taskService.listMine().subscribe();
 
+    let lastLoadedProjectId: string | null = null;
+    effect(() => {
+      const task = this.selectedTask();
+      if (!task) return;
+      if (task.project_id !== lastLoadedProjectId) {
+        lastLoadedProjectId = task.project_id;
+        this.taskService.listForProject(task.project_id).subscribe((tasks) => this.projectTasks.set(tasks));
+        this.projectService.get(task.project_id).subscribe((p) => {
+          this.currentProject.set(p);
+          this.runtimeService.listForOrg(p.organization_id).subscribe();
+        });
+      }
+    });
+
     // Re-fetches conversation/diff data whenever the selected task or the
     // active tab changes, including when the task picker switches tasks
     // without a route navigation re-creating this component.
@@ -96,7 +204,12 @@ export class TaskWorkspaceComponent {
       const tab = this.tab();
       if (!task) return;
       if (tab === 'conversation') this.ensureMessagesLoaded();
-      if (tab === 'changes') this.ensureDiffLoaded();
+      if (tab === 'changes') {
+        this.ensureDiffLoaded();
+        this.ensureCommentsLoaded();
+        this.ensureTestRunsLoaded();
+      }
+      if (tab === 'tests') this.ensureTestRunsLoaded();
     });
 
     // A follow-up run finishing (via the real SSE stream in TaskService)
@@ -110,10 +223,36 @@ export class TaskWorkspaceComponent {
       if (prev === 'running' && task.status !== 'running') {
         this.loadedMessagesForTaskId = null;
         this.loadedDiffForTaskId = null;
+        this.loadedTestRunsForTaskId = null;
         if (this.tab() === 'conversation') this.ensureMessagesLoaded();
         if (this.tab() === 'changes') this.ensureDiffLoaded();
+        if (this.tab() === 'tests') this.ensureTestRunsLoaded();
       }
     });
+  }
+
+  toggleSidebar(): void {
+    this.sidebarCollapsed.update((v) => !v);
+  }
+
+  agentName(connectionId: string | null): string {
+    if (!connectionId) return 'Unassigned';
+    const conn = this.connections().find((c) => c.id === connectionId);
+    return conn ? conn.runtime_name : 'Agent';
+  }
+
+  reassignTaskAgent(connectionId: string): void {
+    const task = this.selectedTask();
+    if (!task || task.status !== 'not_started' || this.reassigningAgent()) return;
+    this.reassigningAgent.set(true);
+    this.taskService
+      .update(task.project_id, task.id, {
+        coding_agent_connection_id: connectionId || null
+      })
+      .subscribe({
+        next: () => this.reassigningAgent.set(false),
+        error: () => this.reassigningAgent.set(false)
+      });
   }
 
   selectTask(taskId: string): void {
@@ -122,8 +261,13 @@ export class TaskWorkspaceComponent {
 
   setTab(tab: TaskWorkspaceTab): void {
     this.tab.set(tab);
-    if (tab === 'changes') this.ensureDiffLoaded();
+    if (tab === 'changes') {
+      this.ensureDiffLoaded();
+      this.ensureCommentsLoaded();
+      this.ensureTestRunsLoaded();
+    }
     if (tab === 'conversation') this.ensureMessagesLoaded();
+    if (tab === 'tests') this.ensureTestRunsLoaded();
   }
 
   private ensureMessagesLoaded(): void {
@@ -146,7 +290,8 @@ export class TaskWorkspaceComponent {
     const content = this.draft().trim();
     if (!task || !content || this.sendingMessage()) return;
     this.sendingMessage.set(true);
-    this.taskService.sendMessage(task.project_id, task.id, content).subscribe({
+    const chosenModel = this.selectedComposerModel() || task.selected_model;
+    this.taskService.sendMessage(task.project_id, task.id, content, chosenModel).subscribe({
       next: (message) => {
         this.messages.update((list) => [...list, message]);
         this.draft.set('');
@@ -203,6 +348,75 @@ export class TaskWorkspaceComponent {
         this.loadedDiffForTaskId = task.id;
       },
       error: () => this.loadingDiff.set(false)
+    });
+  }
+
+  private ensureCommentsLoaded(): void {
+    const task = this.selectedTask();
+    if (!task) return;
+    if (this.loadedCommentsForTaskId === task.id) return;
+    this.loadingComments.set(true);
+    this.reviewCommentService.listForTask(task.project_id, task.id).subscribe({
+      next: () => {
+        this.loadingComments.set(false);
+        this.loadedCommentsForTaskId = task.id;
+      },
+      error: () => this.loadingComments.set(false)
+    });
+  }
+
+  submitComment(): void {
+    const task = this.selectedTask();
+    const body = this.commentDraft().trim();
+    if (!task || !body || this.submittingComment()) return;
+    this.submittingComment.set(true);
+    const file = this.selectedDiffFile();
+    this.reviewCommentService
+      .create(task.project_id, task.id, { body, file_path: file?.path ?? '' })
+      .subscribe({
+        next: () => {
+          this.commentDraft.set('');
+          this.submittingComment.set(false);
+        },
+        error: () => this.submittingComment.set(false)
+      });
+  }
+
+  resolveComment(comment: ApiReviewComment): void {
+    const task = this.selectedTask();
+    if (!task || this.resolvingCommentId()) return;
+    this.resolvingCommentId.set(comment.id);
+    this.reviewCommentService.resolve(task.project_id, task.id, comment.id).subscribe({
+      next: () => this.resolvingCommentId.set(null),
+      error: () => this.resolvingCommentId.set(null)
+    });
+  }
+
+  private ensureTestRunsLoaded(): void {
+    const task = this.selectedTask();
+    if (!task) return;
+    if (this.loadedTestRunsForTaskId === task.id) return;
+    this.loadingTestRuns.set(true);
+    this.testRunService.listForTask(task.project_id, task.id).subscribe({
+      next: () => {
+        this.loadingTestRuns.set(false);
+        this.loadedTestRunsForTaskId = task.id;
+      },
+      error: () => this.loadingTestRuns.set(false)
+    });
+  }
+
+  triggerTestRun(): void {
+    const task = this.selectedTask();
+    if (!task || this.triggeringTestRun()) return;
+    this.triggeringTestRun.set(true);
+    this.testRunError.set('');
+    this.testRunService.trigger(task.project_id, task.id).subscribe({
+      next: () => this.triggeringTestRun.set(false),
+      error: (err) => {
+        this.triggeringTestRun.set(false);
+        this.testRunError.set(err?.error?.detail || 'Could not run tests for this task.');
+      }
     });
   }
 

@@ -3,7 +3,14 @@ import { Injectable, inject, signal } from '@angular/core';
 import { Observable, tap } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { AuthService } from '../auth/auth.service';
-import { ApiTask, CreateTaskPayload, MyApiTask, TaskDiff, TaskMessage } from './task.models';
+import {
+  ApiTask,
+  CreateTaskPayload,
+  MyApiTask,
+  TaskDiff,
+  TaskMessage,
+  TaskPriority
+} from './task.models';
 
 @Injectable({ providedIn: 'root' })
 export class TaskService {
@@ -50,6 +57,23 @@ export class TaskService {
     return this.http
       .post<ApiTask>(`${environment.apiBaseUrl}/projects/${projectId}/tasks`, payload)
       .pipe(tap((task) => this.tasks.update((list) => [task, ...list])));
+  }
+
+  update(
+    projectId: string,
+    taskId: string,
+    payload: {
+      coding_agent_connection_id?: string | null;
+      title?: string;
+      description?: string;
+      priority?: TaskPriority;
+      selected_model?: string;
+      execution_runtime?: string;
+    }
+  ): Observable<ApiTask> {
+    return this.http
+      .patch<ApiTask>(`${environment.apiBaseUrl}/projects/${projectId}/tasks/${taskId}`, payload)
+      .pipe(tap((task) => this.patchTask(taskId, task)));
   }
 
   private patchTask(taskId: string, patch: Partial<ApiTask>): void {
@@ -104,11 +128,18 @@ export class TaskService {
    * re-invokes the agent in this task's existing worktree (see
    * `execute_followup` server-side) — then this watches the real run the
    * same way `start()` does. */
-  sendMessage(projectId: string, taskId: string, content: string): Observable<TaskMessage> {
+  sendMessage(
+    projectId: string,
+    taskId: string,
+    content: string,
+    selectedModel?: string
+  ): Observable<TaskMessage> {
+    const payload: { content: string; selected_model?: string } = { content };
+    if (selectedModel) {
+      payload.selected_model = selectedModel;
+    }
     return this.http
-      .post<TaskMessage>(`${environment.apiBaseUrl}/projects/${projectId}/tasks/${taskId}/messages`, {
-        content
-      })
+      .post<TaskMessage>(`${environment.apiBaseUrl}/projects/${projectId}/tasks/${taskId}/messages`, payload)
       .pipe(
         tap(() => {
           this.patchTask(taskId, { status: 'running' } as Partial<ApiTask>);

@@ -1,11 +1,12 @@
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session as DBSession
 
 from app.api.deps import get_current_user
 from app.core.config import get_settings
 from app.core.database import get_db
+from app.core.rate_limit import enforce as enforce_rate_limit
 from app.core.security import (
     create_access_token,
     generate_refresh_token,
@@ -38,7 +39,20 @@ def _issue_tokens(db: DBSession, user: User) -> TokenResponse:
     )
 
 
-@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+def _register_rate_limit(request: Request) -> None:
+    enforce_rate_limit(request, "auth_register", max_requests=8, window_seconds=60.0)
+
+
+def _login_rate_limit(request: Request) -> None:
+    enforce_rate_limit(request, "auth_login", max_requests=15, window_seconds=60.0)
+
+
+@router.post(
+    "/register",
+    response_model=UserResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(_register_rate_limit)],
+)
 def register(payload: RegisterRequest, db: DBSession = Depends(get_db)) -> User:
     existing = db.query(User).filter_by(email=payload.email.lower()).first()
     if existing is not None:
@@ -57,7 +71,7 @@ def register(payload: RegisterRequest, db: DBSession = Depends(get_db)) -> User:
     return user
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post("/login", response_model=TokenResponse, dependencies=[Depends(_login_rate_limit)])
 def login(payload: LoginRequest, db: DBSession = Depends(get_db)) -> TokenResponse:
     user = db.query(User).filter_by(email=payload.email.lower()).first()
     if user is None or not verify_password(payload.password, user.hashed_password):
@@ -99,11 +113,21 @@ def logout(payload: RefreshRequest, db: DBSession = Depends(get_db)) -> None:
         db.commit()
 
 
+def _dev_login_permitted() -> bool:
+    # Hard guard: even if dev_quick_login_enabled is mistakenly set in a
+    # non-local .env, this stays off unless SF_ENVIRONMENT is also local.
+    return (
+        settings.is_local_dev
+        and settings.dev_quick_login_enabled
+        and bool(settings.dev_quick_login_email)
+    )
+
+
 @router.get("/dev-login")
 def dev_login_status(db: DBSession = Depends(get_db)) -> dict:
     """Tells the login screen whether to show the local-dev "Quick sign in"
     button, without revealing the configured email unless it's enabled."""
-    if not settings.dev_quick_login_enabled or not settings.dev_quick_login_email:
+    if not _dev_login_permitted():
         return {"available": False}
     user = db.query(User).filter_by(email=settings.dev_quick_login_email.lower()).first()
     if user is None or not user.is_active:
@@ -111,12 +135,12 @@ def dev_login_status(db: DBSession = Depends(get_db)) -> dict:
     return {"available": True, "display_name": user.full_name}
 
 
-@router.post("/dev-login", response_model=TokenResponse)
+@router.post("/dev-login", response_model=TokenResponse, dependencies=[Depends(_login_rate_limit)])
 def dev_login(db: DBSession = Depends(get_db)) -> TokenResponse:
     """Issues tokens for the configured local-dev account with no password
     check. Only ever active when dev_quick_login_enabled is set in a
     gitignored .env -- never in a real deployment."""
-    if not settings.dev_quick_login_enabled or not settings.dev_quick_login_email:
+    if not _dev_login_permitted():
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Quick sign in is not enabled")
 
     user = db.query(User).filter_by(email=settings.dev_quick_login_email.lower()).first()

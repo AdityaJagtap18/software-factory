@@ -62,6 +62,24 @@ class Task(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     step_order: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    # Phase 5 (P5-1): capability-based agent assignment, dependency-aware
+    # workflow scheduling and automatic retry-with-fallback (see
+    # app/services/workflow_execution.py and app/services/agent_assignment.py).
+    # The DB columns for these were added by migration 64644fed887f, but this
+    # ORM model never declared them -- leaving every real workflow-step Task
+    # construction (`app/api/routes/workflows.py::create_workflow`) crash
+    # with "invalid keyword argument for Task" the moment it passed any of
+    # them. Declared here to match the schema that has existed since then.
+    required_capability: Mapped[str] = mapped_column(String(200), default="", nullable=False)
+    depends_on_step_orders: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    max_retries: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    # Phase 6: safety-scan flags for this task's output/diff. The DB column
+    # existed since migration d42e13a77792 but was likewise never declared
+    # on this model.
+    safety_flags: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+
     # Phase 14: when the project has a connected repository, a task runs
     # inside its own real, isolated Git worktree/branch rather than a bare
     # prompt with no codebase. These stay empty for a task with no

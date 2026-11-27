@@ -82,8 +82,14 @@ def _run_cli_prompt(
         )
     full_env = {**os.environ, **env} if env else None
     try:
+        # The prompt goes over stdin, never as a positional argv element: on
+        # Windows, a CLI installed via npm resolves to a `.cmd` shim, which
+        # the OS can only launch through cmd.exe -- and cmd.exe's own
+        # command-line re-quoting breaks on a prompt containing newlines,
+        # silently truncating it to just its first line.
         proc = subprocess.run(
-            [path, prompt_flag, prompt, *(extra_args or [])],
+            [path, prompt_flag, *(extra_args or [])],
+            input=prompt,
             capture_output=True,
             text=True,
             timeout=_EXECUTION_TIMEOUT_SECONDS,
@@ -124,8 +130,14 @@ def _run_cli_prompt_streaming(
         )
     full_env = {**os.environ, **env} if env else None
     try:
+        # The prompt goes over stdin, never as a positional argv element: on
+        # Windows, a CLI installed via npm resolves to a `.cmd` shim, which
+        # the OS can only launch through cmd.exe -- and cmd.exe's own
+        # command-line re-quoting breaks on a prompt containing newlines,
+        # silently truncating it to just its first line.
         proc = subprocess.Popen(
-            [path, prompt_flag, prompt, *(extra_args or [])],
+            [path, prompt_flag, *(extra_args or [])],
+            stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -135,6 +147,10 @@ def _run_cli_prompt_streaming(
         )
     except OSError as exc:
         return ExecutionResult(succeeded=False, error=f"Failed to execute '{binary}': {exc}")
+
+    assert proc.stdin is not None
+    proc.stdin.write(prompt)
+    proc.stdin.close()
 
     collected: list[str] = []
     cancelled = False

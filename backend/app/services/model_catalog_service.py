@@ -301,8 +301,18 @@ def get_model_catalog(
             matching.is_default = True
 
     if not default_id:
-        # Prefer first connected Claude, Gemini, or Ollama
-        first_connected = next((m for m in all_models if m.selection_allowed and m.runtime_slug in ["claude_code", "gemini_cli", "ollama"]), None)
+        # Prefer a connected local runtime (Qwen, Ollama) over the hosted
+        # Claude Code / Gemini CLI adapters, so a task defaults to a local
+        # model whenever one is actually connected. `all_models` is ordered
+        # by adapter registration, not by this preference, so each priority
+        # slug is searched in turn rather than relying on list order.
+        first_connected = None
+        for slug in ("qwen", "ollama", "claude_code", "gemini_cli"):
+            first_connected = next(
+                (m for m in all_models if m.selection_allowed and m.runtime_slug == slug), None
+            )
+            if first_connected:
+                break
         if not first_connected:
             first_connected = next((m for m in all_models if m.selection_allowed), None)
         if first_connected:

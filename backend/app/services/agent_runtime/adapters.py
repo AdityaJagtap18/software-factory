@@ -770,7 +770,7 @@ class QwenAdapter(CodingAgentRuntimeAdapter):
             return cli_check
         # Fall back to local Ollama if running with a Qwen model
         try:
-            ollama_health, models = _probe_ollama_server(_OLLAMA_DEFAULT_URL)
+            ollama_health, models = _probe_ollama_api(_OLLAMA_DEFAULT_URL)
             if ollama_health.connected:
                 qwen_models = [m for m in models if "qwen" in m.lower()]
                 if qwen_models:

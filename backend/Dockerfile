@@ -2,14 +2,14 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install git, curl, and Node.js for coding-agent CLI runtimes (Gemini CLI, Claude Code)
+# Claude Code and Gemini CLI are deliberately NOT installed here -- this app
+# runs on local Ollama/Qwen runtimes instead, so no cloud coding-agent CLI
+# (and no one's personal Anthropic/Google account) is ever touched by a
+# deployment of this backend. git is still needed for repository operations.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     curl \
     ca-certificates \
-    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt-get install -y --no-install-recommends nodejs \
-    && npm install -g @google/gemini-cli @anthropic-ai/claude-code \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

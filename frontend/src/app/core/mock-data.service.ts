@@ -242,6 +242,9 @@ Your task is to implement, modify, or refactor code based on the given requireme
 - Project: {{project_name}}
 - Repository: {{repository}}
 
+### Task
+{{task}}
+
 ### Instructions
 1. Understand the requirement and relevant context from the repository.
 2. Identify impacted files using the repository knowledge graph.
@@ -258,6 +261,9 @@ Break the following requirement down into an ordered list of concrete, independe
 - Project: {{project_name}}
 - Repository: {{repository}}
 
+### Task
+{{task}}
+
 ### Instructions
 1. Clarify the goal and constraints of the requirement.
 2. Split it into the smallest set of sequential tasks that deliver it.
@@ -272,6 +278,9 @@ Review the diff for this task for correctness, security and maintainability.
 ### Context
 - Project: {{project_name}}
 - Repository: {{repository}}
+
+### Task
+{{task}}
 
 ### Instructions
 1. Check the change against the stated requirement.
@@ -288,6 +297,9 @@ Write tests for the change described below.
 - Project: {{project_name}}
 - Repository: {{repository}}
 
+### Task
+{{task}}
+
 ### Instructions
 1. Cover the happy path and the realistic edge cases.
 2. Add regression tests for any bug being fixed.
@@ -303,6 +315,9 @@ Write or update documentation for the change described below.
 - Project: {{project_name}}
 - Repository: {{repository}}
 
+### Task
+{{task}}
+
 ### Instructions
 1. Update the README or relevant docs affected by the change.
 2. Document new or changed APIs, configs and CLI flags.
@@ -316,6 +331,9 @@ Answer the question below using only real knowledge retrieved from this project'
 ### Context
 - Project: {{project_name}}
 - Repository: {{repository}}
+
+### Task
+{{task}}
 
 ### Instructions
 1. Retrieve relevant entities and relationships before answering.

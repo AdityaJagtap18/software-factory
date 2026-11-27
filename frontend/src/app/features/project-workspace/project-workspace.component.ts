@@ -232,9 +232,11 @@ export class ProjectWorkspaceComponent implements OnDestroy {
     if (!prompt) return;
     const project = this.project();
     const connection = this.repositoryConnections().find((c) => c.project_id === project?.id);
+    const existingTask = this.newTaskDescription().trim();
     const body = prompt.body
       .replace(/{{\s*project_name\s*}}/g, project?.name ?? '')
-      .replace(/{{\s*repository\s*}}/g, connection?.full_name ?? '');
+      .replace(/{{\s*repository\s*}}/g, connection?.full_name ?? '')
+      .replace(/{{\s*task\s*}}/g, existingTask || '[Describe the specific task for this agent here]');
     this.newTaskDescription.set(body);
     if (!this.newTaskTitle()) {
       this.newTaskTitle.set(prompt.name);

@@ -10,6 +10,7 @@ reported as not connected rather than assumed to work.
 import os
 import shutil
 import subprocess
+from pathlib import Path
 
 import httpx
 
@@ -910,6 +911,49 @@ def _apply_generated_files_to_worktree(cwd: str, text: str) -> list[str]:
     return applied
 
 
+_REPO_CONTEXT_MAX_FILES_LISTED = 150
+_REPO_CONTEXT_MAX_README_CHARS = 4000
+
+
+def _build_repo_context(cwd: str) -> str:
+    """A real, compact snapshot of the existing checkout -- a file listing
+    plus the current README's actual content -- for a plain text-completion
+    model that has no file-reading tool of its own (unlike the CLI-based
+    adapters, which read the repo themselves). Without this, the model has
+    nothing to go on but the instruction text and will honestly say it has
+    no access to the codebase rather than inventing one."""
+    root = Path(cwd)
+    if not root.is_dir():
+        return ""
+
+    paths: list[str] = []
+    for p in sorted(root.rglob("*")):
+        if ".git" in p.parts:
+            continue
+        if p.is_file():
+            paths.append(str(p.relative_to(root)))
+        if len(paths) >= _REPO_CONTEXT_MAX_FILES_LISTED:
+            break
+
+    sections = [
+        "### EXISTING REPOSITORY FILES\n" + ("\n".join(paths) if paths else "(empty repository)")
+    ]
+
+    for name in ("README.md", "Readme.md", "readme.md", "README"):
+        readme = root / name
+        if readme.is_file():
+            try:
+                content = readme.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                continue
+            sections.append(
+                f"### CURRENT CONTENTS OF {name}\n```\n{content[:_REPO_CONTEXT_MAX_README_CHARS]}\n```"
+            )
+            break
+
+    return "\n\n".join(sections)
+
+
 def _run_ollama_prompt_streaming(
     base_url: str,
     model: str,
@@ -923,6 +967,9 @@ def _run_ollama_prompt_streaming(
     target_model = model or "qwen3:14b"
     system_prompt = (
         "You are an expert AI software engineer. You are working in a Git repository.\n"
+        "The existing repository files and README (if any) are included below -- this is "
+        "the real, current state of the checkout, not a description of it. Use it; don't "
+        "claim you lack access to the codebase.\n"
         "Analyze the user's instructions and generate code changes.\n"
         "When creating or updating files, format your edits as:\n"
         "### FILE: path/to/file\n"
@@ -930,6 +977,8 @@ def _run_ollama_prompt_streaming(
         "full file content\n"
         "```\n"
     )
+    repo_context = _build_repo_context(cwd) if cwd else ""
+    full_prompt = f"{system_prompt}\n\n{repo_context}\n\nTASK:\n{prompt}" if repo_context else f"{system_prompt}\n\nTASK:\n{prompt}"
     try:
         import json as _json
         with httpx.stream(
@@ -937,7 +986,7 @@ def _run_ollama_prompt_streaming(
             f"{base_url}/api/generate",
             json={
                 "model": target_model,
-                "prompt": f"{system_prompt}\n\nTASK:\n{prompt}",
+                "prompt": full_prompt,
                 "stream": True,
             },
             timeout=_EXECUTION_TIMEOUT_SECONDS,

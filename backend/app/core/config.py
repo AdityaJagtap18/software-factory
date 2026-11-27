@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -48,6 +49,15 @@ class Settings(BaseSettings):
     codex_sandbox_image: str = ""
     gemini_cli_sandbox_image: str = ""
     qwen_sandbox_image: str = ""
+
+    @field_validator("github_app_private_key")
+    @classmethod
+    def _unescape_private_key_newlines(cls, value: str) -> str:
+        # A .env-style file can't reliably hold a real multi-line PEM, so
+        # this is normally supplied as one line with literal "\n" escapes;
+        # turn those back into real newlines for the PyJWT/cryptography
+        # call that actually signs with it.
+        return value.replace("\\n", "\n") if "\\n" in value else value
 
     @property
     def is_local_dev(self) -> bool:

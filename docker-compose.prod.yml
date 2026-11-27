@@ -34,6 +34,9 @@ services:
       SF_CORS_ORIGINS: '["https://softwarefactory.adityajagtap.com"]'
       SF_GEMINI_API_KEY: ${SF_GEMINI_API_KEY:-}
       OLLAMA_HOST: http://ollama:11434
+      SF_GITHUB_APP_ID: ${GITHUB_APP_ID:-}
+      SF_GITHUB_APP_PRIVATE_KEY: ${GITHUB_APP_PRIVATE_KEY:-}
+      SF_GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:-}
     ports:
       - "127.0.0.1:8070:8000"
     depends_on:

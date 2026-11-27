@@ -1,0 +1,65 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - sf_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # No "ports": reached only over the internal Docker network.
+
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    volumes:
+      - sf_ollama_data:/root/.ollama
+    # No "ports": the backend reaches it at http://ollama:11434 over the
+    # internal Docker network -- this VPS has no RAM to spare running a
+    # 14b model (see the deploy notes), so only a small model is pulled
+    # here (e.g. `docker compose exec ollama ollama pull qwen2.5:0.5b`).
+
+  backend:
+    build: ./backend
+    image: ghcr.io/adityajagtap18/software-factory-backend:latest
+    restart: unless-stopped
+    environment:
+      SF_DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      SF_CORS_ORIGINS: '["https://softwarefactory.adityajagtap.com"]'
+      SF_GEMINI_API_KEY: ${SF_GEMINI_API_KEY:-}
+      OLLAMA_HOST: http://ollama:11434
+      SF_GITHUB_APP_ID: ${GITHUB_APP_ID:-}
+      SF_GITHUB_APP_PRIVATE_KEY: ${GITHUB_APP_PRIVATE_KEY:-}
+      SF_GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:-}
+    ports:
+      - "127.0.0.1:8070:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    command: >
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+  frontend:
+    build: ./frontend
+    image: ghcr.io/adityajagtap18/software-factory-frontend:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8071:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  sf_postgres_data:
+  sf_ollama_data:

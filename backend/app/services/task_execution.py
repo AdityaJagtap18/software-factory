@@ -67,10 +67,19 @@ def _resolve_task_connection(db: DBSession, task: Task) -> tuple[CodingAgentConn
     model_id = task.selected_model or ""
     runtime_slug = task.execution_runtime or ""
 
-    if ":" in model_id and not runtime_slug:
+    # `selected_model` is stored in the catalog's "{runtime_slug}:{model_id}"
+    # option-id form (see model_catalog_service.py), so its prefix always
+    # needs stripping before it's a real model name an adapter can pass
+    # along -- not only on a task's first run. Skipping this whenever
+    # `runtime_slug` was already known (e.g. set directly at task creation,
+    # alongside `selected_model`, from the same picker selection) left the
+    # adapter prefix stuck on the front of every model name forever,
+    # breaking every execution with Ollama's own "qwen2.5:0.5b" model tags
+    # (the first ":" split landed on the adapter prefix, not inside the tag).
+    if ":" in model_id:
         prefix, sub_model = model_id.split(":", 1)
-        if get_adapter(prefix):
-            runtime_slug = prefix
+        if prefix == runtime_slug or (not runtime_slug and get_adapter(prefix)):
+            runtime_slug = runtime_slug or prefix
             model_id = sub_model
 
     if task.coding_agent_connection_id is not None:

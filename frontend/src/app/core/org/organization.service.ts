@@ -19,7 +19,17 @@ export class OrganizationService {
       .pipe(
         tap((orgs) => {
           this.organizations.set(orgs);
-          if (!this.activeOrgId() && orgs.length > 0) {
+          // activeOrgId is seeded from localStorage, which is scoped to the
+          // browser, not the logged-in account -- switching accounts in the
+          // same browser (or an org being removed/moved) can leave it
+          // pointing at an org this user isn't a member of, so every
+          // org-scoped fetch (projects, etc.) silently queries the wrong
+          // org while anything that isn't org-scoped looks fine. Validate it
+          // against this account's real orgs on every fetch, not just when
+          // it's unset.
+          const current = this.activeOrgId();
+          const stillValid = !!current && orgs.some((o) => o.id === current);
+          if (!stillValid && orgs.length > 0) {
             this.setActiveOrg(orgs[0].id);
           }
         })

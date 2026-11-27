@@ -56,6 +56,29 @@
     color: #7c87b3;
   }
 
+  &__github {
+    position: absolute;
+    right: 56px;
+    bottom: 28px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #c3cbe8;
+    text-decoration: none;
+
+    svg {
+      width: 16px;
+      height: 16px;
+      flex: none;
+    }
+
+    &:hover {
+      color: #fff;
+    }
+  }
+
   &__form-panel {
     flex: 1 1 54%;
     background: var(--sf-bg);

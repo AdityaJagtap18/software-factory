@@ -19,7 +19,7 @@ def test_runtime_catalog_lists_known_adapters(client):
     r = client.get("/api/v1/coding-agent-runtimes")
     assert r.status_code == 200
     slugs = {entry["slug"] for entry in r.json()}
-    assert slugs == {"claude_code", "codex", "gemini_cli", "qwen", "docker_sandbox", "custom"}
+    assert slugs == {"claude_code", "codex", "gemini_cli", "ollama", "qwen", "docker_sandbox", "custom"}
 
 
 def test_connections_default_to_not_configured(client):
@@ -29,7 +29,7 @@ def test_connections_default_to_not_configured(client):
     r = client.get(f"/api/v1/organizations/{org['id']}/coding-agent-connections", headers=alice)
     assert r.status_code == 200
     body = r.json()
-    assert len(body) == 6
+    assert len(body) == 7
     for entry in body:
         assert entry["status"] == "not_configured"
         assert entry["is_configured"] is False
@@ -346,11 +346,13 @@ def test_gemini_cli_health_check_verifies_cli_and_api_key(monkeypatch):
     assert res.connected is True
     assert "0.70.0" in res.detail
 
-    # Without credential and without env key
+    # Without credential and without env key: CLI presence alone is enough
+    # to report connected, matching ClaudeCodeAdapter/CodexAdapter -- a
+    # missing key just means it can't also verify the key.
     from app.core.config import get_settings
     monkeypatch.setattr(get_settings(), "gemini_api_key", "")
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     res_no_key = adapters.GeminiCliAdapter().health_check(None)
-    assert res_no_key.connected is False
-    assert "GEMINI_API_KEY" in res_no_key.detail
+    assert res_no_key.connected is True
+    assert "0.70.0" in res_no_key.detail
 

@@ -36,6 +36,19 @@
         <div class="login__divider"><span>or sign in with password</span></div>
       }
 
+      @if (demoAvailable) {
+        <button
+          type="button"
+          class="sf-btn login__quick"
+          [disabled]="demoLoggingIn()"
+          (click)="tryDemo()"
+        >
+          <sf-icon name="status/success" />
+          {{ demoLoggingIn() ? 'Signing in…' : 'Try the live demo' }}
+        </button>
+        <div class="login__divider"><span>or sign in with password</span></div>
+      }
+
       <form (ngSubmit)="submit()">
         @if (isRegister()) {
           <label class="login__label" for="fullName">Full name</label>

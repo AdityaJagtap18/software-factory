@@ -6,6 +6,7 @@ import { catchError, of, switchMap } from 'rxjs';
 import { IconComponent } from '../../shared/icon/icon.component';
 import { AuthService } from '../../core/auth/auth.service';
 import { OrganizationService } from '../../core/org/organization.service';
+import { environment } from '../../../environments/environment';
 
 type Mode = 'signin' | 'register';
 
@@ -35,6 +36,9 @@ export class LoginComponent {
   quickLoginAvailable = signal(false);
   quickLoginName = signal('');
   quickLoggingIn = signal(false);
+
+  readonly demoAvailable = !!environment.demoLogin;
+  demoLoggingIn = signal(false);
 
   readonly currentYear = new Date().getFullYear();
 
@@ -76,6 +80,30 @@ export class LoginComponent {
       .subscribe((result) => {
         if (result !== null) {
           this.quickLoggingIn.set(false);
+          this.router.navigateByUrl('/dashboard');
+        }
+      });
+  }
+
+  tryDemo() {
+    const creds = environment.demoLogin;
+    if (!creds) return;
+    this.demoLoggingIn.set(true);
+    this.errorMessage.set('');
+    this.auth
+      .login(creds.email, creds.password)
+      .pipe(
+        switchMap(() => this.auth.fetchCurrentUser()),
+        switchMap(() => this.orgs.listMine()),
+        catchError((err: HttpErrorResponse) => {
+          this.demoLoggingIn.set(false);
+          this.errorMessage.set(this.describeError(err));
+          return of(null);
+        })
+      )
+      .subscribe((result) => {
+        if (result !== null) {
+          this.demoLoggingIn.set(false);
           this.router.navigateByUrl('/dashboard');
         }
       });

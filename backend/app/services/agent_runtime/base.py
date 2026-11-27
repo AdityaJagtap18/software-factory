@@ -47,6 +47,9 @@ class ExecutionResult:
     succeeded: bool
     output: str = ""
     error: str = ""
+    # Real token counts/durations Ollama's own final streamed chunk reports
+    # (see _run_ollama_prompt_streaming) -- not every adapter populates this.
+    usage: dict = field(default_factory=dict)
 
 
 class CodingAgentRuntimeAdapter(ABC):

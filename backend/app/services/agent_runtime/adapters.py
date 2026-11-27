@@ -988,6 +988,13 @@ def _run_ollama_prompt_streaming(
                 "model": target_model,
                 "prompt": full_prompt,
                 "stream": True,
+                # Small local models (the only kind this box can afford to
+                # run, see the deploy notes) are prone to degenerating into
+                # an endless repeated phrase rather than naturally stopping.
+                # These bound that failure mode without needing a bigger
+                # model: a real cap on how much a single turn can generate,
+                # plus a real penalty against repeating recent tokens.
+                "options": {"num_predict": 1024, "repeat_penalty": 1.3},
             },
             timeout=_EXECUTION_TIMEOUT_SECONDS,
         ) as resp:
